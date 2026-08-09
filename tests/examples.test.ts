@@ -20,4 +20,3 @@ describe("copy-paste examples", () => {
     }
   });
 });
-

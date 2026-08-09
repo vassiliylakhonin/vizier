@@ -27,4 +27,3 @@ export interface VerificationResponse {
   readonly policy_results: readonly PolicyResult[];
   readonly receipt: Receipt;
 }
-

@@ -9,4 +9,3 @@ export function aggregateDecision(results: readonly PolicyResult[]): Decision {
   }
   return "ALLOW";
 }
-

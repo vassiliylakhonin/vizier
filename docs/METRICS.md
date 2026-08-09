@@ -18,4 +18,3 @@ No target has been achieved or tested. The current implementation has no
 durable metrics store. Structured logs expose the fields needed to calculate
 call count and decision mix later. Counting unique agents, repeat use, and calls
 per integration requires authenticated integration IDs before a public pilot.
-

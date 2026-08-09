@@ -5,4 +5,3 @@ coverage/
 .dev.vars
 .env*
 !.env.example
-

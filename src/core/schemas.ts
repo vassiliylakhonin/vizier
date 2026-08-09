@@ -72,4 +72,3 @@ export const verificationRequestSchema = z.strictObject({
 });
 
 export type VerificationRequest = z.infer<typeof verificationRequestSchema>;
-
