@@ -8,13 +8,15 @@
   "type": "module",
   "description": "Deterministic authorization checks for agent actions.",
   "scripts": {
-    "build": "npm run build --workspace @vizier/sdk && wrangler deploy --dry-run --outdir dist",
+    "build": "npm run build:packages && wrangler deploy --dry-run --outdir dist",
+    "build:packages": "npm run build --workspace @vizier/sdk && npm run build --workspace @vizier/gated-deploy",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "deploy:gated": "npm run build:packages && node packages/gated-deploy/dist/cli.js",
     "dev": "wrangler dev --local",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "wrangler types --check && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p packages/sdk/tsconfig.json --noEmit"
+    "typecheck": "wrangler types --check && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p packages/sdk/tsconfig.json --noEmit && tsc -p packages/gated-deploy/tsconfig.json --noEmit"
   },
   "dependencies": {
     "zod": "4.4.3"

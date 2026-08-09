@@ -141,6 +141,20 @@ describe("policy engine", () => {
     expect(response.reason_codes).toContain("SENSITIVE_ACTION_REVIEW");
   });
 
+  it("treats a Worker deployment as a sensitive action", async () => {
+    const response = await verifyAction(
+      fixture({
+        actionType: "deploy_worker",
+        allowedActions: ["deploy_worker"],
+        target: "worker:vizier",
+        parameters: {},
+      }),
+    );
+
+    expect(response.decision).toBe("REVIEW");
+    expect(response.reason_codes).toContain("SENSITIVE_ACTION_REVIEW");
+  });
+
   it("reviews an explicitly unknown principal", async () => {
     const response = await verifyAction(fixture({ principalId: null }));
 

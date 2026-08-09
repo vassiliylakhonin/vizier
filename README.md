@@ -150,8 +150,8 @@ prove that each supplied delegation was issued by the principal.
 | Sensitive action lacks explicit sensitive authority | `REVIEW / SENSITIVE_ACTION_REVIEW` |
 
 The default sensitive actions are `transfer_funds`, `delete_data`,
-`execute_code`, `send_external_message`, `modify_permissions`, and
-`sign_contract`.
+`deploy_worker`, `execute_code`, `send_external_message`,
+`modify_permissions`, and `sign_contract`.
 
 ## Protocol endpoints
 
@@ -183,8 +183,8 @@ npm run build
 npm run check
 ```
 
-`npm run build` compiles `@vizier/sdk` and runs a Cloudflare deployment dry run.
-It does not deploy the Worker.
+`npm run build` compiles `@vizier/sdk`, compiles the private gated-deploy tool,
+and runs a Cloudflare deployment dry run. It does not deploy the Worker.
 
 To prepare an enforcement deployment after reviewing the threat model:
 
@@ -193,6 +193,26 @@ npx wrangler whoami
 npx wrangler secret put VIZIER_API_KEY
 npx wrangler deploy
 ```
+
+The first deployment bootstraps the gate. After the same integration credential
+has been stored in macOS Keychain under service `com.vizier.gated-deploy` and
+account `VIZIER_API_KEY`, subsequent deployments use:
+
+```bash
+npm run deploy:gated
+```
+
+The private tool accepts no command arguments. It submits the current clean Git
+commit, the fixed `deploy_worker` action, and the fixed `worker:vizier` target.
+It runs `wrangler deploy --strict` only after a validated `ALLOW` receipt. A
+`REVIEW`, `BLOCK`, timeout, malformed response, missing credential, or dirty
+worktree stops the deployment.
+
+This wrapper is an integration test, not an operating-system security boundary.
+An agent with unrestricted shell access and Cloudflare credentials can bypass it
+by invoking Wrangler directly. A production integration must expose only the
+wrapper capability and keep both Cloudflare and Vizier credentials outside the
+action-taking agent.
 
 The deployment command is intentionally not part of `npm run build`. Without
 the secret, a deployment remains evaluation-only and cannot return `ALLOW`.

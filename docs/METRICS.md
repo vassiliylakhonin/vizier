@@ -18,3 +18,9 @@ No target has been achieved or tested. The current implementation has no
 durable metrics store. Structured logs expose the fields needed to calculate
 call count and decision mix later. Counting unique agents, repeat use, and calls
 per integration requires authenticated integration IDs before a public pilot.
+
+The first internal test is 5–10 clean Git deployments routed through
+`npm run deploy:gated`. One bootstrap deployment and repeated deployments made
+only to increase the counter do not count as product evidence. The test is
+useful only if the gate remains in the normal path during actual repository
+changes.

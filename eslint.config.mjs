@@ -7,6 +7,7 @@ export default defineConfig(
     "node_modules/**",
     "dist/**",
     "packages/sdk/dist/**",
+    "packages/gated-deploy/dist/**",
     "worker-configuration.d.ts",
   ]),
   {

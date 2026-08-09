@@ -64,6 +64,7 @@ src/
   core/          # schemas, policies, decision, risk, receipts
   transport/     # REST, A2A JSON-RPC, MCP (later milestones)
 packages/sdk/    # thin TypeScript client
+packages/gated-deploy/ # private dogfood integration for Worker deploys
 tests/           # unit and transport integration tests
 examples/        # copy-paste requests
 docs/            # architecture, threat model, API docs
@@ -89,3 +90,16 @@ decision aggregation, transparent risk scoring, bounded input traversal,
 SHA-256 request receipts, REST, A2A, MCP, a TypeScript SDK, and tests. Durable
 policy storage, signed delegation, receipt signing, and public deployment remain
 outside this milestone.
+
+## Internal deployment integration
+
+`packages/gated-deploy` is a narrow caller of the public REST API. Its action
+type and target are fixed to `deploy_worker` and `worker:vizier`. It refuses a
+dirty worktree and invokes Wrangler without a shell only after the SDK validates
+an `ALLOW` response and its receipt hash. The integration credential is read
+from macOS Keychain.
+
+This controls the normal repository deployment command but cannot stop an agent
+that already has unrestricted shell access to Cloudflare credentials from
+calling Wrangler directly. The package is private and exists to collect internal
+repeat-use evidence before any broader executor is built.

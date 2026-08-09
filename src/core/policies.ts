@@ -4,6 +4,7 @@ import type { VerificationRequest } from "./schemas";
 export const DEFAULT_SENSITIVE_ACTIONS = Object.freeze([
   "transfer_funds",
   "delete_data",
+  "deploy_worker",
   "execute_code",
   "send_external_message",
   "modify_permissions",

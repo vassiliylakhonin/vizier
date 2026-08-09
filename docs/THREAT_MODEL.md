@@ -57,6 +57,10 @@ or network failure.
   legacy protocol versions.
 - The same-origin MCP `Origin` rule excludes browser clients hosted on another
   origin until an explicit allowlist exists.
+- The local gated-deploy wrapper is bypassable by any process that can invoke
+  Wrangler with the user's Cloudflare credentials. It is a valid enforcement
+  point only when an action-taking agent receives the wrapper capability but no
+  general shell or Cloudflare credential access.
 
 ## Fail-closed integration rule
 
