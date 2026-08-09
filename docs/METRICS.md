@@ -24,3 +24,10 @@ The first internal test is 5–10 clean Git deployments routed through
 only to increase the counter do not count as product evidence. The test is
 useful only if the gate remains in the normal path during actual repository
 changes.
+
+## Observed internal use
+
+On 2026-08-09, the first gated deployment completed from Git commit `6fbf77d`.
+Vizier returned `ALLOW`, and Cloudflare created Worker version
+`954622cc-7251-4fa7-b820-0a5293f1066d`. This is internal dogfood. It is not an
+independent integration, customer pilot, or market validation.

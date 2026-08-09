@@ -12,3 +12,4 @@ Checked on 2026-08-09.
 | Vizier has production users, pilots, or revenue. | none | No evidence exists. | unsupported |
 | Vizier defaults to an evaluation mode that cannot return `ALLOW`. | local tests | REST, A2A, and MCP tests assert `REVIEW` without `VIZIER_API_KEY`. | supported |
 | Vizier provides a complete principal identity or delegation boundary. | none | v0.1 authenticates only the configured integration; authority is still supplied by it. | unsupported |
+| The private gated-deploy tool completed one Vizier-authorized Worker deployment. | Cloudflare Worker version history, checked 2026-08-09 | Version `954622cc-7251-4fa7-b820-0a5293f1066d` carries a `Vizier ALLOW receipt` deployment message. | supported |
