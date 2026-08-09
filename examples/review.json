@@ -1,0 +1,26 @@
+{
+  "agent": {
+    "id": "communications-agent-01",
+    "owner": "acme-corp"
+  },
+  "principal": {
+    "id": "acme-corp"
+  },
+  "action": {
+    "type": "send_external_message",
+    "target": "customer@example.com",
+    "parameters": {
+      "subject": "Order update"
+    }
+  },
+  "authority": {
+    "allowed_actions": ["send_external_message"],
+    "constraints": {}
+  },
+  "context": {
+    "request_id": "review-example-01",
+    "timestamp": null,
+    "source": "rest"
+  }
+}
+

@@ -1,0 +1,31 @@
+{
+  "agent": {
+    "id": "procurement-agent-01",
+    "owner": "acme-corp"
+  },
+  "principal": {
+    "id": "acme-corp"
+  },
+  "action": {
+    "type": "purchase",
+    "target": "supplier.example",
+    "parameters": {
+      "amount": 8200,
+      "currency": "USD"
+    }
+  },
+  "authority": {
+    "allowed_actions": ["purchase"],
+    "constraints": {
+      "max_amount": 10000,
+      "currency": "USD",
+      "allowed_targets": ["supplier.example"]
+    }
+  },
+  "context": {
+    "request_id": "allow-example-01",
+    "timestamp": null,
+    "source": "rest"
+  }
+}
+

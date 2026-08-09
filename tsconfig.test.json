@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/core/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],
+  "exclude": ["src/index.ts", "worker-configuration.d.ts"]
+}
