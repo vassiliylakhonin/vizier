@@ -3,6 +3,10 @@ export type EnforcementAuthorization =
   | "evaluation"
   | "denied";
 
+export interface AuthorizationOptions {
+  readonly allowMissingCredentialForEvaluation?: boolean;
+}
+
 function bearerToken(request: Request): string | null {
   const value = request.headers.get("Authorization");
   if (value === null || !value.startsWith("Bearer ")) {
@@ -43,13 +47,18 @@ async function secretsEqual(left: string, right: string): Promise<boolean> {
 export async function authorizeEnforcement(
   request: Request,
   apiKey: string | undefined,
+  options: AuthorizationOptions = {},
 ): Promise<EnforcementAuthorization> {
   if (apiKey === undefined || apiKey.length === 0) {
     return "evaluation";
   }
+  const hasAuthorizationHeader = request.headers.has("Authorization");
   const token = bearerToken(request);
   if (token === null) {
-    return "denied";
+    return options.allowMissingCredentialForEvaluation === true &&
+      !hasAuthorizationHeader
+      ? "evaluation"
+      : "denied";
   }
   return (await secretsEqual(token, apiKey)) ? "authenticated" : "denied";
 }

@@ -55,17 +55,20 @@ describe("Agent Card JWS", () => {
     expect(jwks.keys[0]).not.toHaveProperty("d");
   });
 
-  it("creates a detached ES256 JWS with a same-origin jku", async () => {
+  it("creates an A2A v1 ES256 signature with a same-origin jku", async () => {
     const signingKey = await createTestSigningKey();
     const card = createAgentCard("https://vizier.example");
     const signedCard = await signAgentCard(card, signingKey);
-    const signature = signedCard.signature;
+    const signatures = signedCard.signatures as Array<{
+      protected: string;
+      signature: string;
+    }>;
+    const [signature] = signatures;
 
-    expect(typeof signature).toBe("string");
-    const [encodedHeader, detachedPayload, encodedSignature] = String(signature).split(
-      ".",
-    );
-    expect(detachedPayload).toBe("");
+    expect(signatures).toHaveLength(1);
+    expect(signature).toBeDefined();
+    const encodedHeader = signature?.protected;
+    const encodedSignature = signature?.signature;
     expect(encodedHeader).toBeDefined();
     expect(encodedSignature).toBeDefined();
 
@@ -74,19 +77,19 @@ describe("Agent Card JWS", () => {
     ) as Record<string, unknown>;
     expect(protectedHeader).toEqual({
       alg: "ES256",
-      b64: false,
-      crit: ["b64"],
       jku: "https://vizier.example/.well-known/jwks.json",
       kid: "vizier-test-key",
+      typ: "JOSE",
     });
 
     const unsignedCard = { ...signedCard };
-    delete unsignedCard.signature;
-    const payload = new TextEncoder().encode(canonicalizeJson(unsignedCard));
-    const header = new TextEncoder().encode(`${encodedHeader}.`);
-    const signingInput = new Uint8Array(header.length + payload.length);
-    signingInput.set(header);
-    signingInput.set(payload, header.length);
+    delete unsignedCard.signatures;
+    const encodedPayload = Buffer.from(canonicalizeJson(unsignedCard)).toString(
+      "base64url",
+    );
+    const signingInput = new TextEncoder().encode(
+      `${encodedHeader}.${encodedPayload}`,
+    );
 
     const verifyKey = await webcrypto.subtle.importKey(
       "jwk",
@@ -121,7 +124,13 @@ describe("Agent Card JWS", () => {
       keys: Array<Record<string, unknown>>;
     };
 
-    expect(card.signature).toMatch(/^[A-Za-z0-9_-]+\.\.[A-Za-z0-9_-]+$/);
+    expect(card.signatures).toEqual([
+      {
+        protected: expect.stringMatching(/^[A-Za-z0-9_-]+$/),
+        signature: expect.stringMatching(/^[A-Za-z0-9_-]+$/),
+      },
+    ]);
+    expect(card).not.toHaveProperty("signature");
     expect(jwks.keys[0]?.kid).toBe("vizier-test-key");
     expect(cardResponse.headers.get("Cache-Control")).toBe(
       "public, max-age=300",

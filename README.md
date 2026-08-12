@@ -27,8 +27,9 @@ loaded from an independent policy store. Read the [threat
 model](docs/THREAT_MODEL.md) before placing this service in an execution path.
 
 Live endpoint: <https://vizier.vassiliy-lakhonin.workers.dev>. Discovery,
-health, and documentation routes are public. Verification requires a private
-integration credential; no public demo credential is issued.
+health, documentation, and evaluation-only A2A calls are public. REST, MCP, and
+A2A enforcement require a private integration credential; no public demo
+credential is issued.
 
 ## 60-second quickstart
 
@@ -79,7 +80,9 @@ curl -sS http://127.0.0.1:8787/v1/verify \
 Malformed requests return a structured error and never produce `ALLOW`.
 When `VIZIER_API_KEY` is absent, the service is in evaluation mode: valid
 requests can return `REVIEW` or `BLOCK`, never `ALLOW`. When the secret is
-configured, verification calls require `Authorization: Bearer <key>`.
+configured, REST and MCP verification calls require `Authorization: Bearer
+<key>`. A2A also accepts an anonymous evaluation call for discovery and
+conformance checks, but that call can return only `REVIEW` or `BLOCK`.
 
 ```json
 {
@@ -156,10 +159,12 @@ The default sensitive actions are `transfer_funds`, `delete_data`,
 ## Protocol endpoints
 
 - `GET /.well-known/agent-card.json` returns an A2A v1.0 Agent Card with a
-  detached ES256 JWS in `signature` when `AGENT_CARD_SIGNING_KEY` is configured.
+  canonical ES256 JWS in `signatures[]` when `AGENT_CARD_SIGNING_KEY` is
+  configured.
 - `GET /.well-known/jwks.json` returns the matching public key. The JWS protected
   header points to this endpoint through a same-origin `jku`.
-- `POST /a2a` implements the A2A v1.0 JSON-RPC `SendMessage` method.
+- `POST /a2a` implements the A2A v1.0 JSON-RPC `SendMessage` method. Anonymous
+  requests run only in evaluation mode; a wrong supplied credential is rejected.
 - `POST /mcp` implements MCP `2026-07-28` with `server/discover`, `tools/list`,
   and `tools/call` for `vizier_verify_action`.
 

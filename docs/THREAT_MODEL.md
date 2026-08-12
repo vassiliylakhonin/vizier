@@ -33,11 +33,13 @@ or network failure.
   schema validation
 - the default evaluation mode never returns `ALLOW`
 - enforcement mode requires a constant-time checked Bearer credential
+- anonymous A2A calls remain evaluation-only even when enforcement is configured;
+  a supplied invalid credential is rejected
 - no URL fetching, dynamic evaluation, code execution, or secret reflection
 - target deny rules override allow rules
 - `BLOCK` overrides `REVIEW`, which overrides `ALLOW`
 - Web Crypto generates receipt IDs and SHA-256 request hashes
-- the public Agent Card carries a detached ES256 JWS; its protected `jku`
+- the public Agent Card carries an A2A v1 `signatures[]` ES256 JWS; its protected `jku`
   resolves to the matching same-origin JWKS
 - a malformed configured signing key fails the discovery request instead of
   silently returning an unsigned Agent Card
@@ -76,5 +78,6 @@ The caller must execute the external action only after receiving a valid
 other state stops or queues the action for review.
 
 If `VIZIER_API_KEY` is missing, the authority-provenance policy forces REVIEW.
-If the secret is configured and the credential is missing or wrong, the
-transport rejects the request rather than calculating a decision.
+If the secret is configured, REST and MCP reject a missing or wrong credential.
+A2A treats a missing credential as evaluation-only and rejects a supplied wrong
+credential. In every transport, only the correct credential can reach `ALLOW`.

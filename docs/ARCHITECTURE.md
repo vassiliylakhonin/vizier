@@ -48,7 +48,10 @@ representation returned to the caller, not a durability claim.
   yields `REVIEW`; an omitted field is malformed input.
 - `BLOCK` has priority over `REVIEW`, which has priority over `ALLOW`.
 - A transport with no configured integration credential evaluates requests but
-  adds `AUTHORITY_SOURCE_UNTRUSTED`, so it cannot return `ALLOW`.
+  adds `AUTHORITY_SOURCE_UNTRUSTED`, so it cannot return `ALLOW`. A2A preserves
+  this evaluation-only lane when enforcement is configured so protocol probes
+  and prospective integrations can test the contract without receiving
+  enforcement authority.
 - A sensitive action must be delegated and also listed in
   `authority.constraints.allowed_sensitive_actions` to avoid review.
 - A monetary limit with a missing/invalid amount or mismatched currency yields
@@ -57,9 +60,9 @@ representation returned to the caller, not a durability claim.
 - Request hashing uses documented sorted-key canonical JSON plus SHA-256. This
   is deterministic but is not claimed to implement RFC 8785.
 - Agent Card signing uses a separate RFC 8785 canonicalization path and a
-  detached ES256 JWS. The protected header declares `b64: false`, `crit:
-  ["b64"]`, and a same-origin `jku`; the matching public key is served from
-  `/.well-known/jwks.json`.
+  standard A2A v1 `signatures[]` ES256 JWS. The protected header declares
+  `alg`, `typ`, `kid`, and a same-origin `jku`; the matching public key is served
+  from `/.well-known/jwks.json`.
 
 ## Planned repository structure
 

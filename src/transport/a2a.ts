@@ -69,6 +69,10 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
     name: "Vizier",
     description:
       "Evaluates proposed agent actions against supplied authority and deterministic policy. Not a factuality verifier; no live source retrieval. REVIEW requires a human decision before the external action.",
+    provider: {
+      organization: "Vassiliy Lakhonin",
+      url: "https://vassiliylakhonin.github.io/",
+    },
     supportedInterfaces: [
       {
         url: `${origin}/a2a`,
@@ -88,11 +92,11 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
         httpAuthSecurityScheme: {
           scheme: "Bearer",
           description:
-            "Integration credential required for authorization decisions.",
+            "Integration credential required for enforcement results. Anonymous A2A calls are evaluation-only and cannot return ALLOW.",
         },
       },
     },
-    securityRequirements: [{ bearerAuth: [] }],
+    securityRequirements: [{}, { bearerAuth: [] }],
     defaultInputModes: ["application/json"],
     defaultOutputModes: ["application/json"],
     skills: [
@@ -143,7 +147,9 @@ export async function handleA2aRequest(
     );
   }
 
-  const authorization = await authorizeEnforcement(request, options.apiKey);
+  const authorization = await authorizeEnforcement(request, options.apiKey, {
+    allowMissingCredentialForEvaluation: true,
+  });
   if (authorization === "denied") {
     return jsonRpcError(
       null,

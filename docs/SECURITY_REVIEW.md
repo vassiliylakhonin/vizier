@@ -7,7 +7,7 @@ repository review, not an external penetration test.
 
 | Severity | Finding | Disposition |
 | --- | --- | --- |
-| High | Public callers could supply their own authority and receive `ALLOW`. | Mitigated: the default mode cannot return `ALLOW`; enforcement requires the configured Bearer credential on REST, A2A, and MCP verification calls. Principal-issued delegation remains a later milestone. |
+| High | Public callers could supply their own authority and receive `ALLOW`. | Mitigated: unauthenticated calls cannot return `ALLOW`; REST and MCP enforcement require the configured Bearer credential, while A2A exposes a separate anonymous evaluation lane that forces untrusted authority. Principal-issued delegation remains a later milestone. |
 | Medium | Nested JSON had a byte limit but no depth or aggregate-node limit. | Fixed: requests above 32 levels or 4,096 values are rejected before recursive validation. |
 | Medium | The SDK accepted incomplete or inconsistent authorization responses. | Fixed: the SDK validates all response fields, cross-checks policy and receipt fields, and recomputes the request hash. |
 | Medium | A malformed signing secret could create an unnoticed downgrade to an unsigned Agent Card. | Fixed: a configured but invalid key fails the discovery endpoint; the matching JWKS exposes only the public key. |

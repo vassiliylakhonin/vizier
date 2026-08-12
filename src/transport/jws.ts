@@ -144,23 +144,23 @@ export async function signAgentCard(
 ): Promise<Readonly<Record<string, unknown>>> {
   const privateJwk = readPrivateJwk(signingKey);
   const unsignedCard = { ...card };
+  delete unsignedCard.signatures;
+  // Remove the pre-v1 compatibility field if an older caller supplied it.
   delete unsignedCard.signature;
 
   const protectedHeader = {
     alg: "ES256",
-    b64: false,
-    crit: ["b64"],
     jku: jwksUrlFromCard(unsignedCard),
     kid: privateJwk.kid,
+    typ: "JOSE",
   };
   const encodedHeader = base64urlEncode(
     TEXT_ENCODER.encode(JSON.stringify(protectedHeader)),
   );
-  const payload = TEXT_ENCODER.encode(canonicalizeJson(unsignedCard));
-  const header = TEXT_ENCODER.encode(`${encodedHeader}.`);
-  const signingInput = new Uint8Array(header.length + payload.length);
-  signingInput.set(header);
-  signingInput.set(payload, header.length);
+  const encodedPayload = base64urlEncode(
+    TEXT_ENCODER.encode(canonicalizeJson(unsignedCard)),
+  );
+  const signingInput = TEXT_ENCODER.encode(`${encodedHeader}.${encodedPayload}`);
 
   const cryptoKey = await crypto.subtle.importKey(
     "jwk",
@@ -177,7 +177,12 @@ export async function signAgentCard(
 
   return {
     ...unsignedCard,
-    signature: `${encodedHeader}..${base64urlEncode(new Uint8Array(signature))}`,
+    signatures: [
+      {
+        protected: encodedHeader,
+        signature: base64urlEncode(new Uint8Array(signature)),
+      },
+    ],
   };
 }
 

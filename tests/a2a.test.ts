@@ -42,6 +42,17 @@ function rpcRequest(
   });
 }
 
+function anonymousRpcRequest(body: unknown): Request {
+  return new Request("https://vizier.example/a2a", {
+    method: "POST",
+    headers: {
+      "A2A-Version": "1.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 function validEnvelope(id: string | number = "rpc-01"): Record<string, unknown> {
   return {
     jsonrpc: "2.0",
@@ -69,6 +80,10 @@ describe("A2A Agent Card", () => {
     expect(body).toEqual(card);
     expect(body).toMatchObject({
       name: "Vizier",
+      provider: {
+        organization: "Vassiliy Lakhonin",
+        url: "https://vassiliylakhonin.github.io/",
+      },
       supportedInterfaces: [
         {
           url: "https://vizier.example/a2a",
@@ -86,7 +101,7 @@ describe("A2A Agent Card", () => {
           httpAuthSecurityScheme: { scheme: "Bearer" },
         },
       },
-      securityRequirements: [{ bearerAuth: [] }],
+      securityRequirements: [{}, { bearerAuth: [] }],
     });
     expect((body.skills as unknown[]).length).toBe(3);
   });
@@ -137,9 +152,53 @@ describe("A2A JSON-RPC binding", () => {
     expect(body.result.task.artifacts[0]?.parts[0]?.data.decision).toBe("REVIEW");
   });
 
+  it("allows anonymous A2A evaluation when enforcement is configured", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await handleA2aRequest(anonymousRpcRequest(validEnvelope()), {
+      apiKey: TEST_API_KEY,
+    });
+    const body = (await response.json()) as {
+      result: { task: { artifacts: Array<{ parts: Array<{ data: { decision: string } }> }> } };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.result.task.artifacts[0]?.parts[0]?.data.decision).toBe("REVIEW");
+  });
+
+  it("returns JSON-RPC errors to anonymous conformance probes", async () => {
+    const response = await handleA2aRequest(
+      anonymousRpcRequest({
+        jsonrpc: "2.0",
+        id: "probe-01",
+        method: "SendMessage",
+        params: {},
+      }),
+      { apiKey: TEST_API_KEY },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "probe-01",
+      error: { code: -32602, message: "Invalid parameters" },
+    });
+  });
+
   it("rejects an invalid enforcement credential", async () => {
     const response = await handleA2aRequest(
       rpcRequest(validEnvelope(), { Authorization: "Bearer wrong-key" }),
+      { apiKey: TEST_API_KEY },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: -32001 },
+    });
+  });
+
+  it("rejects a malformed authorization header instead of treating it as anonymous", async () => {
+    const response = await handleA2aRequest(
+      rpcRequest(validEnvelope(), { Authorization: "Basic invalid" }),
       { apiKey: TEST_API_KEY },
     );
 
