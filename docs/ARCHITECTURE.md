@@ -56,6 +56,10 @@ representation returned to the caller, not a durability claim.
 - Target deny rules take precedence over allow rules.
 - Request hashing uses documented sorted-key canonical JSON plus SHA-256. This
   is deterministic but is not claimed to implement RFC 8785.
+- Agent Card signing uses a separate RFC 8785 canonicalization path and a
+  detached ES256 JWS. The protected header declares `b64: false`, `crit:
+  ["b64"]`, and a same-origin `jku`; the matching public key is served from
+  `/.well-known/jwks.json`.
 
 ## Planned repository structure
 
@@ -88,8 +92,8 @@ docs/            # architecture, threat model, API docs
 The repository now includes typed schemas, six structured policy evaluations,
 decision aggregation, transparent risk scoring, bounded input traversal,
 SHA-256 request receipts, REST, A2A, MCP, a TypeScript SDK, and tests. Durable
-policy storage, signed delegation, receipt signing, and public deployment remain
-outside this milestone.
+policy storage, signed delegation, and receipt signing remain outside this
+milestone. The public Agent Card is signed; authorization receipts are not.
 
 ## Internal deployment integration
 

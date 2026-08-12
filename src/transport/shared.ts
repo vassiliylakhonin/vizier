@@ -4,6 +4,7 @@ export const MAX_BODY_BYTES = 64 * 1024;
 
 export interface TransportOptions {
   readonly apiKey?: string;
+  readonly agentCardSigningKey?: string;
 }
 
 export class TransportRequestError extends Error {
@@ -23,7 +24,9 @@ export function jsonResponse(
   extraHeaders?: Readonly<Record<string, string>>,
 ): Response {
   const headers = new Headers(extraHeaders);
-  headers.set("Cache-Control", "no-store");
+  if (!headers.has("Cache-Control")) {
+    headers.set("Cache-Control", "no-store");
+  }
   headers.set("Content-Type", "application/json; charset=utf-8");
   headers.set("X-Content-Type-Options", "nosniff");
   return new Response(JSON.stringify(value), { status, headers });

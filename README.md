@@ -155,7 +155,10 @@ The default sensitive actions are `transfer_funds`, `delete_data`,
 
 ## Protocol endpoints
 
-- `GET /.well-known/agent-card.json` returns an A2A v1.0 Agent Card.
+- `GET /.well-known/agent-card.json` returns an A2A v1.0 Agent Card with a
+  detached ES256 JWS in `signature` when `AGENT_CARD_SIGNING_KEY` is configured.
+- `GET /.well-known/jwks.json` returns the matching public key. The JWS protected
+  header points to this endpoint through a same-origin `jku`.
 - `POST /a2a` implements the A2A v1.0 JSON-RPC `SendMessage` method.
 - `POST /mcp` implements MCP `2026-07-28` with `server/discover`, `tools/list`,
   and `tools/call` for `vizier_verify_action`.
@@ -191,8 +194,14 @@ To prepare an enforcement deployment after reviewing the threat model:
 ```bash
 npx wrangler whoami
 npx wrangler secret put VIZIER_API_KEY
+npx wrangler secret put AGENT_CARD_SIGNING_KEY
 npx wrangler deploy
 ```
+
+`AGENT_CARD_SIGNING_KEY` is a private P-256 JWK with `alg: "ES256"`,
+`use: "sig"`, and a stable `kid`. Wrangler stores it as a secret; it must not be
+committed. A malformed configured key makes the discovery endpoint fail instead
+of silently serving an unsigned card.
 
 The first deployment bootstraps the gate. After the same integration credential
 has been stored in macOS Keychain under service `com.vizier.gated-deploy` and

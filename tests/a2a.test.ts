@@ -90,6 +90,16 @@ describe("A2A Agent Card", () => {
     });
     expect((body.skills as unknown[]).length).toBe(3);
   });
+
+  it("publishes an empty JWKS when signing is not configured", async () => {
+    const response = await handleHttpRequest(
+      new Request("https://vizier.example/.well-known/jwks.json"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    await expect(response.json()).resolves.toEqual({ keys: [] });
+  });
 });
 
 describe("A2A JSON-RPC binding", () => {

@@ -8,6 +8,7 @@ import {
 import { createAgentCard, handleA2aRequest } from "./a2a";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
+import { createJwks, maybeSignAgentCard } from "./jws";
 
 interface ApiErrorBody {
   readonly error: {
@@ -176,7 +177,21 @@ export async function handleHttpRequest(
       request.method === "GET" &&
       url.pathname === "/.well-known/agent-card.json"
     ) {
-      return jsonResponse(createAgentCard(url.origin));
+      const card = await maybeSignAgentCard(
+        createAgentCard(url.origin),
+        options.agentCardSigningKey,
+      );
+      return jsonResponse(card, 200, {
+        "Cache-Control": "public, max-age=300",
+      });
+    }
+    if (
+      request.method === "GET" &&
+      url.pathname === "/.well-known/jwks.json"
+    ) {
+      return jsonResponse(createJwks(options.agentCardSigningKey), 200, {
+        "Cache-Control": "public, max-age=3600",
+      });
     }
     if (request.method === "POST" && url.pathname === "/a2a") {
       return await handleA2aRequest(request, options);
