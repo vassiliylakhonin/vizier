@@ -11,6 +11,7 @@ delegation issuer.
 - the binding between the request and its receipt hash
 - the availability of the verification endpoint
 - request metadata that may identify an agent or principal
+- the private Agent Card signing key
 
 ## Trust boundaries
 
@@ -32,10 +33,16 @@ or network failure.
   schema validation
 - the default evaluation mode never returns `ALLOW`
 - enforcement mode requires a constant-time checked Bearer credential
+- anonymous A2A calls remain evaluation-only even when enforcement is configured;
+  a supplied invalid credential is rejected
 - no URL fetching, dynamic evaluation, code execution, or secret reflection
 - target deny rules override allow rules
 - `BLOCK` overrides `REVIEW`, which overrides `ALLOW`
 - Web Crypto generates receipt IDs and SHA-256 request hashes
+- the public Agent Card carries an A2A v1 `signatures[]` ES256 JWS; its protected `jku`
+  resolves to the matching same-origin JWKS
+- a malformed configured signing key fails the discovery request instead of
+  silently returning an unsigned Agent Card
 - MCP validates `Origin` when present and checks mirrored metadata headers
 - logs contain IDs, decision, reason codes, and latency, not action parameters
 - error responses do not include stack traces or arbitrary payloads
@@ -48,6 +55,8 @@ or network failure.
   the integration credential or can alter the controlled backend's `authority`
   input can still grant itself permission.
 - Receipts are returned but not persisted, signed, or independently timestamped.
+- Agent Card signing proves control of its signing key and detects card changes.
+  It does not authenticate callers, principals, delegations, or receipts.
 - Target matching is exact string matching. It does not normalize domains,
   account identifiers, URLs, or Unicode.
 - Amount checks assume one numeric `amount` and an exact three-letter currency.
@@ -69,5 +78,6 @@ The caller must execute the external action only after receiving a valid
 other state stops or queues the action for review.
 
 If `VIZIER_API_KEY` is missing, the authority-provenance policy forces REVIEW.
-If the secret is configured and the credential is missing or wrong, the
-transport rejects the request rather than calculating a decision.
+If the secret is configured, REST and MCP reject a missing or wrong credential.
+A2A treats a missing credential as evaluation-only and rejects a supplied wrong
+credential. In every transport, only the correct credential can reach `ALLOW`.

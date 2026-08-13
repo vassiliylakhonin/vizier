@@ -5,7 +5,7 @@
   "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
   "secrets": {
-    "required": ["VIZIER_API_KEY"]
+    "required": ["VIZIER_API_KEY", "AGENT_CARD_SIGNING_KEY"]
   },
   "observability": {
     "enabled": true,
