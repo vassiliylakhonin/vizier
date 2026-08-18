@@ -177,11 +177,16 @@ describe("A2A JSON-RPC binding", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      jsonrpc: "2.0",
-      id: "probe-01",
-      error: { code: -32602, message: "Invalid parameters" },
-    });
+    const body = (await response.json()) as {
+      jsonrpc: string;
+      id: string;
+      error: { code: number; message: string; data: { required_fields: string[] } };
+    };
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.id).toBe("probe-01");
+    expect(body.error.code).toBe(-32602);
+    expect(body.error.message).toBe("Invalid parameters");
+    expect(body.error.data.required_fields.length).toBeGreaterThan(0);
   });
 
   it("rejects an invalid enforcement credential", async () => {
@@ -212,7 +217,7 @@ describe("A2A JSON-RPC binding", () => {
     const envelope = { ...validEnvelope("unknown-01"), method: "UnknownMethod" };
     const response = await handleA2aRequest(rpcRequest(envelope));
 
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       jsonrpc: "2.0",
       id: "unknown-01",
       error: { code: -32601, message: "Method not found" },
@@ -281,5 +286,76 @@ describe("A2A JSON-RPC binding", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: -32005 },
     });
+  });
+  // Measured 2026-08-18 on the deployed Worker: a plain-language probe got
+  // `-32602 A JSON data Part is required.` with no field list, no example and
+  // no address, and POSTing to the base URL 404'd while every sibling Worker
+  // answered there. Both halves are asserted here, including that the example
+  // shipped inside the refusal is one this endpoint accepts.
+  it("tells a refused caller what to send, and accepts the example it hands out", async () => {
+    const refused = await handleA2aRequest(
+      rpcRequest({
+        jsonrpc: "2.0",
+        id: "guidance-01",
+        method: "SendMessage",
+        params: {
+          message: {
+            messageId: "message-guidance-01",
+            role: "ROLE_USER",
+            parts: [{ text: "hi" }],
+          },
+        },
+      }),
+      { apiKey: TEST_API_KEY },
+    );
+
+    const body = (await refused.json()) as {
+      error: {
+        code: number;
+        data: {
+          required_fields: string[];
+          contact: string;
+          other_routes: Record<string, string>;
+          example_request: { params: unknown };
+        };
+      };
+    };
+    expect(body.error.code).toBe(-32602);
+    expect(body.error.data.required_fields.length).toBeGreaterThan(0);
+    expect(body.error.data.contact).toContain("@");
+    expect(body.error.data.other_routes.field_reference).toBe("GET /docs");
+
+    // The example is not decoration: replay it and the same endpoint answers.
+    const replayed = await handleA2aRequest(
+      rpcRequest(body.error.data.example_request),
+      { apiKey: TEST_API_KEY },
+    );
+    const decided = (await replayed.json()) as {
+      result?: { task?: { status?: { state?: string } } };
+      error?: unknown;
+    };
+    expect(decided.error).toBeUndefined();
+    expect(JSON.stringify(decided.result)).toContain("ALLOW");
+  });
+
+  it("answers SendMessage on the base URL and on /message/send, not only /a2a", async () => {
+    for (const path of ["/", "/message/send", "/a2a"]) {
+      const response = await handleHttpRequest(
+        new Request(`https://vizier.example${path}`, {
+          method: "POST",
+          headers: {
+            "A2A-Version": "1.0",
+            Authorization: `Bearer ${TEST_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(validEnvelope(`base-${path}`)),
+        }),
+        { apiKey: TEST_API_KEY },
+      );
+      expect(response.status, `POST ${path}`).toBe(200);
+      const body = (await response.json()) as { error?: unknown; result?: unknown };
+      expect(body.error, `POST ${path}`).toBeUndefined();
+      expect(body.result, `POST ${path}`).toBeDefined();
+    }
   });
 });

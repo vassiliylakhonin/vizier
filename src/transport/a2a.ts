@@ -60,9 +60,83 @@ function jsonRpcError(
   code: number,
   message: string,
   status = 200,
+  data?: unknown,
 ): Response {
-  return jsonResponse({ jsonrpc: "2.0", id, error: { code, message } }, status);
+  return jsonResponse(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: { code, message, ...(data === undefined ? {} : { data }) },
+    },
+    status,
+  );
 }
+
+// Measured 2026-08-18 against the deployed Worker: a caller who sent a
+// plain-language message to /a2a got `-32602 A JSON data Part is required.`
+// and nothing else — no field list, no example, no address for a human. A
+// refusal that names no remedy is a dead end at the first call, so every
+// refusal below carries this guidance in the JSON-RPC error `data`.
+const REQUEST_GUIDANCE = Object.freeze({
+  what_this_endpoint_does:
+    "Evaluates one proposed agent action against the authority you supply and returns ALLOW, REVIEW, or BLOCK with a signed receipt.",
+  how_to_send:
+    "POST a JSON-RPC 2.0 SendMessage request with header `A2A-Version: 1.0`. The verification request goes in a message part as `data` — a text part is not read.",
+  required_fields: [
+    "agent — { id, owner }",
+    "action — { type, target, parameters }",
+    "authority — { allowed_actions[], constraints }",
+    "context — { request_id, timestamp, source }",
+    "principal — { id } (optional)",
+  ],
+  example_request: {
+    jsonrpc: "2.0",
+    id: "1",
+    method: "SendMessage",
+    params: {
+      message: {
+        messageId: "message-1",
+        role: "ROLE_USER",
+        parts: [
+          {
+            data: {
+              agent: { id: "procurement-agent-01", owner: "acme-corp" },
+              principal: { id: "acme-corp" },
+              action: {
+                type: "purchase",
+                target: "supplier.example",
+                parameters: { amount: 8200, currency: "USD" },
+              },
+              authority: {
+                allowed_actions: ["purchase"],
+                constraints: {
+                  max_amount: 10000,
+                  currency: "USD",
+                  allowed_targets: ["supplier.example"],
+                },
+              },
+              context: {
+                request_id: "allow-example-01",
+                timestamp: null,
+                source: "a2a",
+              },
+            },
+          },
+        ],
+      },
+    },
+  },
+  decisions: ["ALLOW", "REVIEW", "BLOCK"],
+  other_routes: {
+    field_reference: "GET /docs",
+    worked_examples: "GET /examples",
+    agent_card: "GET /.well-known/agent-card.json",
+    rest_equivalent: "POST /v1/verify",
+  },
+  boundary:
+    "Deterministic policy evaluation only. Not a factuality verifier, no live source retrieval; REVIEW means a human decides before the action.",
+  contact: "vassiliy.lakhonin@gmail.com",
+});
 
 export function createAgentCard(origin: string): Readonly<Record<string, unknown>> {
   return Object.freeze({
@@ -181,23 +255,36 @@ export async function handleA2aRequest(
   }
   const { id, method, params } = envelope.data;
   if (method !== "SendMessage") {
-    return jsonRpcError(id, -32601, "Method not found");
+    return jsonRpcError(id, -32601, "Method not found", 200, REQUEST_GUIDANCE);
   }
 
   const sendMessage = sendMessageParamsSchema.safeParse(params);
   if (!sendMessage.success) {
-    return jsonRpcError(id, -32602, "Invalid parameters");
+    return jsonRpcError(id, -32602, "Invalid parameters", 200, REQUEST_GUIDANCE);
   }
 
   const dataPart = sendMessage.data.message.parts.find(
     (part) => part.data !== undefined,
   );
   if (dataPart?.data === undefined) {
-    return jsonRpcError(id, -32602, "A JSON data Part is required.");
+    return jsonRpcError(
+      id,
+      -32602,
+      "A JSON data Part is required.",
+      200,
+      REQUEST_GUIDANCE,
+    );
   }
   const verification = verificationRequestSchema.safeParse(dataPart.data);
   if (!verification.success) {
-    return jsonRpcError(id, -32602, "Verification request is invalid.");
+    return jsonRpcError(id, -32602, "Verification request is invalid.", 200, {
+      ...REQUEST_GUIDANCE,
+      validation_errors: verification.error.issues.map((issue) => ({
+        code: issue.code,
+        path: issue.path.map(String),
+        message: issue.message,
+      })),
+    });
   }
 
   const normalizedRequest = {
