@@ -193,7 +193,16 @@ export async function handleHttpRequest(
         "Cache-Control": "public, max-age=3600",
       });
     }
-    if (request.method === "POST" && url.pathname === "/a2a") {
+    // The agent card names /a2a, but a caller who copies the base URL or
+    // assumes the common A2A path used to get a bare 404. Measured 2026-08-18:
+    // every sibling Worker of this account answers SendMessage on "/", so the
+    // 404 read as "this agent is down" rather than "wrong path".
+    if (
+      request.method === "POST" &&
+      (url.pathname === "/a2a" ||
+        url.pathname === "/" ||
+        url.pathname === "/message/send")
+    ) {
       return await handleA2aRequest(request, options);
     }
     if (request.method === "POST" && url.pathname === "/mcp") {
@@ -227,7 +236,25 @@ export async function handleHttpRequest(
       );
     }
     return jsonResponse(
-      { error: { code: "NOT_FOUND", message: "Route not found." } },
+      {
+        error: {
+          code: "NOT_FOUND",
+          message: "Route not found.",
+          data: {
+            routes: {
+              "GET /": "service index",
+              "GET /docs": "field reference for a verification request",
+              "GET /examples": "worked ALLOW, REVIEW and BLOCK examples",
+              "GET /health": "liveness",
+              "GET /.well-known/agent-card.json": "A2A agent card",
+              "POST /a2a": "A2A SendMessage (also accepted on / and /message/send)",
+              "POST /mcp": "MCP JSON-RPC",
+              "POST /v1/verify": "REST verification",
+            },
+            contact: "vassiliy.lakhonin@gmail.com",
+          },
+        },
+      },
       404,
     );
   } catch (error) {
