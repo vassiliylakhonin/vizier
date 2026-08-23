@@ -170,7 +170,12 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
         },
       },
     },
-    securityRequirements: [{}, { bearerAuth: [] }],
+    // A2A v1 SecurityRequirement is a single `schemes` map of scheme name to
+    // StringList, not a bare map of name to scopes. An independent conformance
+    // scan on 2026-08-23 rejected the card on exactly this: the bare form puts
+    // `bearerAuth` where the schema allows only `schemes`. First entry empty:
+    // anonymous evaluation is allowed.
+    securityRequirements: [{ schemes: {} }, { schemes: { bearerAuth: { list: [] } } }],
     defaultInputModes: ["application/json"],
     defaultOutputModes: ["application/json"],
     skills: [
