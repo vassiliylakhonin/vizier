@@ -101,9 +101,39 @@ describe("A2A Agent Card", () => {
           httpAuthSecurityScheme: { scheme: "Bearer" },
         },
       },
-      securityRequirements: [{}, { bearerAuth: [] }],
+      securityRequirements: [{ schemes: {} }, { schemes: { bearerAuth: { list: [] } } }],
     });
     expect((body.skills as unknown[]).length).toBe(3);
+  });
+
+  // A2A v1 AgentCard and AgentProvider define closed field sets, and
+  // SecurityRequirement carries exactly one `schemes` map. An independent
+  // conformance scan on 2026-08-23 rejected this card for writing the bare
+  // `{ bearerAuth: [] }` form instead.
+  it("carries no field the A2A v1 schema does not define", async () => {
+    const a2aCardFields = new Set([
+      "name",
+      "description",
+      "supportedInterfaces",
+      "provider",
+      "version",
+      "documentationUrl",
+      "capabilities",
+      "securitySchemes",
+      "securityRequirements",
+      "defaultInputModes",
+      "defaultOutputModes",
+      "skills",
+      "signatures",
+      "iconUrl",
+    ]);
+    const card = createAgentCard("https://vizier.example") as Record<string, unknown>;
+
+    expect(Object.keys(card).filter((key) => !a2aCardFields.has(key))).toEqual([]);
+    expect(Object.keys((card.provider ?? {}) as object).sort()).toEqual(["organization", "url"]);
+    for (const requirement of card.securityRequirements as Record<string, unknown>[]) {
+      expect(Object.keys(requirement).every((key) => key === "schemes")).toBe(true);
+    }
   });
 
   it("publishes an empty JWKS when signing is not configured", async () => {
