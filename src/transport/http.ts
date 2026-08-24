@@ -16,9 +16,11 @@ import {
   TransportRequestError,
 } from "./shared";
 import { createAgentCard, handleA2aRequest } from "./a2a";
+import { createAiCatalog } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
 import { createJwks, maybeSignAgentCard } from "./jws";
+import { createOpenApiDocument } from "./openapi";
 
 interface ApiErrorBody {
   readonly error: {
@@ -242,6 +244,7 @@ async function handleOutcomeRecording(
 function rootDocument(): Response {
   return jsonResponse({
     name: "Vizier",
+    version: "0.2.1",
     tagline: "Every agent. Every action. Verified.",
     description: "Deterministic authorization checks for actions proposed by AI agents.",
     limitations: [
@@ -250,6 +253,8 @@ function rootDocument(): Response {
       "REVIEW requires a human decision before the external action.",
     ],
     docs: "/docs",
+    openapi: "/openapi.json",
+    ai_catalog: "/.well-known/ai-catalog.json",
     health: "/health",
     verify: "/v1/verify",
     covenants: "/v1/covenants",
@@ -262,7 +267,7 @@ function rootDocument(): Response {
 
 function docsDocument(): Response {
   return jsonResponse({
-    api_version: "v0.2",
+    api_version: "v0.2.1",
     endpoints: {
       verify: "POST /v1/verify",
       activate_covenant: "POST /v1/covenants",
@@ -297,6 +302,13 @@ function docsDocument(): Response {
         "VIZIER_API_KEY configured: Bearer credential required for verification",
       covenant_mode:
         "VIZIER_API_KEY and RECEIPT_SIGNING_KEY configured: authenticated lifecycle with ES256 receipts",
+    },
+    machine_contracts: {
+      openapi_3_1: "/openapi.json",
+      openapi_well_known_alias: "/.well-known/openapi.json",
+      ai_catalog: "/.well-known/ai-catalog.json",
+      agent_card: "/.well-known/agent-card.json",
+      receipt_keys: "/.well-known/jwks.json",
     },
     examples: "/examples",
   });
@@ -341,6 +353,23 @@ export async function handleHttpRequest(
     }
     if (request.method === "GET" && url.pathname === "/examples") {
       return examplesDocument();
+    }
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/openapi.json" ||
+        url.pathname === "/.well-known/openapi.json")
+    ) {
+      return jsonResponse(createOpenApiDocument(url.origin), 200, {
+        "Cache-Control": "public, max-age=300",
+      });
+    }
+    if (
+      request.method === "GET" &&
+      url.pathname === "/.well-known/ai-catalog.json"
+    ) {
+      return jsonResponse(createAiCatalog(url.origin), 200, {
+        "Cache-Control": "public, max-age=300",
+      });
     }
     if (
       request.method === "GET" &&
@@ -445,6 +474,9 @@ export async function handleHttpRequest(
             routes: {
               "GET /": "service index",
               "GET /docs": "field reference for a verification request",
+              "GET /openapi.json": "OpenAPI 3.1 contract for all REST resources",
+              "GET /.well-known/openapi.json": "well-known alias for the OpenAPI contract",
+              "GET /.well-known/ai-catalog.json": "machine discovery catalog",
               "GET /examples": "worked ALLOW, REVIEW and BLOCK examples",
               "GET /health": "liveness",
               "GET /.well-known/agent-card.json": "A2A agent card",
