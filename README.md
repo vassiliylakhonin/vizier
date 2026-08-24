@@ -1,6 +1,6 @@
 # Vizier
 
-Every agent. Every action. Verified.
+Deterministic authorization before an AI agent causes an external side effect.
 
 Vizier is a small authorization layer for action-taking AI agents. Before an
 agent calls a tool, API, MCP server, A2A agent, or internal service, it sends the
@@ -25,16 +25,25 @@ policy results and a SHA-256 receipt hash. The additive v0.2 Action Covenant
 lifecycle also binds one exact action to fresh evidence and invalidation signals,
 then signs both the authorization and its reported outcome.
 
-Status: experimental v0.2. The live API version is reported by the public
-`/docs` endpoint. There are no production users, paid pilots, or usage claims.
-Authority and evidence are still supplied
-by the integrating application rather than loaded from independent stores. Read the [threat
-model](docs/THREAT_MODEL.md) before placing this service in an execution path.
+Status: experimental v0.2, deployed on the public Worker. There are no
+production users, paid pilots, or usage claims. Authority, principal acceptance,
+evidence, invalidation signals, and outcomes are still supplied by the
+integrating application rather than loaded or observed independently. Read the
+[threat model](docs/THREAT_MODEL.md) before placing this service in an execution
+path.
 
-Live endpoint: <https://vizier.vassiliy-lakhonin.workers.dev>. Discovery,
-health, documentation, and evaluation-only A2A calls are public. REST, MCP, and
-A2A enforcement require a private integration credential; no public demo
-credential is issued.
+Public surfaces:
+
+- Product page: <https://vassiliylakhonin.github.io/vizier-ai-agent-authorization.html>
+- Worker: <https://vizier.vassiliy-lakhonin.workers.dev>
+- Live API contract: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
+- Agent Card: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
+- Public key set: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
+
+Discovery, health, documentation, and evaluation-only A2A calls are public.
+REST, MCP, and A2A enforcement require a private integration credential; no
+public demo credential is issued. Action Covenant resources are authenticated
+REST endpoints in v0.2.
 
 ## 60-second quickstart
 
@@ -244,9 +253,9 @@ identifiers. Wrangler stores them as secrets; they must not be committed. A
 malformed configured key fails the affected signed surface instead of silently
 downgrading it.
 
-The first deployment bootstraps the gate. After the same integration credential
-has been stored in macOS Keychain under service `com.vizier.gated-deploy` and
-account `VIZIER_API_KEY`, subsequent deployments use:
+The public Worker completed its one-time v0.1-to-v0.2 bootstrap on 2026-08-24.
+After the integration credential has been stored in macOS Keychain under service
+`com.vizier.gated-deploy` and account `VIZIER_API_KEY`, normal deployments use:
 
 ```bash
 npm run deploy:gated
@@ -260,16 +269,17 @@ the SDK verifies a signed `ALLOW` receipt, then records a signed success or
 failure outcome. If outcome recording fails after execution, the command returns
 `outcome_unrecorded` and a non-zero exit code instead of reporting a complete lifecycle.
 
-The first v0.2 deployment must use the already-live v0.1 gate to break the
-bootstrap cycle:
+A new Worker name or fresh environment that does not expose the covenant
+endpoints needs one explicit bootstrap deployment through its existing v0.1
+gate:
 
 ```bash
 VIZIER_V0_2_BOOTSTRAP=1 npm run deploy:gated
 ```
 
-This bypass is explicit and should be used only for the one deployment that
-introduces the covenant endpoints and receipt key. Normal subsequent runs use
-the covenant lifecycle.
+This bypass is only for the deployment that introduces the covenant endpoints
+and receipt key. Do not set `VIZIER_V0_2_BOOTSTRAP` for normal deployments of the
+public Vizier Worker; they use the covenant lifecycle.
 
 This wrapper is an integration test, not an operating-system security boundary.
 An agent with unrestricted shell access and Cloudflare credentials can bypass it
