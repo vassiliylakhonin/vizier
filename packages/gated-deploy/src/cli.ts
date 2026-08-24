@@ -5,6 +5,7 @@ import { Vizier } from "@vizier/sdk";
 
 import {
   assertCleanWorktree,
+  runCovenantGatedDeploy,
   runGatedDeploy,
   type DeployMetadata,
 } from "./index.js";
@@ -13,6 +14,7 @@ const VIZIER_BASE_URL = "https://vizier.vassiliy-lakhonin.workers.dev";
 const KEYCHAIN_ACCOUNT = "VIZIER_API_KEY";
 const KEYCHAIN_SERVICE = "com.vizier.gated-deploy";
 const VERIFY_TIMEOUT_MS = 10_000;
+const BOOTSTRAP_ENV = "VIZIER_V0_2_BOOTSTRAP";
 
 function readCommand(command: string, args: readonly string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -77,14 +79,13 @@ function executeWranglerDeploy(receiptId: string): Promise<number> {
   });
 }
 
-async function verifyWithTimeout(
-  vizier: Vizier,
-  request: Parameters<Vizier["verify"]>[0],
-): Promise<Awaited<ReturnType<Vizier["verify"]>>> {
+async function withTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS);
   try {
-    return await vizier.verify(request, { signal: controller.signal });
+    return await operation(controller.signal);
   } finally {
     clearTimeout(timeout);
   }
@@ -96,12 +97,39 @@ async function main(): Promise<number> {
   }
 
   const metadata = await collectDeployMetadata();
-  assertCleanWorktree(metadata);
   const apiKey = await readKeychainSecret();
   const vizier = new Vizier({ baseUrl: VIZIER_BASE_URL, apiKey });
-  const result = await runGatedDeploy({
+  if (process.env[BOOTSTRAP_ENV] === "1") {
+    assertCleanWorktree(metadata);
+    const result = await runGatedDeploy({
+      metadata,
+      verify: (request) =>
+        withTimeout((signal) => vizier.verify(request, { signal })),
+      execute: executeWranglerDeploy,
+    });
+    console.log(
+      JSON.stringify({
+        event: "vizier.gated_deploy.bootstrap.completed",
+        status: result.status,
+        decision: result.decision,
+        receipt_id: result.receiptId,
+        reason_codes: result.reasonCodes,
+        ...(result.status === "stopped" ? {} : { exit_code: result.exitCode }),
+      }),
+    );
+    return result.status === "stopped" ? 2 : result.exitCode;
+  }
+
+  const result = await runCovenantGatedDeploy({
     metadata,
-    verify: (request) => verifyWithTimeout(vizier, request),
+    gate: {
+      activateCovenant: (request) =>
+        withTimeout((signal) => vizier.activateCovenant(request, { signal })),
+      authorizeCovenant: (request) =>
+        withTimeout((signal) => vizier.authorizeCovenant(request, { signal })),
+      recordOutcome: (request) =>
+        withTimeout((signal) => vizier.recordOutcome(request, { signal })),
+    },
     execute: executeWranglerDeploy,
   });
 
@@ -110,14 +138,30 @@ async function main(): Promise<number> {
       event: "vizier.gated_deploy.completed",
       status: result.status,
       decision: result.decision,
-      receipt_id: result.receiptId,
+      authorization_receipt_id: result.authorizationReceiptId,
       reason_codes: result.reasonCodes,
-      ...(result.status === "stopped" ? {} : { exit_code: result.exitCode }),
+      ...(result.status === "stopped"
+        ? {}
+        : {
+            exit_code: result.exitCode,
+            ...(result.status === "outcome_unrecorded"
+              ? {
+                  deployment_status: result.deploymentStatus,
+                  outcome_error: result.error,
+                }
+              : {
+                  outcome_receipt_id: result.outcomeReceiptId,
+                  outcome_compliance: result.outcomeCompliance,
+                }),
+          }),
     }),
   );
 
   if (result.status === "stopped") {
     return 2;
+  }
+  if (result.status === "outcome_unrecorded") {
+    return 3;
   }
   return result.exitCode;
 }

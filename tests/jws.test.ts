@@ -55,6 +55,14 @@ describe("Agent Card JWS", () => {
     expect(jwks.keys[0]).not.toHaveProperty("d");
   });
 
+  it("rejects ambiguous JWKS key identifiers", async () => {
+    const signingKey = await createTestSigningKey();
+
+    expect(() => createJwks(signingKey, signingKey)).toThrowError(
+      "Signing keys must have distinct kid values.",
+    );
+  });
+
   it("creates an A2A v1 ES256 signature with a same-origin jku", async () => {
     const signingKey = await createTestSigningKey();
     const card = createAgentCard("https://vizier.example");

@@ -154,7 +154,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
         protocolVersion: A2A_PROTOCOL_VERSION,
       },
     ],
-    version: "0.1.0",
+    version: "0.2.0",
     documentationUrl: `${origin}/docs`,
     capabilities: {
       streaming: false,

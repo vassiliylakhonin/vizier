@@ -1,4 +1,14 @@
 import { verificationRequestSchema, verifyAction } from "../core/index";
+import { publicJwkFromPrivate } from "../crypto/jws";
+import {
+  activateActionCovenant,
+  ActionCovenantError,
+  actionCovenantActivationRequestSchema,
+  actionCovenantAuthorizationRequestSchema,
+  authorizeActionCovenant,
+  outcomeRecordingRequestSchema,
+  recordActionOutcome,
+} from "../covenants/index";
 import {
   jsonResponse,
   readLimitedJson,
@@ -29,6 +39,61 @@ function errorResponse(error: TransportRequestError): Response {
   return jsonResponse(body, error.status);
 }
 
+function validationDetails(error: {
+  readonly issues: readonly {
+    readonly code: string;
+    readonly path: readonly PropertyKey[];
+    readonly message: string;
+  }[];
+}): readonly Readonly<Record<string, unknown>>[] {
+  return error.issues.map((issue) => ({
+    code: issue.code,
+    path: issue.path.map(String),
+    message: issue.message,
+  }));
+}
+
+async function requireCovenantEnforcement(
+  request: Request,
+  options: TransportOptions,
+): Promise<string> {
+  const authorization = await authorizeEnforcement(request, options.apiKey);
+  if (authorization === "denied") {
+    throw new TransportRequestError(
+      401,
+      "AUTHENTICATION_REQUIRED",
+      "A valid Bearer token is required for Action Covenant resources.",
+    );
+  }
+  if (authorization === "evaluation") {
+    throw new TransportRequestError(
+      503,
+      "ENFORCEMENT_UNAVAILABLE",
+      "Action Covenant resources require configured enforcement.",
+    );
+  }
+  if (
+    options.receiptSigningKey === undefined ||
+    options.receiptSigningKey.length === 0
+  ) {
+    throw new TransportRequestError(
+      503,
+      "RECEIPT_SIGNING_UNAVAILABLE",
+      "Action Covenant resources require a receipt signing key.",
+    );
+  }
+  try {
+    publicJwkFromPrivate(options.receiptSigningKey);
+  } catch {
+    throw new TransportRequestError(
+      503,
+      "RECEIPT_SIGNING_INVALID",
+      "The configured receipt signing key is invalid.",
+    );
+  }
+  return options.receiptSigningKey;
+}
+
 async function handleVerify(
   request: Request,
   options: TransportOptions,
@@ -45,16 +110,11 @@ async function handleVerify(
   const parsedJson = await readLimitedJson(request);
   const parsed = verificationRequestSchema.safeParse(parsedJson);
   if (!parsed.success) {
-    const details = parsed.error.issues.map((issue) => ({
-      code: issue.code,
-      path: issue.path.map(String),
-      message: issue.message,
-    }));
     throw new TransportRequestError(
       422,
       "VALIDATION_ERROR",
       "Verification request failed schema validation.",
-      details,
+      validationDetails(parsed.error),
     );
   }
 
@@ -80,6 +140,105 @@ async function handleVerify(
   return jsonResponse(result);
 }
 
+async function handleCovenantActivation(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireCovenantEnforcement(request, options);
+  const parsed = actionCovenantActivationRequestSchema.safeParse(
+    await readLimitedJson(request),
+  );
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Action Covenant activation failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const covenant = await activateActionCovenant(parsed.data);
+  console.log(
+    JSON.stringify({
+      event: "vizier.covenant.activated",
+      covenant_id: covenant.id,
+      principal_id: covenant.draft.principal.id,
+      expires_at: covenant.draft.expires_at,
+    }),
+  );
+  return jsonResponse(covenant, 201);
+}
+
+async function handleCovenantAuthorization(
+  request: Request,
+  options: TransportOptions,
+  issuer: string,
+): Promise<Response> {
+  const signingKey = await requireCovenantEnforcement(request, options);
+  const parsed = actionCovenantAuthorizationRequestSchema.safeParse(
+    await readLimitedJson(request),
+  );
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Action Covenant authorization failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const normalizedRequest = {
+    ...parsed.data,
+    context: { ...parsed.data.context, source: "rest" as const },
+  };
+  const result = await authorizeActionCovenant(normalizedRequest, {
+    signingKey,
+    issuer,
+    trustedAuthority: true,
+  });
+  console.log(
+    JSON.stringify({
+      event: "vizier.covenant.authorization.completed",
+      covenant_id: normalizedRequest.covenant.id,
+      receipt_id: result.authorization_receipt.payload.id,
+      decision: result.decision,
+      reason_codes: result.reason_codes,
+    }),
+  );
+  return jsonResponse(result);
+}
+
+async function handleOutcomeRecording(
+  request: Request,
+  options: TransportOptions,
+  issuer: string,
+): Promise<Response> {
+  const signingKey = await requireCovenantEnforcement(request, options);
+  const parsed = outcomeRecordingRequestSchema.safeParse(
+    await readLimitedJson(request),
+  );
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Outcome recording failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const result = await recordActionOutcome(parsed.data, {
+    signingKey,
+    issuer,
+  });
+  console.log(
+    JSON.stringify({
+      event: "vizier.covenant.outcome.recorded",
+      covenant_id: parsed.data.covenant.id,
+      receipt_id: result.payload.id,
+      authorization_receipt_id: result.payload.authorization_receipt_id,
+      compliance: result.payload.compliance,
+    }),
+  );
+  return jsonResponse(result, 201);
+}
+
 function rootDocument(): Response {
   return jsonResponse({
     name: "Vizier",
@@ -93,6 +252,9 @@ function rootDocument(): Response {
     docs: "/docs",
     health: "/health",
     verify: "/v1/verify",
+    covenants: "/v1/covenants",
+    authorizations: "/v1/authorizations",
+    outcomes: "/v1/outcomes",
     a2a: "/.well-known/agent-card.json",
     mcp: "/mcp",
   });
@@ -100,8 +262,13 @@ function rootDocument(): Response {
 
 function docsDocument(): Response {
   return jsonResponse({
-    api_version: "v1",
-    endpoint: "POST /v1/verify",
+    api_version: "v0.2",
+    endpoints: {
+      verify: "POST /v1/verify",
+      activate_covenant: "POST /v1/covenants",
+      authorize_covenant_action: "POST /v1/authorizations",
+      record_outcome: "POST /v1/outcomes",
+    },
     content_type: "application/json",
     request_schema: {
       agent: { id: "string", owner: "string | null" },
@@ -128,6 +295,8 @@ function docsDocument(): Response {
       evaluation_mode: "No VIZIER_API_KEY: REVIEW or BLOCK only",
       authenticated_mode:
         "VIZIER_API_KEY configured: Bearer credential required for verification",
+      covenant_mode:
+        "VIZIER_API_KEY and RECEIPT_SIGNING_KEY configured: authenticated lifecycle with ES256 receipts",
     },
     examples: "/examples",
   });
@@ -189,9 +358,16 @@ export async function handleHttpRequest(
       request.method === "GET" &&
       url.pathname === "/.well-known/jwks.json"
     ) {
-      return jsonResponse(createJwks(options.agentCardSigningKey), 200, {
+      return jsonResponse(
+        createJwks(
+          options.agentCardSigningKey,
+          options.receiptSigningKey,
+        ),
+        200,
+        {
         "Cache-Control": "public, max-age=3600",
-      });
+        },
+      );
     }
     // The agent card names /a2a, but a caller who copies the base URL or
     // assumes the common A2A path used to get a bare 404. Measured 2026-08-18:
@@ -223,7 +399,32 @@ export async function handleHttpRequest(
     if (request.method === "POST" && url.pathname === "/v1/verify") {
       return await handleVerify(request, options);
     }
+    if (request.method === "POST" && url.pathname === "/v1/covenants") {
+      return await handleCovenantActivation(request, options);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/authorizations") {
+      return await handleCovenantAuthorization(request, options, url.origin);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/outcomes") {
+      return await handleOutcomeRecording(request, options, url.origin);
+    }
     if (url.pathname === "/v1/verify") {
+      return jsonResponse(
+        {
+          error: {
+            code: "METHOD_NOT_ALLOWED",
+            message: "Use POST for this endpoint.",
+          },
+        },
+        405,
+        { Allow: "POST" },
+      );
+    }
+    if (
+      url.pathname === "/v1/covenants" ||
+      url.pathname === "/v1/authorizations" ||
+      url.pathname === "/v1/outcomes"
+    ) {
       return jsonResponse(
         {
           error: {
@@ -250,6 +451,9 @@ export async function handleHttpRequest(
               "POST /a2a": "A2A SendMessage (also accepted on / and /message/send)",
               "POST /mcp": "MCP JSON-RPC",
               "POST /v1/verify": "REST verification",
+              "POST /v1/covenants": "activate an accepted Action Covenant",
+              "POST /v1/authorizations": "authorize an exact covenant action",
+              "POST /v1/outcomes": "bind an execution outcome to an authorization",
             },
             contact: "vassiliy.lakhonin@gmail.com",
           },
@@ -260,6 +464,11 @@ export async function handleHttpRequest(
   } catch (error) {
     if (error instanceof TransportRequestError) {
       return errorResponse(error);
+    }
+    if (error instanceof ActionCovenantError) {
+      return errorResponse(
+        new TransportRequestError(422, error.code, error.message),
+      );
     }
     console.error(
       JSON.stringify({
