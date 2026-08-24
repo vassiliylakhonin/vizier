@@ -25,7 +25,7 @@ policy results and a SHA-256 receipt hash. The additive v0.2 Action Covenant
 lifecycle also binds one exact action to fresh evidence and invalidation signals,
 then signs both the authorization and its reported outcome.
 
-Status: experimental v0.2, deployed on the public Worker. There are no
+Status: experimental v0.2.1, deployed on the public Worker. There are no
 production users, paid pilots, or usage claims. Authority, principal acceptance,
 evidence, invalidation signals, and outcomes are still supplied by the
 integrating application rather than loaded or observed independently. Read the
@@ -36,14 +36,16 @@ Public surfaces:
 
 - Product page: <https://vassiliylakhonin.github.io/vizier-ai-agent-authorization.html>
 - Worker: <https://vizier.vassiliy-lakhonin.workers.dev>
-- Live API contract: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
+- Live field reference: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
+- OpenAPI 3.1 contract: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
+- AI discovery catalog: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/ai-catalog.json>
 - Agent Card: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
 - Public key set: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
 
 Discovery, health, documentation, and evaluation-only A2A calls are public.
 REST, MCP, and A2A enforcement require a private integration credential; no
 public demo credential is issued. Action Covenant resources are authenticated
-REST endpoints in v0.2.
+REST endpoints in v0.2.1.
 
 ## 60-second quickstart
 
@@ -127,7 +129,7 @@ score explains accumulated risk but does not override policy results.
 
 ### Action Covenant lifecycle
 
-The v0.2 resources are additive; `/v1/verify` remains compatible.
+The v0.2.1 resources are additive; `/v1/verify` remains compatible.
 
 1. `POST /v1/covenants` accepts a strict `ActionCovenantDraft` plus a
    principal acceptance bound to the draft hash. A model may produce the draft,
@@ -193,6 +195,12 @@ The default sensitive actions are `transfer_funds`, `delete_data`,
 
 ## Protocol endpoints
 
+- `GET /openapi.json` and `GET /.well-known/openapi.json` return the same
+  OpenAPI 3.1 contract for `/v1/verify`, `/v1/covenants`,
+  `/v1/authorizations`, and `/v1/outcomes`. Request schemas are emitted from
+  the same Zod definitions used at the runtime boundary.
+- `GET /.well-known/ai-catalog.json` routes machines to both the A2A Agent Card
+  and the OpenAPI contract.
 - `GET /.well-known/agent-card.json` returns an A2A v1.0 Agent Card with a
   canonical ES256 JWS in `signatures[]` when `AGENT_CARD_SIGNING_KEY` is
   configured.
@@ -302,5 +310,5 @@ The repository structure and protocol sources are documented in
 Independent principal authentication, durable policy/evidence/receipt storage,
 principal-signed delegation and acceptance, billing, dashboards, reputation
 models, payment settlement, and LLM policy evaluation inside the privileged kernel
-remain outside v0.2. See
+remain outside v0.2.1. See
 [FUTURE.md](FUTURE.md).

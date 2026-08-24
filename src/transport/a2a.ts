@@ -154,7 +154,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
         protocolVersion: A2A_PROTOCOL_VERSION,
       },
     ],
-    version: "0.2.0",
+    version: "0.2.1",
     documentationUrl: `${origin}/docs`,
     capabilities: {
       streaming: false,
@@ -206,6 +206,42 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
         description:
           "Return an auditable machine-readable receipt for an authorization decision.",
         tags: ["receipt", "audit", "verification"],
+        inputModes: ["application/json"],
+        outputModes: ["application/json"],
+      },
+      {
+        id: "activate_action_covenant",
+        name: "Activate Action Covenant",
+        description:
+          "Through authenticated REST, activate one exact-action covenant after the integration supplies principal acceptance bound to the draft hash.",
+        tags: ["action-covenant", "acceptance", "rest"],
+        examples: [
+          "Activate a deployment covenant accepted by the principal for one exact target and parameter set.",
+        ],
+        inputModes: ["application/json"],
+        outputModes: ["application/json"],
+      },
+      {
+        id: "authorize_covenant_action",
+        name: "Authorize Covenant Action",
+        description:
+          "Through authenticated REST, authorize an exact action against an active covenant, supplied evidence, and invalidation signals, returning a signed authorization receipt.",
+        tags: ["action-covenant", "authorization", "signed-receipt", "rest"],
+        examples: [
+          "Authorize the exact deployment action bound to an active covenant before execution.",
+        ],
+        inputModes: ["application/json"],
+        outputModes: ["application/json"],
+      },
+      {
+        id: "record_action_outcome",
+        name: "Record Action Outcome",
+        description:
+          "Through authenticated REST, bind a caller-reported execution outcome to a valid ALLOW receipt and return a signed outcome receipt. Not independent execution proof.",
+        tags: ["action-covenant", "reported-outcome", "signed-receipt", "rest"],
+        examples: [
+          "Record the reported result of an authorized deployment and bind it to the authorization receipt.",
+        ],
         inputModes: ["application/json"],
         outputModes: ["application/json"],
       },

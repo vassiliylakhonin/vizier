@@ -7,6 +7,7 @@ import {
   hashActionCovenantDraft,
 } from "../src/covenants/index";
 import { handleHttpRequest } from "../src/transport/http";
+import { actionCovenantAuthorizationResponseContractSchema } from "../src/transport/contracts";
 
 const API_KEY = "covenant-enforcement-key";
 const ISSUER = "https://vizier.example";
@@ -163,6 +164,10 @@ describe("Action Covenant REST resources", () => {
     };
 
     expect(authorization.status).toBe(200);
+    expect(
+      actionCovenantAuthorizationResponseContractSchema.safeParse(authorizationBody)
+        .success,
+    ).toBe(true);
     expect(authorizationBody.decision).toBe("ALLOW");
     expect(authorizationBody.authorization_receipt.token.split(".")).toHaveLength(3);
 
