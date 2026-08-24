@@ -5,6 +5,7 @@ export const MAX_BODY_BYTES = 64 * 1024;
 export interface TransportOptions {
   readonly apiKey?: string;
   readonly agentCardSigningKey?: string;
+  readonly receiptSigningKey?: string;
 }
 
 export class TransportRequestError extends Error {

@@ -1,11 +1,11 @@
-# Vizier v0.1 architecture
+# Vizier v0.2 architecture
 
 ## Decision
 
-Vizier v0.1 is a `build-to-learn` experiment: one deterministic authorization
-decision before an AI agent performs an external action. The current milestone
-includes the domain core and three protocol adapters. It does not claim market
-validation or a complete identity system.
+Vizier v0.2 remains a `build-to-learn` experiment. It keeps the v0.1
+deterministic before-action decision and adds an Action Covenant lifecycle that
+binds one accepted draft to authorization evidence and a reported outcome. It
+does not claim market validation, independent identity, or independent evidence.
 
 ## Product gate
 
@@ -26,7 +26,9 @@ validation or a complete identity system.
 
 ## Boundaries
 
-The domain core is isolated from every transport:
+The v0.1 domain core remains isolated from every transport. The covenant module
+is a second deep module that composes the existing policies and a cryptographic
+JWS adapter without placing a model in the privileged decision path:
 
 ```text
 REST / A2A / MCP
@@ -36,11 +38,20 @@ boundary validation and protocol mapping
 verifyAction(request, trust context)
         |
 policies -> decision -> risk -> receipt
+
+model / human / system semantic compiler (untrusted)
+        |
+ActionCovenantDraft -> principal acceptance -> activateActionCovenant
+        |
+authorizeActionCovenant(exact action, evidence, invalidation signals)
+        |
+signed AuthorizationReceipt -> executor -> signed OutcomeReceipt
 ```
 
-The core is deterministic except for receipt identity and creation time. Tests
-inject both values. No database is required yet; the receipt is an immutable
-representation returned to the caller, not a durability claim.
+Both cores are deterministic except for identity, time, and ES256 signing.
+Tests inject identities and time and generate real P-256 keys. No database is
+required yet; covenants and receipts are immutable caller-held representations,
+not durability claims.
 
 ## Contract decisions
 
@@ -63,13 +74,30 @@ representation returned to the caller, not a durability claim.
   standard A2A v1 `signatures[]` ES256 JWS. The protected header declares
   `alg`, `typ`, `kid`, and a same-origin `jku`; the matching public key is served
   from `/.well-known/jwks.json`.
+- A draft has no authority until an authenticated integration supplies an
+  acceptance from the same principal, bound to the exact draft hash.
+- One covenant authorizes only an exact canonical action. The ordinary delegated
+  authority policies run again inside that narrower boundary.
+- Missing, wrong-type, future, or stale evidence yields `REVIEW`; covenant hash
+  mismatch, expiry, action mismatch, or a matching invalidation signal yields
+  `BLOCK`.
+- Invalidation rules are intentionally a shallow primitive exact-match language,
+  not JSONPath, regex, code, or model evaluation.
+- Authorization receipts expire after five minutes or with the covenant,
+  whichever comes first. Outcome recording verifies that execution began within
+  that window.
+- Authorization and outcome JWS values use a dedicated key and distinct
+  protected `typ` values. The public receipt key shares the existing JWKS
+  document but must have a different `kid` from the Agent Card key.
 
 ## Planned repository structure
 
 ```text
 src/
   core/          # schemas, policies, decision, risk, receipts
-  transport/     # REST, A2A JSON-RPC, MCP (later milestones)
+  covenants/     # activation, evidence/invalidation checks, outcome binding
+  crypto/        # reusable P-256 JWS primitive
+  transport/     # REST, A2A JSON-RPC, MCP adapters
 packages/sdk/    # thin TypeScript client
 packages/gated-deploy/ # private dogfood integration for Worker deploys
 tests/           # unit and transport integration tests
@@ -90,21 +118,31 @@ docs/            # architecture, threat model, API docs
   binding types after configuration changes, structured observability, no
   request-scoped global state, and Web Crypto for IDs and hashes.
 
-## Implemented milestone
+## Implemented milestones
 
-The repository now includes typed schemas, six structured policy evaluations,
+The v0.1 path includes typed schemas, six structured policy evaluations,
 decision aggregation, transparent risk scoring, bounded input traversal,
 SHA-256 request receipts, REST, A2A, MCP, a TypeScript SDK, and tests. Durable
-policy storage, signed delegation, and receipt signing remain outside this
-milestone. The public Agent Card is signed; authorization receipts are not.
+policy storage and principal-issued delegation remain outside this milestone.
+
+The additive v0.2 path includes strict draft and lifecycle schemas, hash-bound
+principal acceptance, exact action checks, evidence freshness, invalidation
+signals, signed authorization receipts, signed outcome receipts, three REST
+resources, SDK signature verification through JWKS, and the gated-deploy
+executor adapter. The model is represented only through draft provenance and is
+never called by the Worker.
 
 ## Internal deployment integration
 
-`packages/gated-deploy` is a narrow caller of the public REST API. Its action
-type and target are fixed to `deploy_worker` and `worker:vizier`. It refuses a
-dirty worktree and invokes Wrangler without a shell only after the SDK validates
-an `ALLOW` response and its receipt hash. The integration credential is read
-from macOS Keychain.
+`packages/gated-deploy` is the first full lifecycle caller. Its action type and
+target are fixed to `deploy_worker` and `worker:vizier`. It represents a dirty
+worktree as an invalidation signal, invokes Wrangler without a shell only after
+the SDK verifies a signed `ALLOW`, and records the observed exit status. A
+failure to record the outcome is exposed as `outcome_unrecorded`.
+
+One explicit `VIZIER_V0_2_BOOTSTRAP=1` path retains the v0.1 gate solely to
+deploy the first server version that contains the new endpoints. It is not the
+normal path after v0.2 is live.
 
 This controls the normal repository deployment command but cannot stop an agent
 that already has unrestricted shell access to Cloudflare credentials from

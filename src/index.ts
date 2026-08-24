@@ -5,6 +5,7 @@ export default {
     return handleHttpRequest(request, {
       apiKey: env.VIZIER_API_KEY,
       agentCardSigningKey: env.AGENT_CARD_SIGNING_KEY,
+      receiptSigningKey: env.RECEIPT_SIGNING_KEY,
     });
   },
 } satisfies ExportedHandler<Env>;

@@ -9,21 +9,26 @@ proposed action to Vizier.
 ```text
 Agent
   |
-Vizier
+ActionCovenantDraft -> principal acceptance
+  |
+Vizier authorization kernel
   |
 ALLOW / REVIEW / BLOCK
   |
-Tool / API / Agent
+Tool / API / Agent -> OutcomeReceipt
 ```
 
 The decision path is deterministic. It checks delegated actions, principal
 identity, amount limits, targets, sensitive operations, and whether the request
 came through the authenticated integration boundary. Every response includes
-policy results and a SHA-256 receipt hash.
+policy results and a SHA-256 receipt hash. The additive v0.2 Action Covenant
+lifecycle also binds one exact action to fresh evidence and invalidation signals,
+then signs both the authorization and its reported outcome.
 
-Status: experimental v0.1. There are no production users, paid pilots, or usage
-claims. Authority is still supplied by the integrating application rather than
-loaded from an independent policy store. Read the [threat
+Repository status: experimental v0.2 implementation. The public endpoint still
+runs v0.1 until an explicit deployment is completed. There are no production
+users, paid pilots, or usage claims. Authority and evidence are still supplied
+by the integrating application rather than loaded from independent stores. Read the [threat
 model](docs/THREAT_MODEL.md) before placing this service in an execution path.
 
 Live endpoint: <https://vizier.vassiliy-lakhonin.workers.dev>. Discovery,
@@ -111,6 +116,27 @@ Vizier returns `REVIEW`. Omitting the field is a validation error.
 Decision priority is `BLOCK`, then `REVIEW`, then `ALLOW`. The numeric risk
 score explains accumulated risk but does not override policy results.
 
+### Action Covenant lifecycle
+
+The v0.2 resources are additive; `/v1/verify` remains compatible.
+
+1. `POST /v1/covenants` accepts a strict `ActionCovenantDraft` plus a
+   principal acceptance bound to the draft hash. A model may produce the draft,
+   but it cannot activate it by naming itself as the principal.
+2. `POST /v1/authorizations` checks covenant integrity and expiry, exact action
+   equality, evidence presence and freshness, shallow exact-match invalidation
+   signals, and the existing delegated-authority policies. It returns a compact
+   ES256 authorization JWS for every decision.
+3. The executor acts only on `ALLOW` before the receipt expires.
+4. `POST /v1/outcomes` verifies the authorization receipt, binds the reported
+   execution outcome, checks exact forbidden-effect rules, and returns a compact
+   ES256 outcome JWS.
+
+All three resources require authenticated enforcement and
+`RECEIPT_SIGNING_KEY`; there is no evaluation-only activation path. Covenants
+are caller-held immutable envelopes in this milestone. Vizier does not persist
+them or retrieve evidence independently.
+
 ## Integration rule
 
 Call Vizier immediately before the external action. Treat timeout, invalid JSON,
@@ -178,9 +204,17 @@ decision, risk score, rule IDs, and reason codes. Object keys are sorted before
 SHA-256 hashing. This canonicalization is documented and tested, but it is not
 an RFC 8785 claim.
 
-Receipts are not stored or signed in v0.1. The caller must retain them.
-The SDK validates the complete response, checks decision-to-receipt
-consistency, and recomputes the request hash before returning a decision.
+Legacy `/v1/verify` receipts remain unsigned and caller-held for compatibility.
+The SDK validates the complete response, checks decision-to-receipt consistency,
+and recomputes the request hash before returning a decision.
+
+Action Covenant authorization and outcome receipts are compact ES256 JWS values.
+They use a dedicated receipt key and protected `typ` values for domain
+separation. The SDK obtains the matching public key from
+`/.well-known/jwks.json`, verifies the signature, and recomputes the covenant,
+request, action, evidence, signal, authorization-token, and outcome bindings
+before returning. Signed does not mean persisted, independently timestamped, or
+principal-issued.
 
 ## Development
 
@@ -200,13 +234,15 @@ To prepare an enforcement deployment after reviewing the threat model:
 npx wrangler whoami
 npx wrangler secret put VIZIER_API_KEY
 npx wrangler secret put AGENT_CARD_SIGNING_KEY
+npx wrangler secret put RECEIPT_SIGNING_KEY
 npx wrangler deploy
 ```
 
-`AGENT_CARD_SIGNING_KEY` is a private P-256 JWK with `alg: "ES256"`,
-`use: "sig"`, and a stable `kid`. Wrangler stores it as a secret; it must not be
-committed. A malformed configured key makes the discovery endpoint fail instead
-of silently serving an unsigned card.
+`AGENT_CARD_SIGNING_KEY` and `RECEIPT_SIGNING_KEY` are separate private P-256
+JWKs with distinct `kid` values, `alg: "ES256"`, `use: "sig"`, and stable key
+identifiers. Wrangler stores them as secrets; they must not be committed. A
+malformed configured key fails the affected signed surface instead of silently
+downgrading it.
 
 The first deployment bootstraps the gate. After the same integration credential
 has been stored in macOS Keychain under service `com.vizier.gated-deploy` and
@@ -216,11 +252,24 @@ account `VIZIER_API_KEY`, subsequent deployments use:
 npm run deploy:gated
 ```
 
-The private tool accepts no command arguments. It submits the current clean Git
-commit, the fixed `deploy_worker` action, and the fixed `worker:vizier` target.
-It runs `wrangler deploy --strict` only after a validated `ALLOW` receipt. A
-`REVIEW`, `BLOCK`, timeout, malformed response, missing credential, or dirty
-worktree stops the deployment.
+The private tool accepts no command arguments. It drafts and accepts a five-minute
+covenant for the current commit, the fixed `deploy_worker` action, and the fixed
+`worker:vizier` target. A worktree snapshot is freshness evidence and a dirty
+worktree is an invalidation signal. It runs `wrangler deploy --strict` only after
+the SDK verifies a signed `ALLOW` receipt, then records a signed success or
+failure outcome. If outcome recording fails after execution, the command returns
+`outcome_unrecorded` and a non-zero exit code instead of reporting a complete lifecycle.
+
+The first v0.2 deployment must use the already-live v0.1 gate to break the
+bootstrap cycle:
+
+```bash
+VIZIER_V0_2_BOOTSTRAP=1 npm run deploy:gated
+```
+
+This bypass is explicit and should be used only for the one deployment that
+introduces the covenant endpoints and receipt key. Normal subsequent runs use
+the covenant lifecycle.
 
 This wrapper is an integration test, not an operating-system security boundary.
 An agent with unrestricted shell access and Cloudflare credentials can bypass it
@@ -231,15 +280,17 @@ action-taking agent.
 The deployment command is intentionally not part of `npm run build`. Without
 the secret, a deployment remains evaluation-only and cannot return `ALLOW`.
 
-No D1, KV, Durable Object, queue, AI model, or external network call is used.
+The Worker uses no D1, KV, Durable Object, queue, AI model, or outbound fetch.
 The repository structure and protocol sources are documented in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+[docs/ADR-0001-ACTION-COVENANTS.md](docs/ADR-0001-ACTION-COVENANTS.md),
 [docs/CLAIMS.md](docs/CLAIMS.md), and
 [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md).
 
 ## What is deferred
 
-Independent principal authentication, durable policy storage, signed
-delegation, signed receipts, billing, dashboards, reputation models, payment
-settlement, and LLM policy evaluation are outside v0.1. See
+Independent principal authentication, durable policy/evidence/receipt storage,
+principal-signed delegation and acceptance, billing, dashboards, reputation
+models, payment settlement, and LLM policy evaluation inside the privileged kernel
+remain outside v0.2. See
 [FUTURE.md](FUTURE.md).

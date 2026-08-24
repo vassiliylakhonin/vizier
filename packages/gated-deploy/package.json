@@ -1,12 +1,12 @@
 {
   "name": "@vizier/gated-deploy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@vizier/sdk": "0.1.0"
+    "@vizier/sdk": "0.2.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

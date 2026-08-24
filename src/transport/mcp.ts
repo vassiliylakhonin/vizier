@@ -13,7 +13,7 @@ const MCP_PROTOCOL_VERSION = "2026-07-28";
 const SERVER_INFO = Object.freeze({
   name: "vizier",
   title: "Vizier",
-  version: "0.1.0",
+  version: "0.2.0",
   description: "Deterministic authorization checks for actions proposed by AI agents.",
 });
 

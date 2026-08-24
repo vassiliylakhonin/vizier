@@ -1,7 +1,8 @@
 # Validation metrics
 
-The v0.1 product question is whether developers put Vizier before actions that
-their agents actually execute.
+The v0.2 product question remains whether developers put Vizier before actions
+that their agents actually execute. Action Covenant completion and signed
+outcomes are instrumentation, not independent demand evidence.
 
 The primary metric is verified agent actions per day. Sign-ups and one-off curl
 requests do not answer the question.
@@ -19,7 +20,8 @@ durable metrics store. Structured logs expose the fields needed to calculate
 call count and decision mix later. Counting unique agents, repeat use, and calls
 per integration requires authenticated integration IDs before a public pilot.
 
-The first internal test is 5–10 clean Git deployments routed through
+The first internal test is 5–10 clean Git deployments routed through the full
+activation, authorization, execution, and outcome lifecycle in
 `npm run deploy:gated`. One bootstrap deployment and repeated deployments made
 only to increase the counter do not count as product evidence. The test is
 useful only if the gate remains in the normal path during actual repository
