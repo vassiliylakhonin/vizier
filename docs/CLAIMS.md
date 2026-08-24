@@ -19,4 +19,4 @@ Checked on 2026-08-24.
 | A model-produced Action Covenant draft can authorize itself. | local covenant tests | Activation rejects an acceptance from a different principal and rejects any draft changed after the accepted hash. | unsupported |
 | Covenant authorization and outcome receipts are signed and bound to their inputs. | local covenant, REST, SDK, and JWS tests | Tests generate real P-256 keys, verify both compact JWS values through JWKS, recompute material hashes, and reject payload tampering. | supported |
 | Vizier independently establishes that supplied evidence, signals, or outcomes are true and complete. | none | These inputs are asserted by the authenticated integration; v0.2 checks schema, freshness, exact matching, and binding only. | unsupported |
-| The public endpoint already serves the v0.2 covenant resources. | none | The repository implementation has not been deployed in this change. | unsupported |
+| Repository code alone establishes which API version is live. | none | Live state must be checked through the deployed `/docs` endpoint and Cloudflare deployment history. | unsupported |

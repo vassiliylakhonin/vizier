@@ -25,9 +25,9 @@ policy results and a SHA-256 receipt hash. The additive v0.2 Action Covenant
 lifecycle also binds one exact action to fresh evidence and invalidation signals,
 then signs both the authorization and its reported outcome.
 
-Repository status: experimental v0.2 implementation. The public endpoint still
-runs v0.1 until an explicit deployment is completed. There are no production
-users, paid pilots, or usage claims. Authority and evidence are still supplied
+Status: experimental v0.2. The live API version is reported by the public
+`/docs` endpoint. There are no production users, paid pilots, or usage claims.
+Authority and evidence are still supplied
 by the integrating application rather than loaded from independent stores. Read the [threat
 model](docs/THREAT_MODEL.md) before placing this service in an execution path.
 
