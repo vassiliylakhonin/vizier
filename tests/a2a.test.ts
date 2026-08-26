@@ -270,7 +270,11 @@ describe("A2A JSON-RPC binding", () => {
     expect(body.error.code).toBe(code);
   });
 
-  it("returns invalid-params for a message without verification data", async () => {
+  // Сообщение с одним текстом — это и проба каталога, и первый заход
+  // человека. Раньше на него приходил -32602: запрос сформирован верно, а
+  // ответ шёл транспортной ошибкой, которую A2A-клиент не показывает как
+  // реплику. Теперь то же руководство приходит обычным Message, с тем же id.
+  it("answers a message without verification data with guidance, echoing the id", async () => {
     const envelope = validEnvelope("params-01");
     envelope.params = {
       message: {
@@ -280,22 +284,20 @@ describe("A2A JSON-RPC binding", () => {
       },
     };
     const response = await handleA2aRequest(rpcRequest(envelope));
-    const body = (await response.json()) as { id: string; error: { code: number } };
+    const body = (await response.json()) as {
+      id: string;
+      error?: unknown;
+      result?: { message?: { role?: string } };
+    };
 
     expect(body.id).toBe("params-01");
-    expect(body.error.code).toBe(-32602);
+    expect(body.error).toBeUndefined();
+    expect(body.result?.message?.role).toBe("ROLE_AGENT");
   });
 
-  it("rejects an unsupported or omitted protocol version", async () => {
+  it("rejects an explicitly unsupported protocol version", async () => {
     const unsupported = await handleA2aRequest(
       rpcRequest(validEnvelope(), { "A2A-Version": "0.3" }),
-    );
-    const omitted = await handleA2aRequest(
-      new Request("https://vizier.example/a2a", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validEnvelope()),
-      }),
     );
 
     await expect(unsupported.json()).resolves.toMatchObject({
@@ -303,9 +305,57 @@ describe("A2A JSON-RPC binding", () => {
       id: null,
       error: { code: -32009 },
     });
-    await expect(omitted.json()).resolves.toMatchObject({
-      error: { code: -32009 },
+  });
+
+  // Заголовок необязательный, и почти никто его не шлёт. Пока умолчанием была
+  // строка "0.3", каждый такой вызов отвергался как неподдерживаемая версия —
+  // на этом эндпоинт был закрыт для всех обычных клиентов и провалил проверку
+  // C020 у внешнего сканера 2026-08-23.
+  it("treats an omitted protocol version as the current one", async () => {
+    const omitted = await handleA2aRequest(
+      new Request("https://vizier.example/a2a", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TEST_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(validEnvelope()),
+      }),
+      { apiKey: TEST_API_KEY },
+    );
+    const body = (await omitted.json()) as { error?: unknown; result?: unknown };
+
+    expect(body.error).toBeUndefined();
+    expect(body.result).toBeDefined();
+  });
+
+  it("accepts message/send, the JSON-RPC name its own card advertises", async () => {
+    const response = await handleA2aRequest(
+      rpcRequest({ ...validEnvelope("alias-01"), method: "message/send" }),
+      { apiKey: TEST_API_KEY },
+    );
+    const body = (await response.json()) as { error?: unknown; result?: unknown };
+
+    expect(body.error).toBeUndefined();
+    expect(body.result).toBeDefined();
+  });
+
+  it("accepts the JSON-RPC spelling of role and a kind-tagged part", async () => {
+    const envelope = validEnvelope("spelling-01") as {
+      params: { message: { role: string; parts: unknown[] } };
+    };
+    envelope.params.message.role = "user";
+    envelope.params.message.parts = [
+      { kind: "data", data: verificationInput(), mediaType: "application/json" },
+    ];
+
+    const response = await handleA2aRequest(rpcRequest(envelope), {
+      apiKey: TEST_API_KEY,
     });
+    const body = (await response.json()) as { error?: unknown; result?: unknown };
+
+    expect(body.error).toBeUndefined();
+    expect(body.result).toBeDefined();
   });
 
   it("rejects non-JSON content with the A2A content-type error", async () => {
@@ -339,25 +389,26 @@ describe("A2A JSON-RPC binding", () => {
       { apiKey: TEST_API_KEY },
     );
 
-    const body = (await refused.json()) as {
-      error: {
-        code: number;
-        data: {
-          required_fields: string[];
-          contact: string;
-          other_routes: Record<string, string>;
-          example_request: { params: unknown };
-        };
-      };
+    type Guidance = {
+      required_fields: string[];
+      contact: string;
+      other_routes: Record<string, string>;
+      example_request: { params: unknown };
     };
-    expect(body.error.code).toBe(-32602);
-    expect(body.error.data.required_fields.length).toBeGreaterThan(0);
-    expect(body.error.data.contact).toContain("@");
-    expect(body.error.data.other_routes.field_reference).toBe("GET /docs");
+    const body = (await refused.json()) as {
+      error?: unknown;
+      result: { message: { parts: { data?: Guidance }[] } };
+    };
+    expect(body.error).toBeUndefined();
+    const guidance = body.result.message.parts.find((part) => part.data)?.data;
+    expect(guidance).toBeDefined();
+    expect(guidance!.required_fields.length).toBeGreaterThan(0);
+    expect(guidance!.contact).toContain("@");
+    expect(guidance!.other_routes.field_reference).toBe("GET /docs");
 
     // The example is not decoration: replay it and the same endpoint answers.
     const replayed = await handleA2aRequest(
-      rpcRequest(body.error.data.example_request),
+      rpcRequest(guidance!.example_request),
       { apiKey: TEST_API_KEY },
     );
     const decided = (await replayed.json()) as {
