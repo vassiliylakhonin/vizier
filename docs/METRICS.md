@@ -7,6 +7,11 @@ outcomes are instrumentation, not independent demand evidence.
 The primary metric is verified agent actions per day. Sign-ups and one-off curl
 requests do not answer the question.
 
+The first independent learning test is defined in [PILOT.md](PILOT.md). Its
+decision uses qualified integrations, repeated machine calls on separate days,
+and retention in the normal execution path. Registry probes and conformance
+scores are discovery signals, not adoption metrics.
+
 The founder-supplied problem/solution fit targets are:
 
 - 10 independent production integrations
