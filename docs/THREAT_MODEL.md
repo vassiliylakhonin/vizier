@@ -72,6 +72,14 @@ or network failure.
 - MCP validates `Origin` when present and checks mirrored metadata headers
 - logs contain IDs, decision, reason codes, and latency, not action parameters
 - error responses do not include stack traces or arbitrary payloads
+- the private MCP proxy requires its own Bearer token for tool calls, replaces
+  it with a separate upstream credential, and never forwards the Vizier key
+- the MCP proxy publishes only configured upstream tools, binds the complete
+  tool arguments into the verification request, and forwards only on `ALLOW`
+- malformed or oversized upstream JSON is rejected instead of reflected to the
+  client
+- the proxy returns its own minimal `server/discover` response rather than
+  reflecting authenticated upstream discovery metadata
 
 ## Known limits
 
@@ -108,6 +116,17 @@ or network failure.
   Wrangler with the user's Cloudflare credentials. It is a valid enforcement
   point only when an action-taking agent receives the wrapper capability but no
   general shell or Cloudflare credential access.
+- The local MCP proxy is bypassable if the agent can reach the upstream MCP URL,
+  obtain the upstream or Vizier credential, or invoke an equivalent tool through
+  another transport. Its tool-name allowlist does not impose semantic argument
+  constraints beyond the current Vizier policy schema; the receipt binds the
+  supplied arguments but does not prove they are safe.
+- The proxy supports one stateless HTTP upstream and non-streaming JSON
+  responses capped at 64 KiB. It is not a multi-tenant gateway and does not
+  persist per-integration usage metrics.
+- Embedded callers can inject a verifier, network client, and log sink. The CLI
+  uses the validating Vizier SDK, refuses redirects, and constrains destinations;
+  another embedding must reproduce those controls.
 
 ## Fail-closed integration rule
 

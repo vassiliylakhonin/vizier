@@ -25,6 +25,12 @@ durable metrics store. Structured logs expose the fields needed to calculate
 call count and decision mix later. Counting unique agents, repeat use, and calls
 per integration requires authenticated integration IDs before a public pilot.
 
+The private MCP proxy now emits an operator-supplied integration ID with request
+ID, tool name, decision, reason codes, receipt ID, outcome, and latency. It does
+not persist or aggregate those events. Until an independent participant uses the
+proxy in an existing action path, these fields are instrumentation capability,
+not usage evidence.
+
 The first internal test is 5–10 clean Git deployments routed through the full
 activation, authorization, execution, and outcome lifecycle in
 `npm run deploy:gated`. One bootstrap deployment and repeated deployments made

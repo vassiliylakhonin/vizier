@@ -1,0 +1,21 @@
+{
+  "name": "@vizier/mcp-proxy",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "vizier-mcp-proxy": "./dist/cli.js"
+  },
+  "dependencies": {
+    "@vizier/sdk": "0.2.1",
+    "zod": "4.4.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
