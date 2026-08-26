@@ -22,6 +22,11 @@ const jsonRpcRequestSchema = z.strictObject({
 
 const partSchema = z
   .strictObject({
+    // Клиенты v0.x и большинство JSON-RPC-библиотек помечают Part полем
+    // kind ("text" | "data" | "file"). Содержания оно не несёт — какое поле
+    // заполнено, видно и так, — но strictObject без него отклоняет запрос
+    // целиком. Принимается и игнорируется.
+    kind: z.string().optional(),
     text: z.string().optional(),
     raw: z.string().optional(),
     url: z.url().optional(),
@@ -43,7 +48,13 @@ const sendMessageParamsSchema = z.strictObject({
     messageId: z.string().min(1),
     contextId: z.string().min(1).optional(),
     taskId: z.string().min(1).optional(),
-    role: z.literal("ROLE_USER"),
+    // В protobuf-представлении A2A роль пишется ROLE_USER, в JSON-RPC —
+    // "user". Спецификация допускает оба, клиенты шлют то одно, то другое, и
+    // отвергать половину из-за написания — это отказ по орфографии, а не по
+    // смыслу. Нормализуется к ROLE_USER, чтобы ниже по коду написание было одно.
+    role: z
+      .union([z.literal("ROLE_USER"), z.literal("user")])
+      .transform(() => "ROLE_USER" as const),
     parts: z.array(partSchema).min(1),
     metadata: z.record(z.string(), z.unknown()).optional(),
     extensions: z.array(z.url()).optional(),
@@ -253,7 +264,16 @@ export async function handleA2aRequest(
   request: Request,
   options: TransportOptions = {},
 ): Promise<Response> {
-  const requestedVersion = request.headers.get("A2A-Version") || "0.3";
+  // Отсутствие заголовка — это «версию не назвали», а не «назвали 0.3».
+  // Подставлять сюда легаси-строку, которую следующая же строка отвергает,
+  // значит закрыть эндпоинт для всех, кто не знает про необязательный
+  // заголовок, — то есть почти для всех. Замерено 2026-08-23 независимым
+  // сканером a2a-scorecard: проверка C020 «отвечает ли агент на
+  // спеко-корректный SendMessage по адресу, который объявляет его же
+  // карточка» провалена именно здесь, и агент попал в публичные 63%
+  // неотвечающих. Явно названная неподдерживаемая версия по-прежнему
+  // отвергается — меняется только умолчание.
+  const requestedVersion = request.headers.get("A2A-Version") ?? A2A_PROTOCOL_VERSION;
   if (requestedVersion !== A2A_PROTOCOL_VERSION) {
     return jsonRpcError(
       null,
@@ -295,7 +315,11 @@ export async function handleA2aRequest(
     return jsonRpcError(null, -32600, "Request payload validation error");
   }
   const { id, method, params } = envelope.data;
-  if (method !== "SendMessage") {
+  // Карточка объявляет привязку JSONRPC версии 1.0, а каноническое имя метода
+  // в этой привязке — message/send; SendMessage приходит из gRPC-имени того же
+  // вызова. Обслуживаются оба: клиент, читающий карточку буквально, шлёт
+  // первое, сканеры и старые клиенты — второе.
+  if (method !== "SendMessage" && method !== "message/send") {
     return jsonRpcError(id, -32601, "Method not found", 200, REQUEST_GUIDANCE);
   }
 
@@ -308,13 +332,34 @@ export async function handleA2aRequest(
     (part) => part.data !== undefined,
   );
   if (dataPart?.data === undefined) {
-    return jsonRpcError(
+    // Сообщение без data-части — это не сломанный протокол, а собеседник,
+    // который ещё не знает, чего от него хотят: так выглядят и пробы
+    // каталогов, и первый заход человека. Ответ уровня протокола (-32602)
+    // здесь не по адресу — запрос сформирован верно, — и всякий, кто читает
+    // ответ как A2A-сообщение, видит только ошибку. Поэтому тем же
+    // руководством отвечаем в виде обычного Message: оно и машиночитаемо, и
+    // попадает в диалог, а не в транспортный слой.
+    return jsonResponse({
+      jsonrpc: "2.0",
       id,
-      -32602,
-      "A JSON data Part is required.",
-      200,
-      REQUEST_GUIDANCE,
-    );
+      result: {
+        message: {
+          messageId: `message_${crypto.randomUUID()}`,
+          contextId: sendMessage.data.message.contextId ?? `ctx_${crypto.randomUUID()}`,
+          role: "ROLE_AGENT",
+          parts: [
+            {
+              text:
+                "Vizier evaluates one proposed agent action against the authority you supply and returns ALLOW, REVIEW or BLOCK with a signed receipt. " +
+                "Send the verification request as a JSON object in a `data` part of the message; a text part is not read. " +
+                "The required fields, a worked example and an address for questions are in the data part of this reply.",
+            },
+            { data: REQUEST_GUIDANCE, mediaType: "application/json" },
+          ],
+          metadata: { skillId: "verify_agent_action", guidance: true },
+        },
+      },
+    });
   }
   const verification = verificationRequestSchema.safeParse(dataPart.data);
   if (!verification.success) {
