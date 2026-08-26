@@ -314,8 +314,9 @@ export async function handleA2aRequest(
           parts: [
             {
               text:
-                "Vizier оценивает одно предлагаемое действие агента против переданных ему полномочий и возвращает ALLOW, REVIEW или BLOCK с подписанной квитанцией. " +
-                "Запрос нужно прислать JSON-объектом в data-части сообщения; текстовая часть не читается. Поля, пример и адрес для вопросов — в data-части этого ответа.",
+                "Vizier evaluates one proposed agent action against the authority you supply and returns ALLOW, REVIEW or BLOCK with a signed receipt. " +
+                "Send the verification request as a JSON object in a `data` part of the message; a text part is not read. " +
+                "The required fields, a worked example and an address for questions are in the data part of this reply.",
             },
             { data: REQUEST_GUIDANCE, mediaType: "application/json" },
           ],
