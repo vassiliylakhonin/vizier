@@ -100,6 +100,7 @@ src/
   transport/     # REST, A2A JSON-RPC, MCP adapters
 packages/sdk/    # thin TypeScript client
 packages/gated-deploy/ # private dogfood integration for Worker deploys
+packages/mcp-proxy/ # private one-upstream enforcement pilot adapter
 tests/           # unit and transport integration tests
 examples/        # copy-paste requests
 docs/            # architecture, threat model, API docs
@@ -148,3 +149,42 @@ This controls the normal repository deployment command but cannot stop an agent
 that already has unrestricted shell access to Cloudflare credentials from
 calling Wrangler directly. The package is private and exists to collect internal
 repeat-use evidence before any broader executor is built.
+
+## MCP enforcement proxy pilot
+
+The private `packages/mcp-proxy` adapter tests a narrower adoption hypothesis:
+an operator will put an existing MCP tool behind a deterministic check and keep
+that check in the normal execution path. It is a local stateless HTTP proxy for
+one configured upstream MCP endpoint, not a general gateway.
+
+```text
+MCP client -- proxy Bearer token --> local Vizier proxy
+                                          |
+                            exact tool name + arguments
+                                          |
+                                     /v1/verify
+                                          |
+                                    ALLOW only
+                                          |
+                         separate upstream Bearer token
+                                          |
+                                  upstream MCP server
+```
+
+The proxy derives a canonical target as
+`mcp://<upstream-id>/tools/<encoded-tool-name>`. Its supplied authority contains
+only the configured tool targets. The complete tool arguments are nested in the
+verification action parameters and therefore bound to the legacy receipt hash.
+The same parsed MCP request is sent upstream only after the SDK validates the
+Vizier response and returns `ALLOW`.
+
+The proxy supplies its own minimal private discovery response, and `tools/list`
+is filtered to configured tools. Every request requires a proxy-specific
+credential that is never forwarded; a separate optional upstream credential
+replaces it. The adapter records bounded operational fields but no arguments or
+secrets. It adds no durable metrics, policy store, multi-tenant control plane,
+streaming support, or claim of independent principal identity.
+
+The CLI owns the production-like pilot guarantees above. An embedding that
+injects a custom verifier, `fetch`, or logger becomes responsible for equivalent
+response authentication, redirect refusal, destination control, and log safety.

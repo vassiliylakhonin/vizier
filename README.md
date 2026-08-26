@@ -214,6 +214,52 @@ The default sensitive actions are `transfer_funds`, `delete_data`,
 Only the current protocol revisions above are implemented. The MCP endpoint is
 stateless and does not implement the legacy `initialize` session.
 
+### MCP enforcement proxy pilot
+
+`packages/mcp-proxy` is a private `build-to-learn` adapter for placing one
+existing MCP server behind Vizier. It is not deployed, published to npm, or
+presented as production-ready. The proxy:
+
+- exposes only the configured upstream tool names;
+- authenticates every MCP request with a proxy-specific Bearer token;
+- maps the exact tool name and arguments to one `mcp_tool_call` verification;
+- forwards the unchanged MCP request only after a verified `ALLOW`;
+- stops on `REVIEW`, `BLOCK`, timeout, invalid Vizier output, or upstream error;
+- replaces the incoming credential with a separate upstream credential; and
+- logs integration ID, request ID, tool name, decision, receipt ID, outcome, and
+  latency without logging arguments or secrets.
+
+Build the private package:
+
+```bash
+npm run build --workspace @vizier/mcp-proxy
+```
+
+Configure one participant and one upstream MCP server. Generate independent
+random values for the proxy client token, Vizier API key, and upstream token;
+do not reuse any of them:
+
+```bash
+export VIZIER_BASE_URL="http://127.0.0.1:8787"
+export VIZIER_API_KEY="local-development-key"
+export VIZIER_PROXY_INTEGRATION_ID="pilot-acme"
+export VIZIER_PROXY_CLIENT_TOKEN="replace-with-a-random-client-token"
+export VIZIER_PROXY_AGENT_ID="coding-agent-01"
+export VIZIER_PROXY_AGENT_OWNER="acme"
+export VIZIER_PROXY_PRINCIPAL_ID="platform-team"
+export VIZIER_PROXY_UPSTREAM_ID="filesystem"
+export VIZIER_PROXY_UPSTREAM_URL="http://127.0.0.1:8791/mcp"
+export VIZIER_PROXY_UPSTREAM_BEARER_TOKEN="replace-with-upstream-token"
+export VIZIER_PROXY_ALLOWED_TOOLS="write_file"
+npm exec --workspace @vizier/mcp-proxy -- vizier-mcp-proxy
+```
+
+Point the pilot MCP client at `http://127.0.0.1:8790/mcp`, use
+`VIZIER_PROXY_CLIENT_TOKEN` as its Bearer credential, and remove its direct
+access to the upstream URL and credential. The proxy is not an enforcement
+boundary if the agent can still reach the upstream server, read either backend
+credential, or use a shell with equivalent authority.
+
 ## Receipts
 
 Each successful verification returns a receipt ID, creation time, request hash,

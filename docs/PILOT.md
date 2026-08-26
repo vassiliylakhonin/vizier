@@ -48,6 +48,14 @@ an action they actually operate. They must:
 5. keep the check in the normal path for seven days or explain why they removed
    it.
 
+For a participant whose action already runs through an HTTP MCP server, the
+private `@vizier/mcp-proxy` adapter may replace a custom integration. Configure
+exactly one upstream endpoint and the minimum tool allowlist. The participant
+must remove the agent's direct upstream route and keep the proxy, Vizier, and
+upstream credentials separate. Using the proxy in a synthetic fixture proves
+only contract conformance; it counts as an integration only when it gates the
+participant's existing action path.
+
 Use synthetic or redacted parameters unless the participant has explicitly
 approved the data sent to the pilot deployment. Never collect API keys, payment
 credentials, private signing keys, or unrestricted Cloudflare credentials.

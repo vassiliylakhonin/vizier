@@ -8,6 +8,7 @@ export default defineConfig(
     "dist/**",
     "packages/sdk/dist/**",
     "packages/gated-deploy/dist/**",
+    "packages/mcp-proxy/dist/**",
     "worker-configuration.d.ts",
   ]),
   {

@@ -1,6 +1,6 @@
 # Claim ledger
 
-Checked on 2026-08-24.
+Checked on 2026-08-26.
 
 | Claim | Source | Exact support | Status |
 | --- | --- | --- | --- |
@@ -15,6 +15,7 @@ Checked on 2026-08-24.
 | Vizier publishes a machine catalog that routes callers to both the A2A Agent Card and the OpenAPI contract. | `src/transport/catalog.ts` and `tests/discovery-contracts.test.ts` | The catalog contains one A2A entry and one OpenAPI 3.1 entry; the route test checks both URLs and media types. | supported |
 | Vizier has production users, pilots, or revenue. | none | No evidence exists. | unsupported |
 | Vizier evaluation mode cannot return `ALLOW`. | local tests | REST, A2A, and MCP tests assert `REVIEW` without authenticated authority; A2A tests also cover anonymous evaluation while `VIZIER_API_KEY` is configured and rejection of a wrong credential. | supported |
+| The private MCP proxy filters discovery and forwards an exact tool call only after a verified `ALLOW`. | local source and `tests/mcp-proxy.test.ts` | Tests cover filtered discovery, exact argument binding, real SDK/core authorization, local allowlist refusal, `REVIEW`, `BLOCK`, invalid client credentials, Vizier failure, and invalid upstream responses. The package is not deployed or published. | supported as a local pilot artifact; no adoption evidence |
 | Vizier provides a complete principal identity or delegation boundary. | none | v0.1 authenticates only the configured integration; authority is still supplied by it. | unsupported |
 | The private gated-deploy tool completed one Vizier-authorized Worker deployment. | Cloudflare Worker version history, checked 2026-08-09 | Version `954622cc-7251-4fa7-b820-0a5293f1066d` carries a `Vizier ALLOW receipt` deployment message. | supported |
 | A signed Agent Card authenticates Vizier callers, delegations, or receipts. | none | The signature covers only the public Agent Card. | unsupported |
