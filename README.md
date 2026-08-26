@@ -302,6 +302,7 @@ The Worker uses no D1, KV, Durable Object, queue, AI model, or outbound fetch.
 The repository structure and protocol sources are documented in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/ADR-0001-ACTION-COVENANTS.md](docs/ADR-0001-ACTION-COVENANTS.md),
+[docs/PILOT.md](docs/PILOT.md),
 [docs/CLAIMS.md](docs/CLAIMS.md), and
 [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md).
 
