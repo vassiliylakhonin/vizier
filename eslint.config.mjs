@@ -15,4 +15,18 @@ export default defineConfig(
     files: ["**/*.{js,mjs,ts}"],
     extends: [js.configs.recommended, tseslint.configs.recommended],
   },
+  // The Worker runs in workerd, where `process` and `console` as Node globals
+  // are not a given; scripts/ runs in Node and is not bundled. Scoping the
+  // globals rather than declaring them everywhere keeps the Worker honest about
+  // what it may reach for.
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        URL: "readonly",
+        console: "readonly",
+        process: "readonly",
+      },
+    },
+  },
 );
