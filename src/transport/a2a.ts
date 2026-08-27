@@ -156,7 +156,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
       "Evaluates proposed agent actions against supplied authority and deterministic policy. Not a factuality verifier; no live source retrieval. REVIEW requires a human decision before the external action.",
     provider: {
       organization: "Vassiliy Lakhonin",
-      url: "https://vassiliylakhonin.github.io/",
+      url: "https://github.com/vassiliylakhonin",
     },
     supportedInterfaces: [
       {
