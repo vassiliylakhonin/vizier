@@ -10,7 +10,7 @@
   "scripts": {
     "build": "npm run build:packages && wrangler deploy --dry-run --outdir dist",
     "build:packages": "npm run build --workspace @vizier/sdk && npm run build --workspace @vizier/gated-deploy && npm run build --workspace @vizier/mcp-proxy",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "check": "npm run build --workspace @vizier/sdk && npm run typecheck && npm run lint && npm test && npm run build",
     "check:deployed": "node scripts/check-deployed.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:gated": "npm run build:packages && node packages/gated-deploy/dist/cli.js",
