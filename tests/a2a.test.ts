@@ -83,7 +83,7 @@ describe("A2A Agent Card", () => {
       version: "0.2.1",
       provider: {
         organization: "Vassiliy Lakhonin",
-        url: "https://vassiliylakhonin.github.io/",
+        url: "https://github.com/vassiliylakhonin",
       },
       supportedInterfaces: [
         {

@@ -132,7 +132,7 @@ export function createOpenApiDocument(
         "Deterministic authorization for exact agent actions. The integration supplies authority, evidence, invalidation signals, and reported outcomes. Vizier verifies structure, freshness, exact matching, and cryptographic bindings; it does not independently establish that supplied facts or reported execution are true.",
       contact: {
         name: "Vassiliy Lakhonin",
-        url: "https://vassiliylakhonin.github.io/vizier-ai-agent-authorization.html",
+        url: "https://github.com/vassiliylakhonin",
       },
     },
     servers: [{ url: origin }],
@@ -230,10 +230,6 @@ export function createOpenApiDocument(
         ),
         InternalError: errorResponse("The request could not be processed."),
       },
-    },
-    externalDocs: {
-      description: "Vizier product page and pilot boundary",
-      url: "https://vassiliylakhonin.github.io/vizier-ai-agent-authorization.html",
     },
   });
 }
