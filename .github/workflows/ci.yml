@@ -1,0 +1,35 @@
+# Runs the same command a person runs before pushing: typecheck, lint, tests,
+# and a dry-run build of the Worker.
+#
+# The repository had no CI at all until 2026-08-27. Nothing enforced that main
+# built, and nothing compared main against production — which is how main came
+# to sit a full day ahead of the deployed Worker without anyone noticing.
+# `npm run check:deployed` answers the second question and is deliberately not
+# run here: it needs Cloudflare credentials and describes the state of
+# production, not the state of a commit.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
