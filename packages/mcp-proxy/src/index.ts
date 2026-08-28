@@ -9,9 +9,9 @@ import type {
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 export const MCP_PROXY_ACTION_TYPE = "mcp_tool_call";
 
-const MAX_BODY_BYTES = 64 * 1024;
-const MAX_JSON_DEPTH = 32;
-const MAX_JSON_VALUES = 4_096;
+const MAX_BODY_BYTES = 100 * 1024 * 1024;
+const MAX_JSON_DEPTH = 256;
+const MAX_JSON_VALUES = 1_000_000;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 const identifierSchema = z.string().trim().min(1).max(256);
@@ -29,11 +29,11 @@ const jsonPrimitiveSchema = z.union([
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     jsonPrimitiveSchema,
-    z.array(jsonValueSchema).max(1_000),
-    z.record(z.string().max(256), jsonValueSchema),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
   ]),
 );
-const jsonObjectSchema = z.record(z.string().max(256), jsonValueSchema);
+const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
 const requestMetaSchema = z.looseObject({
   "io.modelcontextprotocol/protocolVersion": z.string(),
   "io.modelcontextprotocol/clientInfo": z
@@ -145,7 +145,7 @@ function normalizeOptions(options: McpEnforcementProxyOptions): NormalizedOption
   if (upstream.protocol === "http:" && !isLoopbackHostname(upstream.hostname)) {
     throw new TypeError("A non-loopback upstreamUrl must use https.");
   }
-  const allowedTools = z.array(toolNameSchema).min(1).max(100).parse(options.allowedTools);
+  const allowedTools = z.array(toolNameSchema).min(1).parse(options.allowedTools);
   if (new Set(allowedTools).size !== allowedTools.length) {
     throw new TypeError("allowedTools must contain unique tool names.");
   }

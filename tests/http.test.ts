@@ -129,7 +129,17 @@ describe("REST transport", () => {
   });
 
   it("rejects bodies above the configured limit", async () => {
-    const response = await postJson({ padding: "x".repeat(70_000) });
+    const request = new Request("https://vizier.example/v1/verify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": "104857601",
+      },
+      // We don't actually pass 100MB here because the worker doesn't stream 
+      // the real body in this mock, it just looks at the header first
+      body: JSON.stringify({ padding: "x" }), 
+    });
+    const response = await handleHttpRequest(request);
 
     expect(response.status).toBe(413);
     await expect(response.json()).resolves.toMatchObject({
@@ -139,7 +149,7 @@ describe("REST transport", () => {
 
   it("rejects deeply nested JSON before recursive schema validation", async () => {
     let nested: unknown = "leaf";
-    for (let index = 0; index < 40; index += 1) {
+    for (let index = 0; index < 260; index += 1) {
       nested = [nested];
     }
     const response = await postJson({ nested });

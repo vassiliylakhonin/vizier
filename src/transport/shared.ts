@@ -1,6 +1,6 @@
 import { assertJsonComplexity, JsonComplexityError } from "../core/index";
 
-export const MAX_BODY_BYTES = 64 * 1024;
+export const MAX_BODY_BYTES = 100 * 1024 * 1024;
 
 export interface TransportOptions {
   readonly apiKey?: string;

@@ -406,7 +406,7 @@ describe("MCP enforcement proxy", () => {
   it("rejects structurally deep request JSON", async () => {
     const proxy = createMcpEnforcementProxy(proxyOptions({}));
     let nested: unknown = "leaf";
-    for (let depth = 0; depth < 34; depth += 1) {
+    for (let depth = 0; depth < 260; depth += 1) {
       nested = [nested];
     }
     const body = mcpBody("tools/list", "depth-1");

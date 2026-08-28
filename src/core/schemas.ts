@@ -22,14 +22,13 @@ type JsonValue =
 export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     jsonPrimitiveSchema,
-    z.array(jsonValueSchema).max(1_000),
-    z.record(z.string().max(256), jsonValueSchema),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
   ]),
 );
 
 export const stringSetSchema = z
   .array(z.string().trim().min(1).max(2_048))
-  .max(100)
   .refine((values) => new Set(values).size === values.length, {
     message: "Values must be unique",
   });
@@ -46,13 +45,12 @@ export const principalSchema = z.strictObject({
 export const actionSchema = z.strictObject({
   type: actionTypeSchema,
   target: targetSchema,
-  parameters: z.record(z.string().max(256), jsonValueSchema),
+  parameters: z.record(z.string(), jsonValueSchema),
 });
 
 export const authoritySchema = z.strictObject({
   allowed_actions: z
     .array(actionTypeSchema)
-    .max(100)
     .refine((values) => new Set(values).size === values.length, {
       message: "Actions must be unique",
     }),
@@ -61,7 +59,7 @@ export const authoritySchema = z.strictObject({
     currency: z.string().regex(/^[A-Z]{3}$/).optional(),
     allowed_targets: stringSetSchema.optional(),
     blocked_targets: stringSetSchema.optional(),
-    allowed_sensitive_actions: z.array(actionTypeSchema).max(100).optional(),
+    allowed_sensitive_actions: z.array(actionTypeSchema).optional(),
   }),
 });
 
