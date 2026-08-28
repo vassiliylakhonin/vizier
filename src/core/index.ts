@@ -1,6 +1,7 @@
 export { verificationRequestSchema } from "./schemas";
 export type { VerificationRequest } from "./schemas";
 export { DEFAULT_SENSITIVE_ACTIONS, evaluatePolicies } from "./policies";
+export type { PolicyEvaluator, PolicyOptions } from "./policies";
 export { aggregateDecision } from "./decision";
 export { RISK_WEIGHTS, calculateRiskScore } from "./risk";
 export { canonicalize, createReceipt, sha256 } from "./receipts";

@@ -11,9 +11,12 @@ export const DEFAULT_SENSITIVE_ACTIONS = Object.freeze([
   "sign_contract",
 ] as const);
 
+export type PolicyEvaluator = (request: VerificationRequest) => PolicyResult | readonly PolicyResult[];
+
 export interface PolicyOptions {
   readonly sensitiveActions?: readonly string[];
   readonly trustedAuthority?: boolean;
+  readonly customPolicies?: readonly PolicyEvaluator[];
 }
 
 function result(
@@ -150,12 +153,25 @@ export function evaluatePolicies(
   options: PolicyOptions = {},
 ): readonly PolicyResult[] {
   const sensitiveActions = options.sensitiveActions ?? DEFAULT_SENSITIVE_ACTIONS;
-  return Object.freeze([
+  const results: PolicyResult[] = [
     evaluateAuthorityProvenance(options.trustedAuthority ?? true),
     evaluatePrincipal(request),
     evaluateDelegatedAction(request),
     evaluateAmount(request),
     evaluateTarget(request),
     evaluateSensitiveAction(request, sensitiveActions),
-  ]);
+  ];
+
+  if (options.customPolicies) {
+    for (const evaluator of options.customPolicies) {
+      const result = evaluator(request);
+      if (Array.isArray(result)) {
+        results.push(...result);
+      } else {
+        results.push(result);
+      }
+    }
+  }
+
+  return Object.freeze(results);
 }
