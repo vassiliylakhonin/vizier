@@ -18,6 +18,7 @@ export interface VerificationRequest {
     type: string;
     target: string;
     parameters: Record<string, JsonValue>;
+    is_reversible?: boolean;
   };
   authority: {
     allowed_actions: string[];
@@ -27,6 +28,7 @@ export interface VerificationRequest {
       allowed_targets?: string[];
       blocked_targets?: string[];
       allowed_sensitive_actions?: string[];
+      require_review_for_irreversible?: boolean;
     };
   };
   context: {
@@ -270,26 +272,25 @@ const jsonPrimitiveSchema = z.union([
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     jsonPrimitiveSchema,
-    z.array(jsonValueSchema).max(1_000),
-    z.record(z.string().max(256), jsonValueSchema),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
   ]),
 );
 const actionSchema = z.strictObject({
   type: z.string().trim().min(1).max(128),
   target: z.string().trim().min(1).max(2_048),
-  parameters: z.record(z.string().max(256), jsonValueSchema),
+  parameters: z.record(z.string(), jsonValueSchema),
+  is_reversible: z.boolean().optional(),
 });
 const authoritySchema = z.strictObject({
-  allowed_actions: z.array(z.string().trim().min(1).max(128)).max(100),
+  allowed_actions: z.array(z.string().trim().min(1).max(128)),
   constraints: z.strictObject({
     max_amount: z.number().finite().nonnegative().optional(),
     currency: z.string().regex(/^[A-Z]{3}$/).optional(),
-    allowed_targets: z.array(z.string().trim().min(1).max(2_048)).max(100).optional(),
-    blocked_targets: z.array(z.string().trim().min(1).max(2_048)).max(100).optional(),
-    allowed_sensitive_actions: z
-      .array(z.string().trim().min(1).max(128))
-      .max(100)
-      .optional(),
+    allowed_targets: z.array(z.string().trim().min(1).max(2_048)).optional(),
+    blocked_targets: z.array(z.string().trim().min(1).max(2_048)).optional(),
+    allowed_sensitive_actions: z.array(z.string().trim().min(1).max(128)).optional(),
+    require_review_for_irreversible: z.boolean().optional(),
   }),
 });
 const actionCovenantDraftSchema = z.strictObject({
