@@ -6,6 +6,8 @@ export interface TransportOptions {
   readonly apiKey?: string;
   readonly agentCardSigningKey?: string;
   readonly receiptSigningKey?: string;
+  readonly db?: any; // D1Database
+  readonly ctx?: any; // ExecutionContext for waitUntil
 }
 
 export class TransportRequestError extends Error {

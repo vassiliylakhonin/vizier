@@ -21,6 +21,7 @@ import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
 import { createJwks, maybeSignAgentCard } from "./jws";
 import { createOpenApiDocument } from "./openapi";
+import { storeReceipt, storeCovenant, storeOutcome } from "../storage/audit";
 
 interface ApiErrorBody {
   readonly error: {
@@ -139,6 +140,13 @@ async function handleVerify(
       latency_ms: Number((performance.now() - startedAt).toFixed(2)),
     }),
   );
+  if (options.db !== undefined && options.ctx !== undefined) {
+    options.ctx.waitUntil(
+      storeReceipt(options.db, normalizedRequest, result.receipt).catch((error: unknown) =>
+        console.error("Failed to store receipt", error),
+      ),
+    );
+  }
   return jsonResponse(result);
 }
 
@@ -167,6 +175,13 @@ async function handleCovenantActivation(
       expires_at: covenant.draft.expires_at,
     }),
   );
+  if (options.db !== undefined && options.ctx !== undefined) {
+    options.ctx.waitUntil(
+      storeCovenant(options.db, covenant).catch((error: unknown) =>
+        console.error("Failed to store covenant", error),
+      ),
+    );
+  }
   return jsonResponse(covenant, 201);
 }
 
@@ -238,6 +253,13 @@ async function handleOutcomeRecording(
       compliance: result.payload.compliance,
     }),
   );
+  if (options.db !== undefined && options.ctx !== undefined) {
+    options.ctx.waitUntil(
+      storeOutcome(options.db, result).catch((error: unknown) =>
+        console.error("Failed to store outcome", error),
+      ),
+    );
+  }
   return jsonResponse(result, 201);
 }
 
