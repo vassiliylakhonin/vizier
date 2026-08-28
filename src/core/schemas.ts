@@ -46,6 +46,7 @@ export const actionSchema = z.strictObject({
   type: actionTypeSchema,
   target: targetSchema,
   parameters: z.record(z.string(), jsonValueSchema),
+  is_reversible: z.boolean().optional(),
 });
 
 export const authoritySchema = z.strictObject({
@@ -60,6 +61,7 @@ export const authoritySchema = z.strictObject({
     allowed_targets: stringSetSchema.optional(),
     blocked_targets: stringSetSchema.optional(),
     allowed_sensitive_actions: z.array(actionTypeSchema).optional(),
+    require_review_for_irreversible: z.boolean().optional(),
   }),
 });
 

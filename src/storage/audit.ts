@@ -59,3 +59,20 @@ export async function storeOutcome(
     JSON.stringify(receipt.payload.outcome.effects)
   ).run();
 }
+
+export async function getInsights(db: any): Promise<Record<string, unknown>> {
+  const stmt1 = db.prepare("SELECT decision, COUNT(*) as count FROM audit_receipts GROUP BY decision");
+  const { results: decisionCounts } = await stmt1.all();
+  
+  const stmt2 = db.prepare("SELECT AVG(risk_score) as avg_risk FROM audit_receipts");
+  const { results: riskAvg } = await stmt2.all();
+  
+  const stmt3 = db.prepare("SELECT COUNT(*) as total_failures FROM outcome_receipts WHERE compliance = 'VIOLATION' OR status = 'FAILED'");
+  const { results: failures } = await stmt3.all();
+
+  return {
+    decisions: decisionCounts,
+    average_risk_score: riskAvg[0]?.avg_risk ?? 0,
+    failures: failures[0]?.total_failures ?? 0,
+  };
+}

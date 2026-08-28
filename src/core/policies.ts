@@ -148,6 +148,18 @@ function evaluateSensitiveAction(
       );
 }
 
+export function evaluateReversibility(request: VerificationRequest): PolicyResult {
+  const requiresReversible = request.authority.constraints.require_review_for_irreversible ?? false;
+  if (!requiresReversible) {
+    return result("action.reversibility.not_required", "PASS", null);
+  }
+  return request.action.is_reversible === true
+    ? result("action.reversibility.provided", "PASS", null)
+    : result("action.reversibility.provided", "REVIEW", "IRREVERSIBLE_ACTION_REVIEW", {
+        action_type: request.action.type,
+      });
+}
+
 export function evaluatePolicies(
   request: VerificationRequest,
   options: PolicyOptions = {},
@@ -160,6 +172,7 @@ export function evaluatePolicies(
     evaluateAmount(request),
     evaluateTarget(request),
     evaluateSensitiveAction(request, sensitiveActions),
+    evaluateReversibility(request),
   ];
 
   if (options.customPolicies) {

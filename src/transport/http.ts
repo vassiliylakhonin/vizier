@@ -21,7 +21,7 @@ import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
 import { createJwks, maybeSignAgentCard } from "./jws";
 import { createOpenApiDocument } from "./openapi";
-import { storeReceipt, storeCovenant, storeOutcome } from "../storage/audit";
+import { storeReceipt, storeCovenant, storeOutcome, getInsights } from "../storage/audit";
 
 interface ApiErrorBody {
   readonly error: {
@@ -458,6 +458,16 @@ export async function handleHttpRequest(
     }
     if (request.method === "POST" && url.pathname === "/v1/outcomes") {
       return await handleOutcomeRecording(request, options, url.origin);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/insights") {
+      if (options.db === undefined) {
+        return jsonResponse({ error: { code: "INSIGHTS_UNAVAILABLE", message: "Database not configured." } }, 503);
+      }
+      const authorization = await authorizeEnforcement(request, options.apiKey);
+      if (authorization === "denied") {
+        return jsonResponse({ error: { code: "AUTHENTICATION_REQUIRED", message: "Bearer token required." } }, 401);
+      }
+      return jsonResponse(await getInsights(options.db));
     }
     if (url.pathname === "/v1/verify") {
       return jsonResponse(
