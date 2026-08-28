@@ -829,6 +829,29 @@ export class Vizier {
     return response;
   }
 
+  async getInsights(
+    options: VerifyOptions = {},
+  ): Promise<Record<string, unknown>> {
+    const response = await this.#fetch(`${this.#baseUrl}/v1/insights`, {
+      method: "GET",
+      headers: {
+        ...(this.#apiKey === undefined
+          ? {}
+          : { Authorization: `Bearer ${this.#apiKey}` }),
+      },
+      signal: options.signal,
+    });
+    if (!response.ok) {
+      throw new VizierError(
+        "Vizier request failed.",
+        response.status,
+        "REQUEST_FAILED",
+      );
+    }
+    const body = await response.json();
+    return body as Record<string, unknown>;
+  }
+
   async recordOutcome(
     request: OutcomeRecordingRequest,
     options: VerifyOptions = {},

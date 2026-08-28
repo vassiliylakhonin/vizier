@@ -1,10 +1,11 @@
-import type { Receipt, VerificationRequest } from "../core/types";
-import type { ActionCovenant, SignedOutcomeReceipt } from "../covenants/types";
-import type { VerificationRequest as VerificationRequestSchema } from "../core/schemas";
+import type { Receipt } from "../core/types";
+import type { ActionCovenant, SignedOutcomeReceipt, ExecutionOutcome } from "../covenants/schemas";
+import type { VerificationRequest } from "../core/schemas";
+import type { D1Database } from "@cloudflare/workers-types";
 
 export async function storeReceipt(
-  db: any,
-  request: VerificationRequestSchema,
+  db: D1Database,
+  request: VerificationRequest,
   receipt: Receipt
 ): Promise<void> {
   const stmt = db.prepare(
@@ -23,7 +24,7 @@ export async function storeReceipt(
 }
 
 export async function storeCovenant(
-  db: any,
+  db: D1Database,
   covenant: ActionCovenant
 ): Promise<void> {
   const stmt = db.prepare(
@@ -43,8 +44,9 @@ export async function storeCovenant(
 }
 
 export async function storeOutcome(
-  db: any,
-  receipt: SignedOutcomeReceipt
+  db: D1Database,
+  receipt: SignedOutcomeReceipt,
+  outcome: ExecutionOutcome
 ): Promise<void> {
   const stmt = db.prepare(
     "INSERT INTO outcome_receipts (id, authorization_receipt_id, compliance, status, started_at, finished_at, effects) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
@@ -53,14 +55,14 @@ export async function storeOutcome(
     receipt.payload.id,
     receipt.payload.authorization_receipt_id,
     receipt.payload.compliance,
-    receipt.payload.outcome.status,
-    receipt.payload.outcome.started_at,
-    receipt.payload.outcome.finished_at,
-    JSON.stringify(receipt.payload.outcome.effects)
+    outcome.status,
+    outcome.started_at,
+    outcome.finished_at,
+    JSON.stringify(outcome.effects)
   ).run();
 }
 
-export async function getInsights(db: any): Promise<Record<string, unknown>> {
+export async function getInsights(db: D1Database): Promise<Record<string, unknown>> {
   const stmt1 = db.prepare("SELECT decision, COUNT(*) as count FROM audit_receipts GROUP BY decision");
   const { results: decisionCounts } = await stmt1.all();
   

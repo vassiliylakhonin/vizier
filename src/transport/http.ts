@@ -255,7 +255,7 @@ async function handleOutcomeRecording(
   );
   if (options.db !== undefined && options.ctx !== undefined) {
     options.ctx.waitUntil(
-      storeOutcome(options.db, result).catch((error: unknown) =>
+      storeOutcome(options.db, result, parsed.data.outcome).catch((error: unknown) =>
         console.error("Failed to store outcome", error),
       ),
     );

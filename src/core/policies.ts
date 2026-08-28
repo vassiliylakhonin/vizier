@@ -179,9 +179,9 @@ export function evaluatePolicies(
     for (const evaluator of options.customPolicies) {
       const result = evaluator(request);
       if (Array.isArray(result)) {
-        results.push(...result);
+        results.push(...(result as readonly PolicyResult[]));
       } else {
-        results.push(result);
+        results.push(result as PolicyResult);
       }
     }
   }

@@ -2,12 +2,15 @@ import { assertJsonComplexity, JsonComplexityError } from "../core/index";
 
 export const MAX_BODY_BYTES = 100 * 1024 * 1024;
 
+import type { D1Database } from "@cloudflare/workers-types";
+
 export interface TransportOptions {
   readonly apiKey?: string;
   readonly agentCardSigningKey?: string;
   readonly receiptSigningKey?: string;
-  readonly db?: any; // D1Database
-  readonly ctx?: any; // ExecutionContext for waitUntil
+  readonly db?: D1Database;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly ctx?: any;
 }
 
 export class TransportRequestError extends Error {

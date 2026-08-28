@@ -212,7 +212,7 @@ describe("receipts and decision aggregation", () => {
 
     expect(first.receipt).toEqual(second.receipt);
     expect(first.receipt.request_hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(first.receipt.policy_rule_ids).toHaveLength(6);
+    expect(first.receipt.policy_rule_ids).toHaveLength(7);
   });
 
   it("applies BLOCK over REVIEW over ALLOW precedence", () => {
