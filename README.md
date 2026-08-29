@@ -34,7 +34,6 @@ path.
 
 Public surfaces:
 
-- Product page: <https://vassiliylakhonin.github.io/vizier-ai-agent-authorization.html>
 - Worker: <https://vizier.vassiliy-lakhonin.workers.dev>
 - Live field reference: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
 - OpenAPI 3.1 contract: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
