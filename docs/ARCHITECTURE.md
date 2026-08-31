@@ -49,9 +49,11 @@ signed AuthorizationReceipt -> executor -> signed OutcomeReceipt
 ```
 
 Both cores are deterministic except for identity, time, and ES256 signing.
-Tests inject identities and time and generate real P-256 keys. No database is
-required yet; covenants and receipts are immutable caller-held representations,
-not durability claims.
+Tests inject identities and time and generate real P-256 keys. The decision path
+does not require a database: covenants and complete receipts remain immutable
+caller-held representations. A D1 adapter records bounded metadata and hashes
+through `waitUntil()` after the decision is available. That operational audit is
+not an authority, evidence, or receipt source.
 
 ## Contract decisions
 
@@ -97,7 +99,9 @@ src/
   core/          # schemas, policies, decision, risk, receipts
   covenants/     # activation, evidence/invalidation checks, outcome binding
   crypto/        # reusable P-256 JWS primitive
+  storage/       # metadata-only D1 operational audit adapter
   transport/     # REST, A2A JSON-RPC, MCP adapters
+migrations/      # D1 schema and privacy-hardening migrations
 packages/sdk/    # thin TypeScript client
 packages/gated-deploy/ # private dogfood integration for Worker deploys
 packages/mcp-proxy/ # private one-upstream enforcement pilot adapter
@@ -129,9 +133,31 @@ policy storage and principal-issued delegation remain outside this milestone.
 The additive v0.2 path includes strict draft and lifecycle schemas, hash-bound
 principal acceptance, exact action checks, evidence freshness, invalidation
 signals, signed authorization receipts, signed outcome receipts, three REST
-resources, SDK signature verification through JWKS, and the gated-deploy
-executor adapter. The model is represented only through draft provenance and is
-never called by the Worker.
+write resources, authenticated aggregate audit insights, SDK signature and
+insights-contract verification, metadata-only D1 instrumentation, and the
+gated-deploy executor adapter. The model is represented only through draft
+provenance and is never called by the Worker.
+
+## Operational audit seam
+
+`src/storage/audit.ts` is the only module that knows the D1 schema. Transports
+schedule its writes through the Worker's background context and never consult
+D1 when deciding `ALLOW`, `REVIEW`, or `BLOCK`. Stored rows contain IDs,
+timestamps, decisions, risk and reason metadata, action type, source, and
+cryptographic hashes. They intentionally exclude action parameters, targets,
+principal and agent IDs, evidence, invalidation signals, outcome effects, JWS
+tokens, and signing material.
+
+`GET /v1/insights` is authenticated enforcement-only and returns aggregate
+counts through a strict SDK/OpenAPI contract. Because writes are asynchronous
+and best-effort, these aggregates are operational instrumentation rather than a
+complete ledger or product-adoption claim. A daily scheduled handler deletes
+rows older than 30 days from all four metadata tables using one D1 batch.
+
+The migration check in the normal repository `check` command applies the full
+ordered migration set to in-memory SQLite, seeds the original payload-bearing
+schema, and asserts that hardening removes the sensitive columns while
+preserving operational rows.
 
 ## Internal deployment integration
 
@@ -182,7 +208,9 @@ The proxy supplies its own minimal private discovery response, and `tools/list`
 is filtered to configured tools. Every request requires a proxy-specific
 credential that is never forwarded; a separate optional upstream credential
 replaces it. The adapter records bounded operational fields but no arguments or
-secrets. It adds no durable metrics, policy store, multi-tenant control plane,
+secrets. The Worker-level metadata audit does not identify proxy integrations,
+so the proxy itself still adds no durable per-integration metrics, policy store,
+multi-tenant control plane,
 streaming support, or claim of independent principal identity.
 
 The CLI owns the production-like pilot guarantees above. An embedding that

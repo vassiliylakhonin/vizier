@@ -406,12 +406,26 @@ describe("MCP enforcement proxy", () => {
   it("rejects structurally deep request JSON", async () => {
     const proxy = createMcpEnforcementProxy(proxyOptions({}));
     let nested: unknown = "leaf";
-    for (let depth = 0; depth < 260; depth += 1) {
+    for (let depth = 0; depth < 68; depth += 1) {
       nested = [nested];
     }
     const body = mcpBody("tools/list", "depth-1");
     const params = body.params as Record<string, unknown>;
     params.extra = nested;
+
+    const response = await proxy.handle(mcpRequest(body));
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: -32600 },
+    });
+  });
+
+  it("rejects request JSON with too many aggregate values", async () => {
+    const proxy = createMcpEnforcementProxy(proxyOptions({}));
+    const body = mcpBody("tools/list", "nodes-1");
+    const params = body.params as Record<string, unknown>;
+    params.extra = Array(50_000).fill(null);
 
     const response = await proxy.handle(mcpRequest(body));
 

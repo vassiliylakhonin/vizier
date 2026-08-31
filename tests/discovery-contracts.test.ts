@@ -57,6 +57,7 @@ describe("machine-readable discovery contracts", () => {
     expect(Object.keys(document.paths as object).sort()).toEqual([
       "/v1/authorizations",
       "/v1/covenants",
+      "/v1/insights",
       "/v1/outcomes",
       "/v1/verify",
     ]);

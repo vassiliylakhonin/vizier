@@ -44,7 +44,8 @@ Public surfaces:
 Discovery, health, documentation, and evaluation-only A2A calls are public.
 REST, MCP, and A2A enforcement require a private integration credential; no
 public demo credential is issued. Action Covenant resources are authenticated
-REST endpoints in v0.2.1.
+REST endpoints in v0.2.1. `GET /v1/insights` is also authenticated and returns
+only aggregate operational counts from the metadata-only audit store.
 
 ## 60-second quickstart
 
@@ -93,6 +94,8 @@ curl -sS http://127.0.0.1:8787/v1/verify \
 
 `POST /v1/verify` accepts one proposed action and its delegated authority.
 Malformed requests return a structured error and never produce `ALLOW`.
+JSON bodies are capped at 1 MiB, 64 levels, and 50,000 aggregate values before
+recursive schema validation.
 When `VIZIER_API_KEY` is absent, the service is in evaluation mode: valid
 requests can return `REVIEW` or `BLOCK`, never `ALLOW`. When the secret is
 configured, REST and MCP verification calls require `Authorization: Bearer
@@ -144,8 +147,10 @@ The v0.2.1 resources are additive; `/v1/verify` remains compatible.
 
 All three resources require authenticated enforcement and
 `RECEIPT_SIGNING_KEY`; there is no evaluation-only activation path. Covenants
-are caller-held immutable envelopes in this milestone. Vizier does not persist
-them or retrieve evidence independently.
+remain caller-held immutable envelopes in this milestone. Vizier stores bounded
+operational metadata and hashes asynchronously, but not full action parameters,
+evidence, signals, outcome effects, JWS tokens, or signing material. It does not
+retrieve evidence independently.
 
 ## Integration rule
 
@@ -187,17 +192,23 @@ prove that each supplied delegation was issued by the principal.
 | Amount or currency cannot be checked | `REVIEW` |
 | Target is blocked or absent from an allowlist | `BLOCK` |
 | Sensitive action lacks explicit sensitive authority | `REVIEW / SENSITIVE_ACTION_REVIEW` |
+| Authority requires reversibility and the action is not declared reversible | `REVIEW / IRREVERSIBLE_ACTION_REVIEW` |
 
 The default sensitive actions are `transfer_funds`, `delete_data`,
 `deploy_worker`, `execute_code`, `send_external_message`,
 `modify_permissions`, and `sign_contract`.
 
+`action.is_reversible` is an integration-supplied assertion, not an independently
+verified property. `require_review_for_irreversible` fails to `REVIEW` when that
+assertion is absent or false; it cannot prove a true assertion is accurate.
+
 ## Protocol endpoints
 
 - `GET /openapi.json` and `GET /.well-known/openapi.json` return the same
   OpenAPI 3.1 contract for `/v1/verify`, `/v1/covenants`,
-  `/v1/authorizations`, and `/v1/outcomes`. Request schemas are emitted from
-  the same Zod definitions used at the runtime boundary.
+  `/v1/authorizations`, `/v1/outcomes`, and the authenticated
+  `/v1/insights`. Request schemas are emitted from the same Zod definitions
+  used at the runtime boundary.
 - `GET /.well-known/ai-catalog.json` routes machines to both the A2A Agent Card
   and the OpenAPI contract.
 - `GET /.well-known/agent-card.json` returns an A2A v1.0 Agent Card with a
@@ -275,8 +286,15 @@ They use a dedicated receipt key and protected `typ` values for domain
 separation. The SDK obtains the matching public key from
 `/.well-known/jwks.json`, verifies the signature, and recomputes the covenant,
 request, action, evidence, signal, authorization-token, and outcome bindings
-before returning. Signed does not mean persisted, independently timestamped, or
-principal-issued.
+before returning. Signed does not mean independently timestamped or
+principal-issued. Vizier persists only selected receipt metadata and hashes; the
+complete signed receipt and token remain caller-held.
+
+`GET /v1/insights` exposes authenticated decision counts, lifecycle totals,
+average legacy risk score, and reported failure/violation count. These are
+best-effort operational aggregates: asynchronous audit writes can fail, and the
+numbers are not proof of production adoption or complete execution history.
+Metadata is retained for 30 days and pruned daily by a scheduled Worker handler.
 
 ## Development
 
@@ -343,7 +361,11 @@ action-taking agent.
 The deployment command is intentionally not part of `npm run build`. Without
 the secret, a deployment remains evaluation-only and cannot return `ALLOW`.
 
-The Worker uses no D1, KV, Durable Object, queue, AI model, or outbound fetch.
+The Worker uses D1 only for an asynchronous, metadata-only operational audit
+trail. The authorization decision path does not depend on D1 availability. It
+uses no KV, Durable Object, queue, AI model, or outbound fetch. `npm run check`
+applies every D1 migration in order to an in-memory SQLite database and verifies
+that legacy payload-bearing columns are removed.
 The repository structure and protocol sources are documented in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/ADR-0001-ACTION-COVENANTS.md](docs/ADR-0001-ACTION-COVENANTS.md),
@@ -353,7 +375,7 @@ The repository structure and protocol sources are documented in
 
 ## What is deferred
 
-Independent principal authentication, durable policy/evidence/receipt storage,
+Independent principal authentication, durable policy/evidence/full-receipt storage,
 principal-signed delegation and acceptance, billing, dashboards, reputation
 models, payment settlement, and LLM policy evaluation inside the privileged kernel
 remain outside v0.2.1. See

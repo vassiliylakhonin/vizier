@@ -23,6 +23,8 @@ interface FixtureOptions {
   readonly allowedTargets?: readonly string[];
   readonly blockedTargets?: readonly string[];
   readonly allowedSensitiveActions?: readonly string[];
+  readonly isReversible?: boolean;
+  readonly requireReviewForIrreversible?: boolean;
 }
 
 function fixture(options: FixtureOptions = {}): VerificationRequest {
@@ -39,6 +41,9 @@ function fixture(options: FixtureOptions = {}): VerificationRequest {
       type: options.actionType ?? "purchase",
       target: options.target ?? "supplier.example",
       parameters: options.parameters ?? { amount: 8_200, currency: "USD" },
+      ...(options.isReversible === undefined
+        ? {}
+        : { is_reversible: options.isReversible }),
     },
     authority: {
       allowed_actions: options.allowedActions ?? ["purchase"],
@@ -56,6 +61,12 @@ function fixture(options: FixtureOptions = {}): VerificationRequest {
         ...(options.allowedSensitiveActions === undefined
           ? {}
           : { allowed_sensitive_actions: options.allowedSensitiveActions }),
+        ...(options.requireReviewForIrreversible === undefined
+          ? {}
+          : {
+              require_review_for_irreversible:
+                options.requireReviewForIrreversible,
+            }),
       },
     },
     context: {
@@ -160,6 +171,30 @@ describe("policy engine", () => {
 
     expect(response.decision).toBe("REVIEW");
     expect(response.reason_codes).toContain("PRINCIPAL_UNVERIFIED");
+  });
+
+  it("reviews an irreversible action when delegated authority requires it", async () => {
+    const response = await verifyAction(
+      fixture({
+        isReversible: false,
+        requireReviewForIrreversible: true,
+      }),
+    );
+
+    expect(response.decision).toBe("REVIEW");
+    expect(response.reason_codes).toContain("IRREVERSIBLE_ACTION_REVIEW");
+  });
+
+  it("allows a declared reversible action under a reversibility requirement", async () => {
+    const response = await verifyAction(
+      fixture({
+        isReversible: true,
+        requireReviewForIrreversible: true,
+      }),
+    );
+
+    expect(response.decision).toBe("ALLOW");
+    expect(response.reason_codes).not.toContain("IRREVERSIBLE_ACTION_REVIEW");
   });
 
   it("fails schema validation for an omitted principal or unknown fields", () => {

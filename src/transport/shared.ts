@@ -1,16 +1,22 @@
 import { assertJsonComplexity, JsonComplexityError } from "../core/index";
 
-export const MAX_BODY_BYTES = 100 * 1024 * 1024;
+// JSON parsing temporarily holds encoded bytes, decoded text, and the parsed
+// object graph at the same time. Keep this well below the Worker's 128 MiB
+// memory limit while still allowing sizeable tool arguments and evidence.
+export const MAX_BODY_BYTES = 1024 * 1024;
 
 import type { D1Database } from "@cloudflare/workers-types";
+
+export interface BackgroundContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
 
 export interface TransportOptions {
   readonly apiKey?: string;
   readonly agentCardSigningKey?: string;
   readonly receiptSigningKey?: string;
   readonly db?: D1Database;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly ctx?: any;
+  readonly ctx?: BackgroundContext;
 }
 
 export class TransportRequestError extends Error {

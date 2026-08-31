@@ -122,4 +122,49 @@ describe("@vizier/sdk", () => {
       code: "INVALID_RESPONSE",
     });
   });
+
+  it("validates authenticated audit insights", async () => {
+    const insights = {
+      decisions: [
+        { decision: "ALLOW", count: 4 },
+        { decision: "REVIEW", count: 2 },
+        { decision: "BLOCK", count: 1 },
+      ],
+      authorization_decisions: [
+        { decision: "ALLOW", count: 3 },
+        { decision: "REVIEW", count: 1 },
+        { decision: "BLOCK", count: 0 },
+      ],
+      average_risk_score: 0.25,
+      failures: 1,
+      totals: {
+        verifications: 7,
+        covenants: 4,
+        authorizations: 4,
+        outcomes: 3,
+      },
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(insights));
+    const vizier = new Vizier({
+      baseUrl: "https://vizier.example",
+      apiKey: "sdk-test-key",
+      fetch: fetchMock,
+    });
+
+    await expect(vizier.getInsights()).resolves.toEqual(insights);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
+      Authorization: "Bearer sdk-test-key",
+    });
+  });
+
+  it("rejects malformed audit insights", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ decisions: [] }));
+    const vizier = new Vizier({ baseUrl: "https://vizier.example", fetch: fetchMock });
+
+    await expect(vizier.getInsights()).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
+  });
 });

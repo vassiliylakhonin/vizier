@@ -42,6 +42,24 @@ export const actionCovenantAuthorizationResponseContractSchema = z.strictObject(
   authorization_receipt: signedAuthorizationReceiptSchema,
 });
 
+const decisionCountSchema = z.strictObject({
+  decision: decisionSchema,
+  count: z.number().int().nonnegative(),
+});
+
+export const auditInsightsContractSchema = z.strictObject({
+  decisions: z.array(decisionCountSchema).length(3),
+  authorization_decisions: z.array(decisionCountSchema).length(3),
+  average_risk_score: z.number().finite().min(0).max(1),
+  failures: z.number().int().nonnegative(),
+  totals: z.strictObject({
+    verifications: z.number().int().nonnegative(),
+    covenants: z.number().int().nonnegative(),
+    authorizations: z.number().int().nonnegative(),
+    outcomes: z.number().int().nonnegative(),
+  }),
+});
+
 export const apiErrorContractSchema = z.strictObject({
   error: z.strictObject({
     code: z.string().trim().min(1).max(128),

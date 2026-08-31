@@ -20,16 +20,22 @@ The founder-supplied problem/solution fit targets are:
 - repeated machine-generated calls
 - at least 2 users willing to pay
 
-No target has been achieved or tested. The current implementation has no
-durable metrics store. Structured logs expose the fields needed to calculate
-call count and decision mix later. Counting unique agents, repeat use, and calls
-per integration requires authenticated integration IDs before a public pilot.
+No target has been achieved or tested. The Worker now keeps a durable,
+metadata-only operational audit and exposes authenticated aggregate counts at
+`GET /v1/insights`. It records decision/lifecycle metadata and hashes, not full
+requests, identities, targets, evidence, effects, tokens, or secrets. Because
+writes run asynchronously and may fail, these counts are not a complete ledger.
+Counting unique agents, repeat use, and calls per integration still requires an
+explicit authenticated integration ID before a public pilot. The store retains
+30 days, so `/v1/insights` is a rolling operational window rather than a
+lifetime counter.
 
 The private MCP proxy now emits an operator-supplied integration ID with request
 ID, tool name, decision, reason codes, receipt ID, outcome, and latency. It does
 not persist or aggregate those events. Until an independent participant uses the
 proxy in an existing action path, these fields are instrumentation capability,
-not usage evidence.
+not usage evidence. The Worker-level audit cannot attribute them to a particular
+proxy integration.
 
 The first internal test is 5–10 clean Git deployments routed through the full
 activation, authorization, execution, and outcome lifecycle in

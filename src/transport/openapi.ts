@@ -26,6 +26,7 @@ import {
 import {
   actionCovenantAuthorizationResponseContractSchema,
   apiErrorContractSchema,
+  auditInsightsContractSchema,
   verificationResponseContractSchema,
 } from "./contracts";
 
@@ -48,6 +49,7 @@ const schemas: ReadonlyArray<readonly [string, ZodType]> = [
   ["AuthorizationReceiptPayload", authorizationReceiptPayloadSchema],
   ["SignedAuthorizationReceipt", signedAuthorizationReceiptSchema],
   ["ActionCovenantAuthorizationResponse", actionCovenantAuthorizationResponseContractSchema],
+  ["AuditInsights", auditInsightsContractSchema],
   ["ExecutionOutcome", executionOutcomeSchema],
   ["OutcomeRecordingRequest", outcomeRecordingRequestSchema],
   ["OutcomeReceiptPayload", outcomeReceiptPayloadSchema],
@@ -143,6 +145,11 @@ export function createOpenApiDocument(
         description:
           "Authenticated activation, exact-action authorization, and reported-outcome binding.",
       },
+      {
+        name: "Audit",
+        description:
+          "Authenticated aggregate counts over metadata-only operational records.",
+      },
     ],
     security: [{ bearerAuth: [] }],
     paths: {
@@ -208,6 +215,21 @@ export function createOpenApiDocument(
           },
         },
       },
+      "/v1/insights": {
+        get: {
+          operationId: "getAuditInsights",
+          tags: ["Audit"],
+          summary: "Read aggregate authorization and outcome counts",
+          description:
+            "Returns authenticated operational aggregates. The audit store excludes action parameters, evidence, signals, outcome effects, credentials, and JWS tokens. Counts are best-effort instrumentation, not proof of adoption or complete execution history.",
+          responses: {
+            "200": successResponse("Metadata-only audit aggregates.", "AuditInsights"),
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "500": { $ref: "#/components/responses/InternalError" },
+            "503": { $ref: "#/components/responses/ServiceUnavailable" },
+          },
+        },
+      },
     },
     components: {
       securitySchemes: {
@@ -222,7 +244,7 @@ export function createOpenApiDocument(
       responses: {
         BadRequest: errorResponse("Malformed JSON request."),
         Unauthorized: errorResponse("Missing or invalid integration credential."),
-        PayloadTooLarge: errorResponse("Request exceeds the 64 KiB body limit."),
+        PayloadTooLarge: errorResponse("Request exceeds the 1 MiB body limit."),
         UnsupportedMediaType: errorResponse("Content-Type must be application/json."),
         ValidationError: errorResponse("Request failed schema or lifecycle validation."),
         ServiceUnavailable: errorResponse(

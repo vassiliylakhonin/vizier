@@ -21,7 +21,13 @@ import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
 import { createJwks, maybeSignAgentCard } from "./jws";
 import { createOpenApiDocument } from "./openapi";
-import { storeReceipt, storeCovenant, storeOutcome, getInsights } from "../storage/audit";
+import {
+  getInsights,
+  storeAuthorization,
+  storeCovenant,
+  storeOutcome,
+  storeReceipt,
+} from "../storage/audit";
 
 interface ApiErrorBody {
   readonly error: {
@@ -56,25 +62,60 @@ function validationDetails(error: {
   }));
 }
 
-async function requireCovenantEnforcement(
+function persistAuditMetadata(
+  options: TransportOptions,
+  event: string,
+  identifiers: Readonly<Record<string, string>>,
+  write: (db: NonNullable<TransportOptions["db"]>) => Promise<void>,
+): void {
+  const { db, ctx } = options;
+  if (db === undefined || ctx === undefined) {
+    return;
+  }
+  ctx.waitUntil(
+    write(db).catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          event,
+          ...identifiers,
+          error: error instanceof Error ? error.name : "UnknownError",
+        }),
+      );
+    }),
+  );
+}
+
+async function requireAuthenticatedIntegration(
   request: Request,
   options: TransportOptions,
-): Promise<string> {
+  resourceName: string,
+): Promise<void> {
   const authorization = await authorizeEnforcement(request, options.apiKey);
   if (authorization === "denied") {
     throw new TransportRequestError(
       401,
       "AUTHENTICATION_REQUIRED",
-      "A valid Bearer token is required for Action Covenant resources.",
+      `A valid Bearer token is required for ${resourceName}.`,
     );
   }
   if (authorization === "evaluation") {
     throw new TransportRequestError(
       503,
       "ENFORCEMENT_UNAVAILABLE",
-      "Action Covenant resources require configured enforcement.",
+      `${resourceName} requires configured enforcement.`,
     );
   }
+}
+
+async function requireCovenantEnforcement(
+  request: Request,
+  options: TransportOptions,
+): Promise<string> {
+  await requireAuthenticatedIntegration(
+    request,
+    options,
+    "Action Covenant resources",
+  );
   if (
     options.receiptSigningKey === undefined ||
     options.receiptSigningKey.length === 0
@@ -140,13 +181,12 @@ async function handleVerify(
       latency_ms: Number((performance.now() - startedAt).toFixed(2)),
     }),
   );
-  if (options.db !== undefined && options.ctx !== undefined) {
-    options.ctx.waitUntil(
-      storeReceipt(options.db, normalizedRequest, result.receipt).catch((error: unknown) =>
-        console.error("Failed to store receipt", error),
-      ),
-    );
-  }
+  persistAuditMetadata(
+    options,
+    "vizier.audit.receipt.failed",
+    { receipt_id: result.receipt.id },
+    (db) => storeReceipt(db, normalizedRequest, result.receipt),
+  );
   return jsonResponse(result);
 }
 
@@ -175,13 +215,12 @@ async function handleCovenantActivation(
       expires_at: covenant.draft.expires_at,
     }),
   );
-  if (options.db !== undefined && options.ctx !== undefined) {
-    options.ctx.waitUntil(
-      storeCovenant(options.db, covenant).catch((error: unknown) =>
-        console.error("Failed to store covenant", error),
-      ),
-    );
-  }
+  persistAuditMetadata(
+    options,
+    "vizier.audit.covenant.failed",
+    { covenant_id: covenant.id },
+    (db) => storeCovenant(db, covenant),
+  );
   return jsonResponse(covenant, 201);
 }
 
@@ -220,6 +259,12 @@ async function handleCovenantAuthorization(
       reason_codes: result.reason_codes,
     }),
   );
+  persistAuditMetadata(
+    options,
+    "vizier.audit.authorization.failed",
+    { receipt_id: result.authorization_receipt.payload.id },
+    (db) => storeAuthorization(db, result.authorization_receipt),
+  );
   return jsonResponse(result);
 }
 
@@ -253,14 +298,28 @@ async function handleOutcomeRecording(
       compliance: result.payload.compliance,
     }),
   );
-  if (options.db !== undefined && options.ctx !== undefined) {
-    options.ctx.waitUntil(
-      storeOutcome(options.db, result, parsed.data.outcome).catch((error: unknown) =>
-        console.error("Failed to store outcome", error),
-      ),
+  persistAuditMetadata(
+    options,
+    "vizier.audit.outcome.failed",
+    { receipt_id: result.payload.id },
+    (db) => storeOutcome(db, result, parsed.data.outcome),
+  );
+  return jsonResponse(result, 201);
+}
+
+async function handleInsights(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "Audit insights");
+  if (options.db === undefined) {
+    throw new TransportRequestError(
+      503,
+      "INSIGHTS_UNAVAILABLE",
+      "Audit insights require a configured database.",
     );
   }
-  return jsonResponse(result, 201);
+  return jsonResponse(await getInsights(options.db));
 }
 
 function rootDocument(): Response {
@@ -282,6 +341,7 @@ function rootDocument(): Response {
     covenants: "/v1/covenants",
     authorizations: "/v1/authorizations",
     outcomes: "/v1/outcomes",
+    insights: "/v1/insights",
     a2a: "/.well-known/agent-card.json",
     mcp: "/mcp",
   });
@@ -295,12 +355,18 @@ function docsDocument(): Response {
       activate_covenant: "POST /v1/covenants",
       authorize_covenant_action: "POST /v1/authorizations",
       record_outcome: "POST /v1/outcomes",
+      audit_insights: "GET /v1/insights",
     },
     content_type: "application/json",
     request_schema: {
       agent: { id: "string", owner: "string | null" },
       principal: "{ id: string } | null",
-      action: { type: "string", target: "string", parameters: "JSON object" },
+      action: {
+        type: "string",
+        target: "string",
+        parameters: "JSON object",
+        is_reversible: "boolean (optional; supplied assertion)",
+      },
       authority: {
         allowed_actions: ["string"],
         constraints: {
@@ -309,6 +375,7 @@ function docsDocument(): Response {
           allowed_targets: ["string (optional)"],
           blocked_targets: ["string (optional)"],
           allowed_sensitive_actions: ["string (optional)"],
+          require_review_for_irreversible: "boolean (optional)",
         },
       },
       context: {
@@ -324,6 +391,8 @@ function docsDocument(): Response {
         "VIZIER_API_KEY configured: Bearer credential required for verification",
       covenant_mode:
         "VIZIER_API_KEY and RECEIPT_SIGNING_KEY configured: authenticated lifecycle with ES256 receipts",
+      insights_mode:
+        "VIZIER_API_KEY and D1 configured: authenticated metadata-only operational counts",
     },
     machine_contracts: {
       openapi_3_1: "/openapi.json",
@@ -460,14 +529,7 @@ export async function handleHttpRequest(
       return await handleOutcomeRecording(request, options, url.origin);
     }
     if (request.method === "GET" && url.pathname === "/v1/insights") {
-      if (options.db === undefined) {
-        return jsonResponse({ error: { code: "INSIGHTS_UNAVAILABLE", message: "Database not configured." } }, 503);
-      }
-      const authorization = await authorizeEnforcement(request, options.apiKey);
-      if (authorization === "denied") {
-        return jsonResponse({ error: { code: "AUTHENTICATION_REQUIRED", message: "Bearer token required." } }, 401);
-      }
-      return jsonResponse(await getInsights(options.db));
+      return await handleInsights(request, options);
     }
     if (url.pathname === "/v1/verify") {
       return jsonResponse(
@@ -497,6 +559,18 @@ export async function handleHttpRequest(
         { Allow: "POST" },
       );
     }
+    if (url.pathname === "/v1/insights") {
+      return jsonResponse(
+        {
+          error: {
+            code: "METHOD_NOT_ALLOWED",
+            message: "Use GET for this endpoint.",
+          },
+        },
+        405,
+        { Allow: "GET" },
+      );
+    }
     return jsonResponse(
       {
         error: {
@@ -518,6 +592,7 @@ export async function handleHttpRequest(
               "POST /v1/covenants": "activate an accepted Action Covenant",
               "POST /v1/authorizations": "authorize an exact covenant action",
               "POST /v1/outcomes": "bind an execution outcome to an authorization",
+              "GET /v1/insights": "authenticated metadata-only audit counts",
             },
             contact: "vassiliy.lakhonin@gmail.com",
           },

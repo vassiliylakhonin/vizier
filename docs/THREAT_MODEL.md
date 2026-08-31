@@ -12,6 +12,7 @@ issuer, evidence oracle, or execution observer.
 - the binding between the request and its receipt hash
 - the availability of the verification endpoint
 - request metadata that may identify an agent or principal
+- the confidentiality and integrity of metadata retained in D1
 - the private Agent Card signing key
 - the private authorization and outcome receipt signing key
 - the binding from accepted draft to covenant, exact action, authorization, and
@@ -35,11 +36,11 @@ The integrating application remains responsible for placing Vizier before the
 action and refusing to execute on `REVIEW`, `BLOCK`, timeout, malformed output,
 or network failure.
 
-## Controls in v0.1
+## Runtime controls
 
 - strict schemas reject unknown fields at the REST policy boundary
-- request bodies are capped at 64 KiB, including chunked bodies
-- JSON is rejected above 32 levels or 4,096 aggregate values before recursive
+- request bodies are capped at 1 MiB, including chunked bodies
+- JSON is rejected above 64 levels or 50,000 aggregate values before recursive
   schema validation
 - the default evaluation mode never returns `ALLOW`
 - enforcement mode requires a constant-time checked Bearer credential
@@ -71,6 +72,17 @@ or network failure.
   silently returning an unsigned Agent Card
 - MCP validates `Origin` when present and checks mirrored metadata headers
 - logs contain IDs, decision, reason codes, and latency, not action parameters
+- D1 stores bounded operational metadata and hashes, not action parameters,
+  targets, agent or principal IDs, evidence, signals, outcome effects, JWS
+  tokens, credentials, or signing material
+- D1 writes run after the response through `waitUntil()` and cannot turn a
+  decision fail-open or fail-closed
+- audit insights require configured enforcement plus the correct Bearer token
+  and are validated by the SDK against a strict response contract
+- a daily scheduled handler removes audit metadata older than 30 days across
+  verification, covenant, authorization, and outcome tables
+- the repository check applies the ordered migrations to in-memory SQLite and
+  asserts that legacy payload-bearing columns are absent
 - error responses do not include stack traces or arbitrary payloads
 - the private MCP proxy requires its own Bearer token for tool calls, replaces
   it with a separate upstream credential, and never forwards the Vizier key
@@ -84,13 +96,19 @@ or network failure.
 ## Known limits
 
 - No per-principal authentication, rate limiting, durable policy/evidence store,
-  or receipt store.
+  or full-receipt store.
 - Authority is asserted by the authenticated integration and is not signed or
   loaded from a principal-controlled store. An action-taking agent that gains
   the integration credential or can alter the controlled backend's `authority`
   input can still grant itself permission.
-- Legacy `/v1/verify` receipts remain unsigned. Covenant receipts are signed but
-  not persisted or independently timestamped.
+- Legacy `/v1/verify` receipts remain unsigned. Complete covenant receipts and
+  JWS tokens remain caller-held and are not independently timestamped; D1 keeps
+  only selected receipt metadata and hashes.
+- D1 metadata writes are asynchronous and best-effort. Insights can undercount,
+  provide no per-integration attribution, and must not be treated as a complete
+  audit ledger or adoption proof. Retention is time-based; selective deletion
+  for one integration or data subject is not implemented because those
+  identifiers are intentionally not stored.
 - The integration can fabricate an acceptance, evidence observation,
   invalidation feed, or outcome because Vizier does not retrieve or observe any
   of them independently. Hashes prove binding and tamper evidence, not truth.
@@ -107,6 +125,9 @@ or network failure.
   account identifiers, URLs, or Unicode.
 - Amount checks assume one numeric `amount` and an exact three-letter currency.
   There is no exchange-rate conversion or unit handling.
+- `action.is_reversible` is supplied by the authenticated integration and is
+  not independently established. Requiring review for an omitted or false value
+  is a policy guardrail, not proof that a true value is correct.
 - The open A2A and MCP surfaces support one synchronous operation. They do not
   implement streaming, tasks beyond the immediate response, push delivery, or
   legacy protocol versions.
@@ -122,7 +143,7 @@ or network failure.
   constraints beyond the current Vizier policy schema; the receipt binds the
   supplied arguments but does not prove they are safe.
 - The proxy supports one stateless HTTP upstream and non-streaming JSON
-  responses capped at 64 KiB. It is not a multi-tenant gateway and does not
+  responses capped at 1 MiB. It is not a multi-tenant gateway and does not
   persist per-integration usage metrics.
 - Embedded callers can inject a verifier, network client, and log sink. The CLI
   uses the validating Vizier SDK, refuses redirects, and constrains destinations;

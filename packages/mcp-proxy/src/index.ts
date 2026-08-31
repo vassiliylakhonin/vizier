@@ -9,9 +9,9 @@ import type {
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 export const MCP_PROXY_ACTION_TYPE = "mcp_tool_call";
 
-const MAX_BODY_BYTES = 100 * 1024 * 1024;
-const MAX_JSON_DEPTH = 256;
-const MAX_JSON_VALUES = 1_000_000;
+const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_JSON_DEPTH = 64;
+const MAX_JSON_VALUES = 50_000;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 const identifierSchema = z.string().trim().min(1).max(256);

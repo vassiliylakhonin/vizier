@@ -1,6 +1,6 @@
 # Claim ledger
 
-Checked on 2026-08-26.
+Checked on 2026-08-31.
 
 | Claim | Source | Exact support | Status |
 | --- | --- | --- | --- |
@@ -11,7 +11,9 @@ Checked on 2026-08-26.
 | MCP 2026-07-28 is stateless per request and requires `server/discover`. | https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle | The official lifecycle page removes the negotiation handshake and requires `server/discover`. | supported |
 | Modern MCP Streamable HTTP validates `Origin` and mirrored request headers. | https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http | The official transport page requires `Origin`, `MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` validation. | supported |
 | Zod 4 can emit JSON Schema 2020-12 for the MCP tool definition. | https://zod.dev/json-schema | The official Zod page documents `z.toJSONSchema()` and Draft 2020-12 as the default target. | supported |
-| The public OpenAPI 3.1 document covers all four REST resources and its request schemas come from the runtime Zod schemas. | `src/transport/openapi.ts` and `tests/discovery-contracts.test.ts` | The generator registers the runtime request schemas; the contract test asserts all four paths and resolves every internal schema reference. | supported |
+| The public OpenAPI 3.1 document covers all five REST resources and its request schemas come from the runtime Zod schemas. | `src/transport/openapi.ts` and `tests/discovery-contracts.test.ts` | The generator registers the runtime request schemas plus the strict insights response schema; the contract test asserts all five paths and resolves every internal schema reference. | supported |
+| The D1 audit excludes caller payloads and `/v1/insights` requires authenticated enforcement. | `migrations/0002_harden_audit_metadata.sql`, `src/storage/audit.ts`, `src/transport/http.ts`, and local tests | Migration 0002 removes payload-bearing columns, storage inserts only bounded metadata and hashes, and transport tests cover unavailable and unauthenticated insights. | supported for repository code; live migration state requires deployment verification |
+| Audit metadata is retained for 30 days and migrations cannot silently reintroduce the original payload columns. | `src/index.ts`, `src/storage/audit.ts`, `wrangler.jsonc`, `scripts/check-migrations.mjs`, and local tests | The daily cron schedules one bounded prune batch; the repository check applies ordered migrations to a seeded original schema and asserts the sensitive columns are absent. | supported for repository code; live cron and migration state require deployment verification |
 | Vizier publishes a machine catalog that routes callers to both the A2A Agent Card and the OpenAPI contract. | `src/transport/catalog.ts` and `tests/discovery-contracts.test.ts` | The catalog contains one A2A entry and one OpenAPI 3.1 entry; the route test checks both URLs and media types. | supported |
 | Vizier has production users, pilots, or revenue. | none | No evidence exists. | unsupported |
 | Vizier evaluation mode cannot return `ALLOW`. | local tests | REST, A2A, and MCP tests assert `REVIEW` without authenticated authority; A2A tests also cover anonymous evaluation while `VIZIER_API_KEY` is configured and rejection of a wrong credential. | supported |

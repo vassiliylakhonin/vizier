@@ -62,6 +62,19 @@ export interface VerificationResponse {
   };
 }
 
+export interface AuditInsights {
+  decisions: Array<{ decision: Decision; count: number }>;
+  authorization_decisions: Array<{ decision: Decision; count: number }>;
+  average_risk_score: number;
+  failures: number;
+  totals: {
+    verifications: number;
+    covenants: number;
+    authorizations: number;
+    outcomes: number;
+  };
+}
+
 export type DraftAuthorKind = "MODEL" | "HUMAN" | "SYSTEM";
 
 export interface ActionCovenantDraft {
@@ -257,6 +270,24 @@ const verificationResponseSchema = z.strictObject({
     risk_score: z.number().finite().min(0).max(1),
     policy_rule_ids: z.array(z.string().min(1).max(256)).min(1).max(100),
     reason_codes: z.array(reasonCodeSchema).max(100),
+  }),
+});
+
+const decisionCountSchema = z.strictObject({
+  decision: decisionSchema,
+  count: z.number().int().nonnegative(),
+});
+
+const auditInsightsSchema = z.strictObject({
+  decisions: z.array(decisionCountSchema).length(3),
+  authorization_decisions: z.array(decisionCountSchema).length(3),
+  average_risk_score: z.number().finite().min(0).max(1),
+  failures: z.number().int().nonnegative(),
+  totals: z.strictObject({
+    verifications: z.number().int().nonnegative(),
+    covenants: z.number().int().nonnegative(),
+    authorizations: z.number().int().nonnegative(),
+    outcomes: z.number().int().nonnegative(),
   }),
 });
 
@@ -831,7 +862,7 @@ export class Vizier {
 
   async getInsights(
     options: VerifyOptions = {},
-  ): Promise<Record<string, unknown>> {
+  ): Promise<AuditInsights> {
     const response = await this.#fetch(`${this.#baseUrl}/v1/insights`, {
       method: "GET",
       headers: {
@@ -848,8 +879,25 @@ export class Vizier {
         "REQUEST_FAILED",
       );
     }
-    const body = await response.json();
-    return body as Record<string, unknown>;
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new VizierError(
+        "Vizier returned a non-JSON insights response.",
+        response.status,
+        "INVALID_RESPONSE",
+      );
+    }
+    const parsed = auditInsightsSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new VizierError(
+        "Vizier returned an invalid insights contract.",
+        response.status,
+        "INVALID_RESPONSE",
+      );
+    }
+    return parsed.data;
   }
 
   async recordOutcome(

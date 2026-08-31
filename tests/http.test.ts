@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { D1Database } from "@cloudflare/workers-types";
 
 import { handleHttpRequest } from "../src/transport/http";
 
@@ -133,23 +134,33 @@ describe("REST transport", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Content-Length": "104857601",
+        "Content-Length": "1048577",
       },
-      // We don't actually pass 100MB here because the worker doesn't stream 
-      // the real body in this mock, it just looks at the header first
-      body: JSON.stringify({ padding: "x" }), 
+      // The declared length is rejected before the body is buffered.
+      body: JSON.stringify({ padding: "x" }),
     });
     const response = await handleHttpRequest(request);
+    const streamed = await handleHttpRequest(
+      new Request("https://vizier.example/v1/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ padding: "x".repeat(1024 * 1024) }),
+      }),
+    );
 
     expect(response.status).toBe(413);
     await expect(response.json()).resolves.toMatchObject({
+      error: { code: "PAYLOAD_TOO_LARGE" },
+    });
+    expect(streamed.status).toBe(413);
+    await expect(streamed.json()).resolves.toMatchObject({
       error: { code: "PAYLOAD_TOO_LARGE" },
     });
   });
 
   it("rejects deeply nested JSON before recursive schema validation", async () => {
     let nested: unknown = "leaf";
-    for (let index = 0; index < 260; index += 1) {
+    for (let index = 0; index < 68; index += 1) {
       nested = [nested];
     }
     const response = await postJson({ nested });
@@ -157,6 +168,37 @@ describe("REST transport", () => {
     expect(response.status).toBe(413);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "JSON_TOO_COMPLEX" },
+    });
+  });
+
+  it("rejects JSON with too many aggregate values", async () => {
+    const response = await postJson({ values: Array(50_000).fill(null) });
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "JSON_TOO_COMPLEX" },
+    });
+  });
+
+  it("keeps audit insights unavailable without authenticated enforcement", async () => {
+    const unavailable = await handleHttpRequest(
+      new Request("https://vizier.example/v1/insights"),
+    );
+    const unauthenticated = await handleHttpRequest(
+      new Request("https://vizier.example/v1/insights"),
+      {
+        apiKey: TEST_API_KEY,
+        db: Object.create(null) as D1Database,
+      },
+    );
+
+    expect(unavailable.status).toBe(503);
+    await expect(unavailable.json()).resolves.toMatchObject({
+      error: { code: "ENFORCEMENT_UNAVAILABLE" },
+    });
+    expect(unauthenticated.status).toBe(401);
+    await expect(unauthenticated.json()).resolves.toMatchObject({
+      error: { code: "AUTHENTICATION_REQUIRED" },
     });
   });
 

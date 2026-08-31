@@ -7,7 +7,7 @@ fit MVP:
 - registry scraping and automatic agent discovery
 - blockchain, payment settlement, or per-call payments
 - principal-signed delegation and covenant acceptance
-- durable receipt storage, key revocation, transparency logging, or independent
+- durable full-receipt storage, key revocation, transparency logging, or independent
   timestamping
 - independent evidence and invalidation-signal retrieval
 - principal-level IAM or identity provider integration beyond the v0.2

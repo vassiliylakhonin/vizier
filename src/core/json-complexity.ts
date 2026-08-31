@@ -1,5 +1,5 @@
-export const MAX_JSON_DEPTH = 256;
-export const MAX_JSON_NODES = 1_000_000;
+export const MAX_JSON_DEPTH = 64;
+export const MAX_JSON_NODES = 50_000;
 
 export class JsonComplexityError extends Error {
   constructor(readonly reason: "depth" | "nodes" | "cycle") {
