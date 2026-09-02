@@ -215,3 +215,107 @@ describe("REST transport", () => {
     expect(missing.status).toBe(404);
   });
 });
+
+function limiter(success: boolean, keys: string[] = []) {
+  return {
+    limit: async ({ key }: { key: string }) => {
+      keys.push(key);
+      return { success };
+    },
+  };
+}
+
+function mcpCall(headers: Record<string, string> = {}): Request {
+  return new Request("https://vizier.example/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "CF-Connecting-IP": "203.0.113.7",
+      ...headers,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+  });
+}
+
+describe("anonymous rate limit", () => {
+  it("turns an anonymous MCP call away with 429 once the budget is spent", async () => {
+    const keys: string[] = [];
+    const response = await handleHttpRequest(mcpCall(), {
+      apiKey: TEST_API_KEY,
+      anonymousRateLimiter: limiter(false, keys),
+    });
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(keys).toEqual(["203.0.113.7"]);
+    await expect(response.json()).resolves.toMatchObject({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32029 },
+    });
+  });
+
+  it("turns an anonymous A2A call away the same way", async () => {
+    const response = await handleHttpRequest(
+      new Request("https://vizier.example/a2a", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "SendMessage" }),
+      }),
+      { apiKey: TEST_API_KEY, anonymousRateLimiter: limiter(false) },
+    );
+
+    expect(response.status).toBe(429);
+  });
+
+  // A wrong token must not buy a way out of the budget.
+  it("counts a request carrying a wrong credential", async () => {
+    const keys: string[] = [];
+    const response = await handleHttpRequest(
+      mcpCall({ Authorization: "Bearer wrong-key" }),
+      { apiKey: TEST_API_KEY, anonymousRateLimiter: limiter(false, keys) },
+    );
+
+    expect(response.status).toBe(429);
+    expect(keys).toHaveLength(1);
+  });
+
+  it("never counts an authenticated integration", async () => {
+    const keys: string[] = [];
+    const response = await handleHttpRequest(
+      mcpCall({ Authorization: `Bearer ${TEST_API_KEY}` }),
+      { apiKey: TEST_API_KEY, anonymousRateLimiter: limiter(false, keys) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(keys).toEqual([]);
+  });
+
+  it("lets an anonymous call through while the budget holds", async () => {
+    const response = await handleHttpRequest(mcpCall(), {
+      apiKey: TEST_API_KEY,
+      anonymousRateLimiter: limiter(true),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("attributes a request with no client IP to one shared bucket", async () => {
+    const keys: string[] = [];
+    const request = mcpCall();
+    request.headers.delete("CF-Connecting-IP");
+    await handleHttpRequest(request, {
+      apiKey: TEST_API_KEY,
+      anonymousRateLimiter: limiter(false, keys),
+    });
+
+    expect(keys).toEqual(["unattributed"]);
+  });
+
+  it("applies no limit when the binding is absent", async () => {
+    const response = await handleHttpRequest(mcpCall(), { apiKey: TEST_API_KEY });
+
+    expect(response.status).toBe(200);
+  });
+});

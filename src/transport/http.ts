@@ -20,6 +20,7 @@ import { createAiCatalog, createMcpServerManifest } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
 import { createJwks, maybeSignAgentCard } from "./jws";
+import { SERVICE_VERSION } from "../version";
 import { createOpenApiDocument } from "./openapi";
 import {
   getInsights,
@@ -325,7 +326,7 @@ async function handleInsights(
 function rootDocument(): Response {
   return jsonResponse({
     name: "Vizier",
-    version: "0.2.1",
+    version: SERVICE_VERSION,
     tagline: "Every agent. Every action. Verified.",
     description: "Deterministic authorization checks for actions proposed by AI agents.",
     limitations: [
@@ -350,7 +351,7 @@ function rootDocument(): Response {
 
 function docsDocument(): Response {
   return jsonResponse({
-    api_version: "v0.2.1",
+    api_version: `v${SERVICE_VERSION}`,
     endpoints: {
       verify: "POST /v1/verify",
       activate_covenant: "POST /v1/covenants",
@@ -427,6 +428,54 @@ function examplesDocument(): Response {
       expected_reason: "SENSITIVE_ACTION_REVIEW",
     },
   });
+}
+
+// Two endpoints answer without a credential: evaluation-only A2A since v0.2,
+// and evaluation-only MCP since the registry listing made /mcp discoverable by
+// design. Both run the full deterministic kernel on every call and neither
+// writes to the audit store, so the exposure is CPU rather than storage, and
+// nothing in this Worker bounded it before 2026-09-02.
+//
+// The check runs the credential comparison itself rather than looking for an
+// Authorization header, so a caller cannot leave the budget by attaching a
+// wrong token. Authenticated integrations are bounded by credential issuance
+// instead and are never counted here.
+async function overAnonymousBudget(
+  request: Request,
+  options: TransportOptions,
+): Promise<boolean> {
+  const limiter = options.anonymousRateLimiter;
+  if (limiter === undefined) {
+    return false;
+  }
+  const authorization = await authorizeEnforcement(request, options.apiKey, {
+    allowMissingCredentialForEvaluation: true,
+  });
+  if (authorization === "authenticated") {
+    return false;
+  }
+  const { success } = await limiter.limit({
+    key: request.headers.get("CF-Connecting-IP") ?? "unattributed",
+  });
+  return !success;
+}
+
+// Both endpoints behind this gate speak JSON-RPC 2.0, and the body has not been
+// read yet, so the error carries a null id.
+function rateLimitedResponse(): Response {
+  return jsonResponse(
+    {
+      jsonrpc: "2.0",
+      id: null,
+      error: {
+        code: -32029,
+        message:
+          "Anonymous request rate limit exceeded. Retry in 60 seconds, or use an integration credential.",
+      },
+    },
+    429,
+    { "Retry-After": "60" },
+  );
 }
 
 export async function handleHttpRequest(
@@ -509,9 +558,15 @@ export async function handleHttpRequest(
         url.pathname === "/" ||
         url.pathname === "/message/send")
     ) {
+      if (await overAnonymousBudget(request, options)) {
+        return rateLimitedResponse();
+      }
       return await handleA2aRequest(request, options);
     }
     if (request.method === "POST" && url.pathname === "/mcp") {
+      if (await overAnonymousBudget(request, options)) {
+        return rateLimitedResponse();
+      }
       return await handleMcpRequest(request, options);
     }
     if (url.pathname === "/mcp") {

@@ -29,6 +29,7 @@ import {
   auditInsightsContractSchema,
   verificationResponseContractSchema,
 } from "./contracts";
+import { SERVICE_VERSION } from "../version";
 
 const registry = z.registry<{ id: string }>();
 const schemas: ReadonlyArray<readonly [string, ZodType]> = [
@@ -129,7 +130,7 @@ export function createOpenApiDocument(
     jsonSchemaDialect: "https://json-schema.org/draft/2020-12/schema",
     info: {
       title: "Vizier action authorization API",
-      version: "0.2.1",
+      version: SERVICE_VERSION,
       description:
         "Deterministic authorization for exact agent actions. The integration supplies authority, evidence, invalidation signals, and reported outcomes. Vizier verifies structure, freshness, exact matching, and cryptographic bindings; it does not independently establish that supplied facts or reported execution are true.",
       contact: {

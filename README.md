@@ -45,7 +45,9 @@ Public surfaces:
 
 Discovery, health, documentation, and evaluation-only A2A and MCP calls are
 public. REST, MCP, and A2A enforcement require a private integration credential;
-no public demo credential is issued. Action Covenant resources are authenticated
+no public demo credential is issued. The two credential-free endpoints are rate
+limited to 60 requests per minute per client IP; an authenticated integration is
+never counted against that budget. Action Covenant resources are authenticated
 REST endpoints in v0.2.1. `GET /v1/insights` is also authenticated and returns
 only aggregate operational counts from the metadata-only audit store.
 
@@ -287,6 +289,11 @@ The credential is optional at connect time. An anonymous `tools/call` runs in
 evaluation mode: the decision is real but the supplied authority is untrusted, so
 it can never return `ALLOW`. The credential unlocks enforcement results, and a
 credential that is supplied and wrong is rejected with `-32001`.
+
+Anonymous calls share a budget of 60 requests per minute per client IP. Past it
+the endpoint answers `429` with JSON-RPC error `-32029` and a `Retry-After`
+header. Attaching a wrong credential does not leave that budget; a valid one
+does.
 
 ```bash
 claude mcp add --transport http vizier \

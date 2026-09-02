@@ -8,6 +8,7 @@ import {
   TransportRequestError,
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
+import { SERVICE_VERSION } from "../version";
 
 const MCP_PROTOCOL_VERSION = "2026-07-28";
 
@@ -28,7 +29,7 @@ const DEFAULT_SESSION_PROTOCOL_VERSION = "2025-06-18";
 const SERVER_INFO = Object.freeze({
   name: "vizier",
   title: "Vizier",
-  version: "0.2.1",
+  version: SERVICE_VERSION,
   description: "Deterministic authorization checks for actions proposed by AI agents.",
 });
 const SERVER_INSTRUCTIONS =

@@ -8,9 +8,16 @@ import {
   MCP_SERVER_SCHEMA,
 } from "../src/transport/catalog";
 import { verificationResponseContractSchema } from "../src/transport/contracts";
+import { SERVICE_VERSION } from "../src/version";
 
 const ORIGIN = "https://vizier.example";
 const PUBLISHED_ORIGIN = "https://vizier.vassiliy-lakhonin.workers.dev";
+
+function readJson(relativePath: string): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
 
 function publishedServerJson(): unknown {
   return JSON.parse(
@@ -142,6 +149,39 @@ describe("machine-readable discovery contracts", () => {
     expect(createMcpServerManifest(PUBLISHED_ORIGIN)).toEqual(
       publishedServerJson(),
     );
+  });
+
+  // The version had been copied into nine files. A release that updates some
+  // and not the rest is silent at runtime, and one of the copies now lives in
+  // the MCP Registry, which only changes on an explicit `mcp-publisher publish`.
+  it.each([
+    "package.json",
+    "server.json",
+    "packages/sdk/package.json",
+    "packages/mcp-proxy/package.json",
+    "packages/gated-deploy/package.json",
+  ])("keeps %s on the one service version", (path) => {
+    expect(readJson(path).version).toBe(SERVICE_VERSION);
+  });
+
+  it("reports the same version on every public surface", async () => {
+    const [root, docs, openapi, card, manifest] = await Promise.all([
+      get("/").then((response) => response.json()),
+      get("/docs").then((response) => response.json()),
+      get("/openapi.json").then((response) => response.json()),
+      get("/.well-known/agent-card.json").then((response) => response.json()),
+      get("/.well-known/mcp.json").then((response) => response.json()),
+    ]);
+
+    expect((root as { version: string }).version).toBe(SERVICE_VERSION);
+    expect((docs as { api_version: string }).api_version).toBe(
+      `v${SERVICE_VERSION}`,
+    );
+    expect((openapi as { info: { version: string } }).info.version).toBe(
+      SERVICE_VERSION,
+    );
+    expect((card as { version: string }).version).toBe(SERVICE_VERSION);
+    expect((manifest as { version: string }).version).toBe(SERVICE_VERSION);
   });
 
   it("keeps the documented verification response aligned with runtime output", async () => {

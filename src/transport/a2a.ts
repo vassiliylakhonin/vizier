@@ -8,6 +8,7 @@ import {
   TransportRequestError,
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
+import { SERVICE_VERSION } from "../version";
 
 const A2A_PROTOCOL_VERSION = "1.0";
 
@@ -165,7 +166,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
         protocolVersion: A2A_PROTOCOL_VERSION,
       },
     ],
-    version: "0.2.1",
+    version: SERVICE_VERSION,
     documentationUrl: `${origin}/docs`,
     capabilities: {
       streaming: false,

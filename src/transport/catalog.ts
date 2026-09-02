@@ -1,3 +1,5 @@
+import { SERVICE_VERSION } from "../version";
+
 export const MCP_SERVER_SCHEMA =
   "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
 
@@ -94,7 +96,7 @@ export function createMcpServerManifest(
     title: "Vizier",
     description:
       "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
-    version: "0.2.1",
+    version: SERVICE_VERSION,
     websiteUrl: `${origin}/docs`,
     remotes: [
       {

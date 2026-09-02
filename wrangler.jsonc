@@ -18,6 +18,18 @@
   "triggers": {
     "crons": ["17 3 * * *"]
   },
+  // Two endpoints answer without a credential: evaluation-only A2A, and
+  // evaluation-only MCP since the registry listing made /mcp discoverable by
+  // design. Both run the full deterministic kernel per request, so the bound
+  // here is CPU. Authenticated integrations are bounded by credential issuance
+  // and are not counted against this limiter.
+  "ratelimits": [
+    {
+      "name": "ANONYMOUS_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
