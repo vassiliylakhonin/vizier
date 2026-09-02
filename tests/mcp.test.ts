@@ -150,6 +150,23 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
     });
   });
 
+  it("answers an anonymous tools/call in evaluation mode", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const body = requestBody("tools/call", "anonymous-01", {
+      name: "vizier_verify_action",
+      arguments: verificationInput(),
+    });
+    const request = mcpRequest(body);
+    request.headers.delete("Authorization");
+    const response = await handleMcpRequest(request, { apiKey: TEST_API_KEY });
+
+    expect(response.status).toBe(200);
+    const parsed = (await response.json()) as {
+      result: { structuredContent: { decision: string } };
+    };
+    expect(parsed.result.structuredContent.decision).not.toBe("ALLOW");
+  });
+
   it("rejects an invalid enforcement credential for tools/call", async () => {
     const body = requestBody("tools/call", "auth-01", {
       name: "vizier_verify_action",
@@ -356,7 +373,8 @@ describe("MCP session profile for shipping clients", () => {
     expect(body.result.structuredContent.decision).toBe("ALLOW");
   });
 
-  it("still requires the credential for enforcement results", async () => {
+  it("answers an anonymous call in evaluation mode instead of rejecting it", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await handleMcpRequest(
       sessionRequest({
         jsonrpc: "2.0",
@@ -364,6 +382,30 @@ describe("MCP session profile for shipping clients", () => {
         method: "tools/call",
         params: { name: "vizier_verify_action", arguments: verificationInput() },
       }),
+      { apiKey: TEST_API_KEY },
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      result: { structuredContent: { decision: string } };
+    };
+    expect(body.result.structuredContent.decision).not.toBe("ALLOW");
+  });
+
+  it("rejects a supplied credential that is wrong", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest(
+        {
+          jsonrpc: "2.0",
+          id: 6,
+          method: "tools/call",
+          params: {
+            name: "vizier_verify_action",
+            arguments: verificationInput(),
+          },
+        },
+        { Authorization: "Bearer wrong-key" },
+      ),
       { apiKey: TEST_API_KEY },
     );
 

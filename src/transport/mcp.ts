@@ -235,13 +235,19 @@ async function runVerifyTool(
   options: TransportOptions,
   requestId: string,
 ): Promise<ToolOutcome> {
-  const authorization = await authorizeEnforcement(request, options.apiKey);
+  // Same boundary as A2A: an anonymous caller gets an evaluation-only decision
+  // that cannot return ALLOW, a supplied credential that is wrong is rejected.
+  // Without this a client that found the server in a registry could list the
+  // tool and never call it.
+  const authorization = await authorizeEnforcement(request, options.apiKey, {
+    allowMissingCredentialForEvaluation: true,
+  });
   if (authorization === "denied") {
     return {
       kind: "error",
       code: -32001,
       status: 401,
-      message: "A valid Bearer token is required for enforcement mode.",
+      message: "The supplied Bearer token is not valid for enforcement mode.",
     };
   }
   if (params.name !== verifyTool.name) {

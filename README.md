@@ -42,9 +42,9 @@ Public surfaces:
 - Agent Card: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
 - Public key set: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
 
-Discovery, health, documentation, and evaluation-only A2A calls are public.
-REST, MCP, and A2A enforcement require a private integration credential; no
-public demo credential is issued. Action Covenant resources are authenticated
+Discovery, health, documentation, and evaluation-only A2A and MCP calls are
+public. REST, MCP, and A2A enforcement require a private integration credential;
+no public demo credential is issued. Action Covenant resources are authenticated
 REST endpoints in v0.2.1. `GET /v1/insights` is also authenticated and returns
 only aggregate operational counts from the metadata-only audit store.
 
@@ -282,9 +282,17 @@ credential, or use a shell with equivalent authority.
 
 ## Connect an MCP client
 
-Discovery is anonymous. `tools/call` requires the integration credential, so a
-client configured without one connects and lists the tool but cannot obtain a
-decision.
+The credential is optional at connect time. An anonymous `tools/call` runs in
+evaluation mode: the decision is real but the supplied authority is untrusted, so
+it can never return `ALLOW`. The credential unlocks enforcement results, and a
+credential that is supplied and wrong is rejected with `-32001`.
+
+```bash
+claude mcp add --transport http vizier \
+  https://vizier.vassiliy-lakhonin.workers.dev/mcp
+```
+
+Add the header once you hold a credential:
 
 ```bash
 claude mcp add --transport http vizier \
@@ -306,10 +314,9 @@ curl -sS https://vizier.vassiliy-lakhonin.workers.dev/mcp \
 
 `server.json` at the repository root is the MCP Registry entry for
 `io.github.vassiliylakhonin/vizier`, validated against the `2025-09-29` server
-schema. It is not published yet. Publishing requires the GitHub namespace claim
-and a public repository, because the registry entry points at
-`https://github.com/vassiliylakhonin/vizier` for source inspection. Confirm the
-`$schema` revision the publisher expects before the first upload:
+schema. It carries no `repository` block: the source repository is private, and
+an entry pointing at a URL that answers 404 is worse than no link at all. The
+namespace is claimed through the GitHub account, not the repository:
 
 ```bash
 mcp-publisher login github

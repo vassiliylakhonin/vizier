@@ -62,7 +62,7 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
         type: `application/json;profile=${MCP_SERVER_SCHEMA}`,
         url: `${origin}/.well-known/mcp.json`,
         description:
-          "MCP server manifest for the Streamable HTTP endpoint at /mcp, which exposes one tool, vizier_verify_action. Discovery is anonymous; tools/call requires an integration credential.",
+          "MCP server manifest for the Streamable HTTP endpoint at /mcp, which exposes one tool, vizier_verify_action. Anonymous callers receive evaluation-only decisions; an integration credential unlocks enforcement results.",
         capabilities: [
           "verify-agent-action",
           "mcp-streamable-http",
@@ -82,8 +82,9 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
 
 // The same document `mcp-publisher` uploads from server.json at the repository
 // root, served from the origin so a client that reached the Worker first can
-// learn how to connect without going through the registry. tests keep the two
-// copies identical.
+// learn how to connect without going through the registry. Tests keep the two
+// copies identical. No `repository` block: the source repository is private, and
+// a registry entry pointing at a URL that answers 404 is worse than none.
 export function createMcpServerManifest(
   origin: string,
 ): Readonly<Record<string, unknown>> {
@@ -94,10 +95,6 @@ export function createMcpServerManifest(
       "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
     version: "0.2.1",
     websiteUrl: `${origin}/docs`,
-    repository: {
-      url: "https://github.com/vassiliylakhonin/vizier",
-      source: "github",
-    },
     remotes: [
       {
         type: "streamable-http",
@@ -106,8 +103,8 @@ export function createMcpServerManifest(
           {
             name: "Authorization",
             description:
-              "Bearer <integration credential>. Issued privately; discovery works without it, but every tools/call is rejected with -32001 when it is absent or wrong.",
-            isRequired: true,
+              "Bearer <integration credential>. Optional: an anonymous call returns an evaluation-only decision that never grants ALLOW, and the credential unlocks enforcement results.",
+            isRequired: false,
             isSecret: true,
           },
         ],

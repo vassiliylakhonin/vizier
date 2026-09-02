@@ -4,10 +4,6 @@
   "description": "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
   "version": "0.2.1",
   "websiteUrl": "https://vizier.vassiliy-lakhonin.workers.dev/docs",
-  "repository": {
-    "url": "https://github.com/vassiliylakhonin/vizier",
-    "source": "github"
-  },
   "remotes": [
     {
       "type": "streamable-http",
@@ -15,8 +11,8 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer <integration credential>. Issued privately; discovery works without it, but every tools/call is rejected with -32001 when it is absent or wrong.",
-          "isRequired": true,
+          "description": "Bearer <integration credential>. Optional: an anonymous call returns an evaluation-only decision that never grants ALLOW, and the credential unlocks enforcement results.",
+          "isRequired": false,
           "isSecret": true
         }
       ]
