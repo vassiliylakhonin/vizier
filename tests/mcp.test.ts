@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { handleMcpRequest } from "../src/transport/mcp";
 import { handleHttpRequest } from "../src/transport/http";
+import { SERVICE_VERSION } from "../src/version";
 
 const MCP_VERSION = "2026-07-28";
 const TEST_API_KEY = "test-enforcement-key";
@@ -286,7 +287,11 @@ describe("MCP session profile for shipping clients", () => {
       result: {
         protocolVersion: "2025-06-18",
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "vizier", title: "Vizier", version: "0.2.1" },
+        serverInfo: {
+          name: "vizier",
+          title: "Vizier",
+          version: SERVICE_VERSION,
+        },
         instructions: expect.stringContaining("vizier_verify_action"),
       },
     });

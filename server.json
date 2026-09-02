@@ -3,7 +3,7 @@
   "name": "io.github.vassiliylakhonin/vizier",
   "title": "Vizier",
   "description": "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "websiteUrl": "https://vizier.vassiliy-lakhonin.workers.dev/docs",
   "remotes": [
     {

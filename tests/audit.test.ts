@@ -76,6 +76,12 @@ describe("metadata-only D1 audit", () => {
         { results: [{ decision: "BLOCK", count: 2 }] },
         { results: [{ count: 2 }] },
         { results: [{ count: 1 }] },
+        {
+          results: [
+            { surface: "mcp", outcome: "served", count: 9 },
+            { surface: "mcp", outcome: "throttled", count: 2 },
+          ],
+        },
       ],
     }) as D1Database;
     const response = await handleHttpRequest(
@@ -96,6 +102,12 @@ describe("metadata-only D1 audit", () => {
         { decision: "ALLOW", count: 0 },
         { decision: "REVIEW", count: 0 },
         { decision: "BLOCK", count: 2 },
+      ],
+      anonymous_calls: [
+        { surface: "mcp", outcome: "served", count: 9 },
+        { surface: "mcp", outcome: "throttled", count: 2 },
+        { surface: "a2a", outcome: "served", count: 0 },
+        { surface: "a2a", outcome: "throttled", count: 0 },
       ],
       average_risk_score: 0.25,
       failures: 1,
@@ -122,6 +134,7 @@ describe("metadata-only D1 audit", () => {
         { meta: { changes: 3 } },
         { meta: { changes: 2 } },
         { meta: { changes: 1 } },
+        { meta: { changes: 5 } },
       ],
     }) as D1Database;
 
@@ -137,6 +150,7 @@ describe("metadata-only D1 audit", () => {
         covenants: 2,
         authorizations: 3,
         outcomes: 4,
+        anonymous_days: 5,
       },
     });
     expect(statements.map((statement) => statement.query)).toEqual([
@@ -144,9 +158,12 @@ describe("metadata-only D1 audit", () => {
       "DELETE FROM authorization_receipts WHERE issued_at < ?1",
       "DELETE FROM action_covenants WHERE accepted_at < ?1",
       "DELETE FROM audit_receipts WHERE created_at < ?1",
+      "DELETE FROM anonymous_call_counts WHERE day < ?1",
     ]);
+    // The counter is keyed by calendar day, so it is swept by the date half of
+    // the same cutoff rather than a second, drifting one.
     expect(new Set(statements.map((statement) => statement.cutoff))).toEqual(
-      new Set(["2026-08-01T12:00:00.000Z"]),
+      new Set(["2026-08-01T12:00:00.000Z", "2026-08-01"]),
     );
   });
 
@@ -157,5 +174,108 @@ describe("metadata-only D1 audit", () => {
         new Date("invalid"),
       ),
     ).rejects.toThrowError("Audit retention requires a valid date");
+  });
+});
+
+describe("anonymous call counting", () => {
+  function countingDb(writes: Array<{ query: string; values: unknown[] }>) {
+    return Object.assign(Object.create(null), {
+      prepare: (query: string) => ({
+        bind: (...values: unknown[]) => ({
+          run: async () => {
+            writes.push({ query, values });
+          },
+        }),
+      }),
+    }) as D1Database;
+  }
+
+  function mcpRequest(headers: Record<string, string> = {}): Request {
+    return new Request("https://vizier.example/mcp", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+  }
+
+  it("bumps one counter per served anonymous call and stores nothing else", async () => {
+    const writes: Array<{ query: string; values: unknown[] }> = [];
+    const pending: Promise<unknown>[] = [];
+    const response = await handleHttpRequest(mcpRequest(), {
+      apiKey: API_KEY,
+      db: countingDb(writes),
+      ctx: { waitUntil: (promise) => pending.push(promise) },
+    });
+    await Promise.all(pending);
+
+    expect(response.status).toBe(200);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.query).toContain("INSERT INTO anonymous_call_counts");
+    expect(writes[0]?.query).toContain("calls = calls + 1");
+    // day, surface, outcome — nothing that identifies the caller.
+    expect(writes[0]?.values).toEqual([
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      "mcp",
+      "served",
+    ]);
+  });
+
+  it("records a throttled call as throttled", async () => {
+    const writes: Array<{ query: string; values: unknown[] }> = [];
+    const pending: Promise<unknown>[] = [];
+    const response = await handleHttpRequest(mcpRequest(), {
+      apiKey: API_KEY,
+      db: countingDb(writes),
+      ctx: { waitUntil: (promise) => pending.push(promise) },
+      anonymousRateLimiter: { limit: async () => ({ success: false }) },
+    });
+    await Promise.all(pending);
+
+    expect(response.status).toBe(429);
+    expect(writes[0]?.values[2]).toBe("throttled");
+  });
+
+  it("counts nothing for an authenticated integration", async () => {
+    const writes: Array<{ query: string; values: unknown[] }> = [];
+    const pending: Promise<unknown>[] = [];
+    const response = await handleHttpRequest(
+      mcpRequest({ Authorization: `Bearer ${API_KEY}` }),
+      {
+        apiKey: API_KEY,
+        db: countingDb(writes),
+        ctx: { waitUntil: (promise) => pending.push(promise) },
+      },
+    );
+    await Promise.all(pending);
+
+    expect(response.status).toBe(200);
+    expect(writes).toEqual([]);
+  });
+
+  it("serves the call even when the counter write fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const pending: Promise<unknown>[] = [];
+    const db = Object.assign(Object.create(null), {
+      prepare: () => ({
+        bind: () => ({
+          run: async () => {
+            throw new Error("D1 unavailable");
+          },
+        }),
+      }),
+    }) as D1Database;
+
+    const response = await handleHttpRequest(mcpRequest(), {
+      apiKey: API_KEY,
+      db,
+      ctx: { waitUntil: (promise) => pending.push(promise) },
+    });
+    await Promise.all(pending);
+
+    expect(response.status).toBe(200);
   });
 });

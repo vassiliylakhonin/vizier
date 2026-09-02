@@ -1,6 +1,6 @@
 {
   "name": "vizier",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "license": "MIT",
   "workspaces": [
@@ -33,7 +33,7 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.66.0",
     "vitest": "4.1.10",
-    "wrangler": "4.127.1"
+    "wrangler": "^4.128.0"
   },
   "engines": {
     "node": ">=24"

@@ -71,7 +71,7 @@ describe("machine-readable discovery contracts", () => {
     expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
     expect(document).toMatchObject({
       openapi: "3.1.0",
-      info: { version: "0.2.1" },
+      info: { version: SERVICE_VERSION },
       servers: [{ url: ORIGIN }],
     });
     expect(Object.keys(document.paths as object).sort()).toEqual([
@@ -142,7 +142,7 @@ describe("machine-readable discovery contracts", () => {
     expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
     expect(served.$schema).toBe(MCP_SERVER_SCHEMA);
     expect(served.name).toBe("io.github.vassiliylakhonin/vizier");
-    expect(served.version).toBe("0.2.1");
+    expect(served.version).toBe(SERVICE_VERSION);
     expect(served.remotes).toEqual([
       expect.objectContaining({ type: "streamable-http", url: `${ORIGIN}/mcp` }),
     ]);
@@ -217,12 +217,12 @@ describe("machine-readable discovery contracts", () => {
     const [root, docs] = await Promise.all([get("/"), get("/docs")]);
 
     await expect(root.json()).resolves.toMatchObject({
-      version: "0.2.1",
+      version: SERVICE_VERSION,
       openapi: "/openapi.json",
       ai_catalog: "/.well-known/ai-catalog.json",
     });
     await expect(docs.json()).resolves.toMatchObject({
-      api_version: "v0.2.1",
+      api_version: `v${SERVICE_VERSION}`,
       machine_contracts: {
         openapi_3_1: "/openapi.json",
         ai_catalog: "/.well-known/ai-catalog.json",

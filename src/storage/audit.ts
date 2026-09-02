@@ -14,9 +14,22 @@ export interface DecisionCount {
   readonly count: number;
 }
 
+export const ANONYMOUS_SURFACES = ["mcp", "a2a"] as const;
+export const ANONYMOUS_OUTCOMES = ["served", "throttled"] as const;
+
+export type AnonymousSurface = (typeof ANONYMOUS_SURFACES)[number];
+export type AnonymousOutcome = (typeof ANONYMOUS_OUTCOMES)[number];
+
+export interface AnonymousCallCount {
+  readonly surface: AnonymousSurface;
+  readonly outcome: AnonymousOutcome;
+  readonly count: number;
+}
+
 export interface AuditInsights {
   readonly decisions: readonly DecisionCount[];
   readonly authorization_decisions: readonly DecisionCount[];
+  readonly anonymous_calls: readonly AnonymousCallCount[];
   readonly average_risk_score: number;
   readonly failures: number;
   readonly totals: {
@@ -36,6 +49,7 @@ export interface AuditPruneResult {
     readonly covenants: number;
     readonly authorizations: number;
     readonly outcomes: number;
+    readonly anonymous_days: number;
   };
 }
 
@@ -133,6 +147,44 @@ export async function storeOutcome(
 
 const DECISIONS = ["ALLOW", "REVIEW", "BLOCK"] as const;
 
+// The counter is bumped in place rather than appended to, so an anonymous call
+// costs one bounded write and never a row. The day is the UTC calendar day, so
+// the retention sweep can drop whole days by string comparison like every other
+// table here.
+export async function recordAnonymousCall(
+  db: D1Database,
+  surface: AnonymousSurface,
+  outcome: AnonymousOutcome,
+  now: Date,
+): Promise<void> {
+  const day = now.toISOString().slice(0, 10);
+  await db
+    .prepare(
+      "INSERT INTO anonymous_call_counts (day, surface, outcome, calls) VALUES (?1, ?2, ?3, 1) ON CONFLICT (day, surface, outcome) DO UPDATE SET calls = calls + 1",
+    )
+    .bind(day, surface, outcome)
+    .run();
+}
+
+function anonymousCounts(
+  rows: readonly Readonly<Record<string, unknown>>[],
+): readonly AnonymousCallCount[] {
+  const counts = new Map(
+    rows.flatMap((row) =>
+      typeof row.surface === "string" && typeof row.outcome === "string"
+        ? [[`${row.surface}:${row.outcome}`, numericValue(row, "count")] as const]
+        : [],
+    ),
+  );
+  return ANONYMOUS_SURFACES.flatMap((surface) =>
+    ANONYMOUS_OUTCOMES.map((outcome) => ({
+      surface,
+      outcome,
+      count: counts.get(`${surface}:${outcome}`) ?? 0,
+    })),
+  );
+}
+
 function numericValue(
   row: Readonly<Record<string, unknown>> | undefined,
   key: string,
@@ -182,6 +234,9 @@ export async function getInsights(db: D1Database): Promise<AuditInsights> {
     ),
     db.prepare("SELECT COUNT(*) AS count FROM authorization_receipts"),
     db.prepare("SELECT COUNT(*) AS count FROM outcome_receipts"),
+    db.prepare(
+      "SELECT surface, outcome, SUM(calls) AS count FROM anonymous_call_counts GROUP BY surface, outcome",
+    ),
   ]);
   const verificationDecisions = resultAt(results, 0);
   const averageRisk = resultAt(results, 1);
@@ -191,10 +246,12 @@ export async function getInsights(db: D1Database): Promise<AuditInsights> {
   const authorizationDecisions = resultAt(results, 5);
   const authorizationTotal = resultAt(results, 6);
   const outcomeTotal = resultAt(results, 7);
+  const anonymousCalls = resultAt(results, 8);
 
   return {
     decisions: decisionCounts(verificationDecisions.results),
     authorization_decisions: decisionCounts(authorizationDecisions.results),
+    anonymous_calls: anonymousCounts(anonymousCalls.results),
     average_risk_score: numericValue(averageRisk.results[0], "average"),
     failures: numericValue(failures.results[0], "count"),
     totals: {
@@ -227,6 +284,9 @@ export async function pruneAuditMetadata(
     db.prepare("DELETE FROM authorization_receipts WHERE issued_at < ?1").bind(cutoff),
     db.prepare("DELETE FROM action_covenants WHERE accepted_at < ?1").bind(cutoff),
     db.prepare("DELETE FROM audit_receipts WHERE created_at < ?1").bind(cutoff),
+    db
+      .prepare("DELETE FROM anonymous_call_counts WHERE day < ?1")
+      .bind(cutoff.slice(0, 10)),
   ]);
 
   return {
@@ -236,6 +296,7 @@ export async function pruneAuditMetadata(
       authorizations: resultAt(results, 1).meta.changes,
       covenants: resultAt(results, 2).meta.changes,
       verifications: resultAt(results, 3).meta.changes,
+      anonymous_days: resultAt(results, 4).meta.changes,
     },
   };
 }

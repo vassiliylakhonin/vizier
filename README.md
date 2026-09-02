@@ -25,7 +25,7 @@ policy results and a SHA-256 receipt hash. The additive v0.2 Action Covenant
 lifecycle also binds one exact action to fresh evidence and invalidation signals,
 then signs both the authorization and its reported outcome.
 
-Status: experimental v0.2.1, deployed on the public Worker. There are no
+Status: experimental v0.2.2, deployed on the public Worker. There are no
 production users, paid pilots, or usage claims. Authority, principal acceptance,
 evidence, invalidation signals, and outcomes are still supplied by the
 integrating application rather than loaded or observed independently. Read the
@@ -48,8 +48,10 @@ public. REST, MCP, and A2A enforcement require a private integration credential;
 no public demo credential is issued. The two credential-free endpoints are rate
 limited to 60 requests per minute per client IP; an authenticated integration is
 never counted against that budget. Action Covenant resources are authenticated
-REST endpoints in v0.2.1. `GET /v1/insights` is also authenticated and returns
-only aggregate operational counts from the metadata-only audit store.
+REST endpoints in v0.2.2. `GET /v1/insights` is also authenticated and returns
+only aggregate operational counts from the metadata-only audit store, including
+`anonymous_calls`: how many credential-free calls each of `/mcp` and `/a2a`
+served and throttled.
 
 ## 60-second quickstart
 
@@ -135,7 +137,7 @@ score explains accumulated risk but does not override policy results.
 
 ### Action Covenant lifecycle
 
-The v0.2.1 resources are additive; `/v1/verify` remains compatible.
+The v0.2.2 resources are additive; `/v1/verify` remains compatible.
 
 1. `POST /v1/covenants` accepts a strict `ActionCovenantDraft` plus a
    principal acceptance bound to the draft hash. A model may produce the draft,
@@ -294,6 +296,12 @@ Anonymous calls share a budget of 60 requests per minute per client IP. Past it
 the endpoint answers `429` with JSON-RPC error `-32029` and a `Retry-After`
 header. Attaching a wrong credential does not leave that budget; a valid one
 does.
+
+An anonymous call leaves no receipt, so the only record of it is a counter: one
+row per UTC day per surface per outcome, bumped in place. It holds no client IP,
+no arguments, and nothing else about the caller, and it is swept by the same
+30-day retention as the rest of the audit store. `GET /v1/insights` reads it
+back. Counts are best-effort instrumentation, not proof of adoption.
 
 ```bash
 claude mcp add --transport http vizier \
@@ -469,5 +477,5 @@ The repository structure and protocol sources are documented in
 Independent principal authentication, durable policy/evidence/full-receipt storage,
 principal-signed delegation and acceptance, billing, dashboards, reputation
 models, payment settlement, and LLM policy evaluation inside the privileged kernel
-remain outside v0.2.1. See
+remain outside v0.2.2. See
 [FUTURE.md](FUTURE.md).

@@ -28,6 +28,8 @@ import {
   storeCovenant,
   storeOutcome,
   storeReceipt,
+  recordAnonymousCall,
+  type AnonymousSurface,
 } from "../storage/audit";
 
 interface ApiErrorBody {
@@ -440,24 +442,40 @@ function examplesDocument(): Response {
 // Authorization header, so a caller cannot leave the budget by attaching a
 // wrong token. Authenticated integrations are bounded by credential issuance
 // instead and are never counted here.
-async function overAnonymousBudget(
+//
+// The same pass records the call. Neither surface writes a receipt, so before
+// this the only trace of anonymous traffic was a Worker log line and nothing
+// could answer how much of it there was. The counter is bumped in place: one
+// bounded write, no row per call, and nothing about the caller.
+async function gateAnonymousCall(
   request: Request,
   options: TransportOptions,
-): Promise<boolean> {
-  const limiter = options.anonymousRateLimiter;
-  if (limiter === undefined) {
-    return false;
-  }
+  surface: AnonymousSurface,
+): Promise<"authenticated" | "served" | "throttled"> {
   const authorization = await authorizeEnforcement(request, options.apiKey, {
     allowMissingCredentialForEvaluation: true,
   });
   if (authorization === "authenticated") {
-    return false;
+    return "authenticated";
   }
-  const { success } = await limiter.limit({
-    key: request.headers.get("CF-Connecting-IP") ?? "unattributed",
-  });
-  return !success;
+
+  const limiter = options.anonymousRateLimiter;
+  const throttled =
+    limiter !== undefined &&
+    !(
+      await limiter.limit({
+        key: request.headers.get("CF-Connecting-IP") ?? "unattributed",
+      })
+    ).success;
+  const outcome = throttled ? "throttled" : "served";
+
+  persistAuditMetadata(
+    options,
+    "vizier.audit.anonymous_call.failed",
+    { surface, outcome },
+    (db) => recordAnonymousCall(db, surface, outcome, new Date()),
+  );
+  return outcome;
 }
 
 // Both endpoints behind this gate speak JSON-RPC 2.0, and the body has not been
@@ -558,13 +576,13 @@ export async function handleHttpRequest(
         url.pathname === "/" ||
         url.pathname === "/message/send")
     ) {
-      if (await overAnonymousBudget(request, options)) {
+      if ((await gateAnonymousCall(request, options, "a2a")) === "throttled") {
         return rateLimitedResponse();
       }
       return await handleA2aRequest(request, options);
     }
     if (request.method === "POST" && url.pathname === "/mcp") {
-      if (await overAnonymousBudget(request, options)) {
+      if ((await gateAnonymousCall(request, options, "mcp")) === "throttled") {
         return rateLimitedResponse();
       }
       return await handleMcpRequest(request, options);

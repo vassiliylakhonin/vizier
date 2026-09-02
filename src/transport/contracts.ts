@@ -47,9 +47,16 @@ const decisionCountSchema = z.strictObject({
   count: z.number().int().nonnegative(),
 });
 
+const anonymousCallCountSchema = z.strictObject({
+  surface: z.enum(["mcp", "a2a"]),
+  outcome: z.enum(["served", "throttled"]),
+  count: z.number().int().nonnegative(),
+});
+
 export const auditInsightsContractSchema = z.strictObject({
   decisions: z.array(decisionCountSchema).length(3),
   authorization_decisions: z.array(decisionCountSchema).length(3),
+  anonymous_calls: z.array(anonymousCallCountSchema).length(4),
   average_risk_score: z.number().finite().min(0).max(1),
   failures: z.number().int().nonnegative(),
   totals: z.strictObject({

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createAgentCard, handleA2aRequest } from "../src/transport/a2a";
 import { handleHttpRequest } from "../src/transport/http";
+import { SERVICE_VERSION } from "../src/version";
 
 const TEST_API_KEY = "test-enforcement-key";
 
@@ -80,7 +81,7 @@ describe("A2A Agent Card", () => {
     expect(body).toEqual(card);
     expect(body).toMatchObject({
       name: "Vizier",
-      version: "0.2.1",
+      version: SERVICE_VERSION,
       provider: {
         organization: "Vassiliy Lakhonin",
         url: "https://github.com/vassiliylakhonin",
