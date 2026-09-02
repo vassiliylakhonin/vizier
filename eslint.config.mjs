@@ -41,6 +41,7 @@ export default defineConfig(
       globals: {
         URL: "readonly",
         console: "readonly",
+        fetch: "readonly",
         process: "readonly",
       },
     },

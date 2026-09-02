@@ -325,11 +325,27 @@ curl -sS https://vizier.vassiliy-lakhonin.workers.dev/mcp \
 against the `2025-12-11` server schema. It carries no `repository` block: the
 source repository is private, and an entry pointing at a URL that answers 404 is
 worse than no link at all. The namespace is claimed through the GitHub account,
-not the repository. Republish after any change to the endpoint or the manifest:
+not the repository.
+
+The deploy workflow republishes it. `scripts/publish-registry.mjs` compares
+`server.json` against the live entry and publishes only when the registry lacks
+that version, authenticating through GitHub Actions OIDC so no registry token is
+stored anywhere. The registry keys an entry on its version, so a manifest edit
+rides along with a version bump; an edit without one is reported and skipped
+rather than rejected by the registry.
+
+Check the decision without making it, using an existing `mcp-publisher login
+github` session:
+
+```bash
+node scripts/publish-registry.mjs --dry-run
+```
+
+Publishing by hand still works and takes the same path:
 
 ```bash
 mcp-publisher login github
-mcp-publisher publish
+node scripts/publish-registry.mjs
 ```
 
 Read the live entry back:
