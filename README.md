@@ -39,6 +39,7 @@ Public surfaces:
 - OpenAPI 3.1 contract: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
 - AI discovery catalog: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/ai-catalog.json>
 - MCP server manifest: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/mcp.json>
+- MCP Registry entry: `io.github.vassiliylakhonin/vizier`
 - Agent Card: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
 - Public key set: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
 
@@ -313,15 +314,25 @@ curl -sS https://vizier.vassiliy-lakhonin.workers.dev/mcp \
 ### Registry listing
 
 `server.json` at the repository root is the MCP Registry entry for
-`io.github.vassiliylakhonin/vizier`, validated against the `2025-09-29` server
-schema. It carries no `repository` block: the source repository is private, and
-an entry pointing at a URL that answers 404 is worse than no link at all. The
-namespace is claimed through the GitHub account, not the repository:
+`io.github.vassiliylakhonin/vizier`, published on 2026-09-02 and validated
+against the `2025-12-11` server schema. It carries no `repository` block: the
+source repository is private, and an entry pointing at a URL that answers 404 is
+worse than no link at all. The namespace is claimed through the GitHub account,
+not the repository. Republish after any change to the endpoint or the manifest:
 
 ```bash
 mcp-publisher login github
 mcp-publisher publish
 ```
+
+Read the live entry back:
+
+```bash
+curl -sS "https://registry.modelcontextprotocol.io/v0/servers?search=vizier"
+```
+
+An unrelated `io.github.pipeworx-io/vizier` is listed in the same registry. The
+namespace is what separates them, so a search by bare name returns both.
 
 `tests/discovery-contracts.test.ts` holds `server.json` and the served
 `/.well-known/mcp.json` to the same content, so a registry listing cannot drift

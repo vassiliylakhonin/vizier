@@ -1,5 +1,5 @@
 export const MCP_SERVER_SCHEMA =
-  "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json";
+  "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
 
 export function createAiCatalog(origin: string): Readonly<Record<string, unknown>> {
   return Object.freeze({
@@ -91,6 +91,7 @@ export function createMcpServerManifest(
   return Object.freeze({
     $schema: MCP_SERVER_SCHEMA,
     name: "io.github.vassiliylakhonin/vizier",
+    title: "Vizier",
     description:
       "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
     version: "0.2.1",
