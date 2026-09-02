@@ -13,6 +13,7 @@
     "build:packages": "npm run build --workspace @vizier/sdk && npm run build --workspace @vizier/gated-deploy && npm run build --workspace @vizier/mcp-proxy",
     "check": "npm run build --workspace @vizier/sdk && npm run typecheck && npm run check:migrations && npm run lint && npm test && npm run build",
     "check:deployed": "node scripts/check-deployed.mjs",
+    "check:live": "node scripts/check-live.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:gated": "npm run build:packages && node packages/gated-deploy/dist/cli.js",

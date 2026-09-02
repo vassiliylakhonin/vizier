@@ -301,7 +301,9 @@ An anonymous call leaves no receipt, so the only record of it is a counter: one
 row per UTC day per surface per outcome, bumped in place. It holds no client IP,
 no arguments, and nothing else about the caller, and it is swept by the same
 30-day retention as the rest of the audit store. `GET /v1/insights` reads it
-back. Counts are best-effort instrumentation, not proof of adoption.
+back. Counts are best-effort instrumentation, not proof of adoption, and each
+deploy adds exactly four to `mcp` / `served`: the live check below probes the
+credential-free path on purpose.
 
 ```bash
 claude mcp add --transport http vizier \
@@ -406,6 +408,25 @@ npm run check
 
 `npm run build` compiles `@vizier/sdk`, compiles the private gated-deploy tool,
 and runs a Cloudflare deployment dry run. It does not deploy the Worker.
+
+Two checks describe production rather than a commit, so they are separate from
+`npm run check` and need the network:
+
+```bash
+npm run check:deployed
+npm run check:live
+```
+
+`check:deployed` compares the current bundle digest against the newest
+deployment: is production running this code? `check:live` calls the deployed
+Worker and asserts what it answers — health, the released version on the service
+index and the MCP manifest, a signed agent card, both JWKS keys, the MCP session
+handshake, `tools/list`, an anonymous `tools/call` that returns a receipt and
+cannot grant `ALLOW`, and the stateless `server/discover`. A digest can match
+while the endpoint is broken, which is why both exist. Point it elsewhere with
+`VIZIER_ORIGIN`. The deploy workflow runs it after the deploy and before the
+registry publish, so a Worker that stopped answering is never advertised as a
+new version.
 
 To prepare an enforcement deployment after reviewing the threat model:
 
