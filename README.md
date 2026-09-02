@@ -38,6 +38,7 @@ Public surfaces:
 - Live field reference: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
 - OpenAPI 3.1 contract: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
 - AI discovery catalog: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/ai-catalog.json>
+- MCP server manifest: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/mcp.json>
 - Agent Card: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
 - Public key set: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
 
@@ -209,8 +210,8 @@ assertion is absent or false; it cannot prove a true assertion is accurate.
   `/v1/authorizations`, `/v1/outcomes`, and the authenticated
   `/v1/insights`. Request schemas are emitted from the same Zod definitions
   used at the runtime boundary.
-- `GET /.well-known/ai-catalog.json` routes machines to both the A2A Agent Card
-  and the OpenAPI contract.
+- `GET /.well-known/ai-catalog.json` routes machines to the A2A Agent Card, the
+  OpenAPI contract, and the MCP server manifest.
 - `GET /.well-known/agent-card.json` returns an A2A v1.0 Agent Card with a
   canonical ES256 JWS in `signatures[]` when `AGENT_CARD_SIGNING_KEY` is
   configured.
@@ -219,10 +220,19 @@ assertion is absent or false; it cannot prove a true assertion is accurate.
 - `POST /a2a` implements the A2A v1.0 JSON-RPC `SendMessage` method. Anonymous
   requests run only in evaluation mode; a wrong supplied credential is rejected.
 - `POST /mcp` implements MCP `2026-07-28` with `server/discover`, `tools/list`,
-  and `tools/call` for `vizier_verify_action`.
+  and `tools/call` for `vizier_verify_action`. The same endpoint also answers
+  the session handshake used by shipping clients: `initialize`,
+  `notifications/initialized`, `ping`, `tools/list`, and `tools/call` over
+  `2025-06-18`, `2025-03-26`, or `2024-11-05`. The request body selects the
+  profile: only `2026-07-28` carries its protocol version in `params._meta`.
+- `GET /.well-known/mcp.json` returns the MCP server manifest, the same document
+  published to the MCP Registry from `server.json` at the repository root.
 
-Only the current protocol revisions above are implemented. The MCP endpoint is
-stateless and does not implement the legacy `initialize` session.
+The session profile exists because no off-the-shelf client speaks the stateless
+profile yet. Measured 2026-09-02 against the deployed Worker: a standard
+`initialize` was rejected with `-32600`, so the endpoint could not be connected
+from any MCP client. The stateless contract is unchanged; the session profile is
+additive and shares one verification path.
 
 ### MCP enforcement proxy pilot
 
@@ -269,6 +279,46 @@ Point the pilot MCP client at `http://127.0.0.1:8790/mcp`, use
 access to the upstream URL and credential. The proxy is not an enforcement
 boundary if the agent can still reach the upstream server, read either backend
 credential, or use a shell with equivalent authority.
+
+## Connect an MCP client
+
+Discovery is anonymous. `tools/call` requires the integration credential, so a
+client configured without one connects and lists the tool but cannot obtain a
+decision.
+
+```bash
+claude mcp add --transport http vizier \
+  https://vizier.vassiliy-lakhonin.workers.dev/mcp \
+  --header "Authorization: Bearer <integration-credential>"
+```
+
+Any client that accepts a Streamable HTTP URL works the same way. Verify the
+handshake without a client:
+
+```bash
+curl -sS https://vizier.vassiliy-lakhonin.workers.dev/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
+```
+
+### Registry listing
+
+`server.json` at the repository root is the MCP Registry entry for
+`io.github.vassiliylakhonin/vizier`, validated against the `2025-09-29` server
+schema. It is not published yet. Publishing requires the GitHub namespace claim
+and a public repository, because the registry entry points at
+`https://github.com/vassiliylakhonin/vizier` for source inspection. Confirm the
+`$schema` revision the publisher expects before the first upload:
+
+```bash
+mcp-publisher login github
+mcp-publisher publish
+```
+
+`tests/discovery-contracts.test.ts` holds `server.json` and the served
+`/.well-known/mcp.json` to the same content, so a registry listing cannot drift
+away from the endpoint the Worker serves.
 
 ## Receipts
 

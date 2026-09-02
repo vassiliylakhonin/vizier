@@ -1,9 +1,22 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { handleHttpRequest } from "../src/transport/http";
+import {
+  createMcpServerManifest,
+  MCP_SERVER_SCHEMA,
+} from "../src/transport/catalog";
 import { verificationResponseContractSchema } from "../src/transport/contracts";
 
 const ORIGIN = "https://vizier.example";
+const PUBLISHED_ORIGIN = "https://vizier.vassiliy-lakhonin.workers.dev";
+
+function publishedServerJson(): unknown {
+  return JSON.parse(
+    readFileSync(new URL("../server.json", import.meta.url), "utf8"),
+  );
+}
 
 function get(path: string): Promise<Response> {
   return handleHttpRequest(new Request(`${ORIGIN}${path}`));
@@ -81,7 +94,7 @@ describe("machine-readable discovery contracts", () => {
     expect(await alias.json()).toEqual(await canonical.json());
   });
 
-  it("publishes an AI catalog that routes to both A2A and OpenAPI", async () => {
+  it("publishes an AI catalog that routes to A2A, OpenAPI and MCP", async () => {
     const response = await get("/.well-known/ai-catalog.json");
     const body = (await response.json()) as {
       specVersion: string;
@@ -90,7 +103,7 @@ describe("machine-readable discovery contracts", () => {
 
     expect(response.status).toBe(200);
     expect(body.specVersion).toBe("1.0");
-    expect(body.entries).toHaveLength(2);
+    expect(body.entries).toHaveLength(3);
     expect(body.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -102,7 +115,32 @@ describe("machine-readable discovery contracts", () => {
           type: "application/vnd.oai.openapi+json;version=3.1",
           url: `${ORIGIN}/openapi.json`,
         }),
+        expect.objectContaining({
+          type: `application/json;profile=${MCP_SERVER_SCHEMA}`,
+          url: `${ORIGIN}/.well-known/mcp.json`,
+          capabilities: expect.arrayContaining(["mcp-streamable-http"]),
+        }),
       ]),
+    );
+  });
+
+  // A registry listing is only useful while it points at the endpoint this
+  // Worker actually serves, so the published server.json and the served
+  // manifest are one document checked against each other.
+  it("serves the same MCP manifest that server.json publishes", async () => {
+    const response = await get("/.well-known/mcp.json");
+    const served = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=300");
+    expect(served.$schema).toBe(MCP_SERVER_SCHEMA);
+    expect(served.name).toBe("io.github.vassiliylakhonin/vizier");
+    expect(served.version).toBe("0.2.1");
+    expect(served.remotes).toEqual([
+      expect.objectContaining({ type: "streamable-http", url: `${ORIGIN}/mcp` }),
+    ]);
+    expect(createMcpServerManifest(PUBLISHED_ORIGIN)).toEqual(
+      publishedServerJson(),
     );
   });
 

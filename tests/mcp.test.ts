@@ -231,3 +231,185 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
     expect(response.headers.get("Allow")).toBe("POST");
   });
 });
+
+function sessionRequest(
+  body: Record<string, unknown>,
+  overrides: Record<string, string> = {},
+): Request {
+  return new Request("https://vizier.example/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      ...overrides,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("MCP session profile for shipping clients", () => {
+  it("answers the initialize handshake and echoes a supported revision", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "claude-code", version: "1.0.0" },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        protocolVersion: "2025-06-18",
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: "vizier", title: "Vizier", version: "0.2.1" },
+        instructions: expect.stringContaining("vizier_verify_action"),
+      },
+    });
+  });
+
+  it("falls back to the default revision when the client asks for an unknown one", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest({
+        jsonrpc: "2.0",
+        id: "init-2",
+        method: "initialize",
+        params: { protocolVersion: "2099-01-01", capabilities: {} },
+      }),
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      result: { protocolVersion: "2025-06-18" },
+    });
+  });
+
+  it("accepts the initialized notification without a JSON-RPC reply", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest({
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+        params: {},
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.text()).resolves.toBe("");
+  });
+
+  it("lists the tool without the stateless mirrored headers", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest(
+        { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+        { "MCP-Protocol-Version": "2025-06-18" },
+      ),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 2,
+      result: { tools: [expect.objectContaining({ name: "vizier_verify_action" })] },
+    });
+  });
+
+  it("answers ping", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest({ jsonrpc: "2.0", id: 3, method: "ping" }),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: 3,
+      result: {},
+    });
+  });
+
+  it("calls the tool with an enforcement credential", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const response = await handleMcpRequest(
+      sessionRequest(
+        {
+          jsonrpc: "2.0",
+          id: 4,
+          method: "tools/call",
+          params: {
+            name: "vizier_verify_action",
+            arguments: verificationInput(),
+          },
+        },
+        { Authorization: `Bearer ${TEST_API_KEY}` },
+      ),
+      { apiKey: TEST_API_KEY },
+    );
+
+    const body = (await response.json()) as {
+      result: { isError: boolean; structuredContent: { decision: string } };
+    };
+    expect(response.status).toBe(200);
+    expect(body.result.isError).toBe(false);
+    expect(body.result.structuredContent.decision).toBe("ALLOW");
+  });
+
+  it("still requires the credential for enforcement results", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest({
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/call",
+        params: { name: "vizier_verify_action", arguments: verificationInput() },
+      }),
+      { apiKey: TEST_API_KEY },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: -32001 },
+    });
+  });
+
+  it("accepts a client that offers only application/json", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest(
+        { jsonrpc: "2.0", id: 6, method: "tools/list" },
+        { Accept: "application/json" },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("reports both profiles when the negotiated header revision is unknown", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest(
+        { jsonrpc: "2.0", id: 7, method: "tools/list" },
+        { "MCP-Protocol-Version": "2099-01-01" },
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: -32022,
+        data: { supported: [MCP_VERSION, "2025-06-18", "2025-03-26", "2024-11-05"] },
+      },
+    });
+  });
+
+  it("returns method-not-found without breaking the session", async () => {
+    const response = await handleMcpRequest(
+      sessionRequest({ jsonrpc: "2.0", id: 8, method: "resources/list" }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 8,
+      error: { code: -32601 },
+    });
+  });
+});

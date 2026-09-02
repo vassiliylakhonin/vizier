@@ -16,7 +16,7 @@ import {
   TransportRequestError,
 } from "./shared";
 import { createAgentCard, handleA2aRequest } from "./a2a";
-import { createAiCatalog } from "./catalog";
+import { createAiCatalog, createMcpServerManifest } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
 import { createJwks, maybeSignAgentCard } from "./jws";
@@ -344,6 +344,7 @@ function rootDocument(): Response {
     insights: "/v1/insights",
     a2a: "/.well-known/agent-card.json",
     mcp: "/mcp",
+    mcp_manifest: "/.well-known/mcp.json",
   });
 }
 
@@ -399,6 +400,7 @@ function docsDocument(): Response {
       openapi_well_known_alias: "/.well-known/openapi.json",
       ai_catalog: "/.well-known/ai-catalog.json",
       agent_card: "/.well-known/agent-card.json",
+      mcp_server_manifest: "/.well-known/mcp.json",
       receipt_keys: "/.well-known/jwks.json",
     },
     examples: "/examples",
@@ -459,6 +461,14 @@ export async function handleHttpRequest(
       url.pathname === "/.well-known/ai-catalog.json"
     ) {
       return jsonResponse(createAiCatalog(url.origin), 200, {
+        "Cache-Control": "public, max-age=300",
+      });
+    }
+    if (
+      request.method === "GET" &&
+      url.pathname === "/.well-known/mcp.json"
+    ) {
+      return jsonResponse(createMcpServerManifest(url.origin), 200, {
         "Cache-Control": "public, max-age=300",
       });
     }
@@ -587,6 +597,7 @@ export async function handleHttpRequest(
               "GET /health": "liveness",
               "GET /.well-known/agent-card.json": "A2A agent card",
               "POST /a2a": "A2A SendMessage (also accepted on / and /message/send)",
+              "GET /.well-known/mcp.json": "MCP server manifest (registry server.json)",
               "POST /mcp": "MCP JSON-RPC",
               "POST /v1/verify": "REST verification",
               "POST /v1/covenants": "activate an accepted Action Covenant",

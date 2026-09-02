@@ -119,6 +119,11 @@ docs/            # architecture, threat model, API docs
   identity, and capabilities per request; `server/discover` is mandatory.
   Streamable HTTP remains a single endpoint but no longer assumes the legacy
   `initialize` handshake.
+- MCP client reachability, measured 2026-09-02: no shipping client speaks the
+  stateless profile yet, so `/mcp` additionally answers the `initialize` session
+  handshake for `2025-06-18`, `2025-03-26`, and `2024-11-05`. The request body
+  selects the profile and both share one verification path, so the stateless
+  contract is unchanged.
 - Cloudflare Worker: current compatibility date, `nodejs_compat`, generated
   binding types after configuration changes, structured observability, no
   request-scoped global state, and Web Crypto for IDs and hashes.
