@@ -13,6 +13,13 @@
 // than fail the deploy, it is reported, because the registry would reject the
 // duplicate anyway.
 //
+// That check reads before it writes, so two deploys of the same commit both see
+// the old version and both try to publish. On 2026-09-07 three runs raced for
+// v0.3.0: one published, two exited 1 on "cannot publish duplicate version" and
+// marked a successful deploy red. A duplicate rejection is confirmation that the
+// registry holds this version, so it is now verified and treated as success —
+// only after re-reading the registry, so a genuine publish failure still fails.
+//
 //   node scripts/publish-registry.mjs           decide and publish
 //   node scripts/publish-registry.mjs --dry-run decide and report only
 //
@@ -34,6 +41,59 @@ function run(command, args) {
   });
 }
 
+// Same as `run`, but keeps the output so the caller can tell one failure from
+// another. Still streamed, so the log reads the same as before.
+function runCaptured(command, args) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false,
+    });
+    let output = "";
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.on("data", (chunk) => {
+        output += chunk.toString();
+        process.stderr.write(chunk);
+      });
+    }
+    child.on("close", (code) => resolve({ code: code ?? 1, output }));
+  });
+}
+
+// `?search=` is the only filter this API honours: `?name=` is accepted and
+// silently ignored, returning the unfiltered first page. Measured 2026-09-02.
+// So the exact name is matched here rather than trusted from the query.
+//
+// `ok` separates "the registry says nothing is listed" from "the registry did
+// not answer". The pre-flight must fail on the second; the confirmation after a
+// duplicate rejection must not read it as success.
+async function registryVersion(serverName) {
+  try {
+    const response = await fetch(
+      `${REGISTRY}/v0/servers?search=${encodeURIComponent(serverName)}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!response.ok) {
+      return { ok: false, version: null, reason: `status ${response.status}` };
+    }
+    const body = await response.json();
+    const entry = (body.servers ?? [])
+      .filter((item) => item?.server?.name === serverName)
+      .find(
+        (item) =>
+          item?._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest ===
+          true,
+      );
+    return { ok: true, version: entry?.server?.version ?? null, reason: null };
+  } catch (error) {
+    return {
+      ok: false,
+      version: null,
+      reason: error instanceof Error ? error.name : "UnknownError",
+    };
+  }
+}
+
 const manifest = JSON.parse(
   readFileSync(new URL("../server.json", import.meta.url), "utf8"),
 );
@@ -43,35 +103,13 @@ if (typeof name !== "string" || typeof version !== "string") {
   process.exit(1);
 }
 
-// `?search=` is the only filter this API honours: `?name=` is accepted and
-// silently ignored, returning the unfiltered first page. Measured 2026-09-02.
-// So the exact name is matched here rather than trusted from the query.
-let published = null;
-try {
-  const response = await fetch(
-    `${REGISTRY}/v0/servers?search=${encodeURIComponent(name)}`,
-    { headers: { Accept: "application/json" } },
-  );
-  if (!response.ok) {
-    console.error(`Registry lookup failed with ${response.status}.`);
-    process.exit(1);
-  }
-  const body = await response.json();
-  published = (body.servers ?? [])
-    .filter((entry) => entry?.server?.name === name)
-    .find(
-      (entry) =>
-        entry?._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest ===
-        true,
-    ) ?? null;
-} catch (error) {
-  console.error(
-    `Registry lookup failed: ${error instanceof Error ? error.name : "UnknownError"}.`,
-  );
+const lookup = await registryVersion(name);
+if (!lookup.ok) {
+  console.error(`Registry lookup failed: ${lookup.reason}.`);
   process.exit(1);
 }
 
-const live = published?.server?.version ?? null;
+const live = lookup.version;
 console.log(`server.json ${name} ${version}`);
 console.log(`registry    ${live === null ? "not listed" : `${name} ${live}`}`);
 
@@ -91,8 +129,22 @@ if (process.env.GITHUB_ACTIONS === "true") {
   }
 }
 
-const code = await run("mcp-publisher", ["publish"]);
+const { code, output } = await runCaptured("mcp-publisher", ["publish"]);
 if (code !== 0) {
-  process.exit(code);
+  if (!/cannot publish duplicate version/i.test(output)) {
+    process.exit(code);
+  }
+  // Another run of the same commit got there first. Confirm rather than assume.
+  const confirmation = await registryVersion(name);
+  if (!confirmation.ok || confirmation.version !== version) {
+    console.error(
+      `\nRegistry rejected ${version} as a duplicate but reports ${
+        confirmation.ok ? (confirmation.version ?? "nothing") : "no answer"
+      }. Not treating that as published.`,
+    );
+    process.exit(code);
+  }
+  console.log(`\nalready published ${name} ${version} by a concurrent run.`);
+  process.exit(0);
 }
 console.log(`\npublished ${name} ${version}`);

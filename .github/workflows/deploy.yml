@@ -1,22 +1,20 @@
 name: Deploy
 
-# Every deploy this repository has ever run was triggered by a direct push to
-# main. On 2026-09-07 the first pull request merged since this workflow existed
-# (#12) produced no run at all: main moved to v0.3.0 and production kept serving
-# v0.2.2, with nothing to say so. The trigger was written for the way the
-# repository worked at the time, and did not follow it to pull requests.
+# `push` on main is the trigger. It is the only one that should deploy: a
+# `pull_request: closed` trigger was added here on 2026-09-07 after a merge
+# appeared to fire nothing, and removed the same day once the events arrived
+# roughly six minutes late. Both triggers then ran, and the two extra deploys
+# failed on the registry publish. GitHub delivering a push event slowly is not
+# a missing trigger, and a second trigger for the same event is a duplicate
+# deploy.
 #
-# `workflow_dispatch` is the hand crank — until now there was no way to deploy
-# without pushing a commit. `drift` is the alarm: it runs the check that would
-# have caught this on the day it happened, rather than the next time someone
-# thought to look.
+# `workflow_dispatch` is the hand crank — until it was added there was no way
+# to deploy without pushing a commit. `drift` is the alarm: it runs the check
+# that says whether production matches main, daily, rather than the next time
+# someone thinks to look.
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    types: [closed]
     branches:
       - main
   workflow_dispatch:
@@ -31,26 +29,19 @@ permissions:
   id-token: write
 
 concurrency:
-  # Deliberately not keyed on github.ref: a merge can raise both a push and a
-  # pull_request event, and those carry different refs for the same deploy.
+  # One group for every deploy trigger, and no cancelling: a push and a manual
+  # dispatch of the same commit must queue behind each other rather than one
+  # killing a half-finished deploy.
   group: deploy-main
   cancel-in-progress: false
 
 jobs:
   deploy:
-    # A closed pull request that was not merged must not deploy anything. The
-    # scheduled run is for drift detection only.
-    if: >-
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    # The scheduled run exists for drift detection only and must not deploy.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          # A pull_request event would otherwise check out the PR's merge ref.
-          # Production follows main, not a ref that stops existing.
-          ref: main
       - uses: actions/setup-node@v7
         with:
           node-version: 24
