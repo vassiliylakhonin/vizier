@@ -95,7 +95,7 @@ export function base64urlEncode(bytes: Uint8Array): string {
     .replace(/=+$/, "");
 }
 
-function base64urlDecode(value: string): Uint8Array<ArrayBuffer> {
+export function base64urlDecode(value: string): Uint8Array<ArrayBuffer> {
   if (!/^[A-Za-z0-9_-]*$/.test(value)) {
     throw new Error("Invalid base64url value.");
   }
@@ -218,6 +218,105 @@ export async function verifyCompactJws(
       cryptoKey,
       base64urlDecode(encodedSignature),
       TEXT_ENCODER.encode(`${encodedHeader}.${encodedPayload}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
+
+// --- Third-party JWS verification -------------------------------------------
+//
+// The functions above sign with, and verify against, Vizier's *own* key: they
+// answer "did this service produce that token". Delegation grants need the
+// opposite direction — verify a token produced by somebody else, against a
+// public key this service never held the private half of, and return what it
+// said. Nothing below reads a private key.
+
+export function isEcPublicJwk(value: unknown): value is EcPublicJwk {
+  return (
+    isRecord(value) &&
+    value.kty === "EC" &&
+    value.crv === "P-256" &&
+    value.alg === "ES256" &&
+    value.use === "sig" &&
+    isNonEmptyString(value.kid) &&
+    isNonEmptyString(value.x) &&
+    isNonEmptyString(value.y) &&
+    value.d === undefined
+  );
+}
+
+export interface JwsParts {
+  readonly header: Readonly<Record<string, unknown>>;
+  readonly payload: unknown;
+  readonly signingInput: string;
+  readonly signature: Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * Split and decode a compact JWS without checking its signature.
+ *
+ * The result is untrusted: it exists only so a caller can read `kid` and `iss`
+ * to look up the key that will verify it. Never act on a claim taken from here
+ * before {@link verifyJwsSignature} has returned true for the same token.
+ */
+export function decodeCompactJws(token: string): JwsParts | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  if (
+    encodedHeader === undefined ||
+    encodedPayload === undefined ||
+    encodedSignature === undefined ||
+    encodedHeader.length === 0 ||
+    encodedPayload.length === 0 ||
+    encodedSignature.length === 0
+  ) {
+    return null;
+  }
+  try {
+    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
+    const header = JSON.parse(
+      decoder.decode(base64urlDecode(encodedHeader)),
+    ) as unknown;
+    if (!isRecord(header)) {
+      return null;
+    }
+    const payload = JSON.parse(
+      decoder.decode(base64urlDecode(encodedPayload)),
+    ) as unknown;
+    return {
+      header,
+      payload,
+      signingInput: `${encodedHeader}.${encodedPayload}`,
+      signature: base64urlDecode(encodedSignature),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Verify a compact JWS against a public JWK supplied by someone else. */
+export async function verifyJwsSignature(
+  parts: JwsParts,
+  publicJwk: EcPublicJwk,
+): Promise<boolean> {
+  try {
+    const cryptoKey = await crypto.subtle.importKey(
+      "jwk",
+      { ...publicJwk, ext: true },
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    return await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      cryptoKey,
+      parts.signature,
+      TEXT_ENCODER.encode(parts.signingInput),
     );
   } catch {
     return false;

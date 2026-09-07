@@ -22,6 +22,20 @@ const receiptSchema = z.strictObject({
   risk_score: z.number().finite().min(0).max(1),
   policy_rule_ids: z.array(z.string().trim().min(1).max(512)).min(1).max(100),
   reason_codes: z.array(z.string().trim().min(1).max(128)).max(100),
+  authority_provenance: z.enum([
+    "principal_signed",
+    "trusted_integration",
+    "unverified",
+  ]),
+  grant: z
+    .strictObject({
+      jti: z.string().trim().min(1).max(256),
+      issuer: z.string().trim().min(1).max(256),
+      subject: z.string().trim().min(1).max(256),
+      key_id: z.string().trim().min(1).max(256),
+      expires_at: timestampSchema,
+    })
+    .optional(),
 });
 
 export const verificationResponseContractSchema = z.strictObject({

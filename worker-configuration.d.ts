@@ -5,6 +5,7 @@ interface __BaseEnv_Env {
 	DB: D1Database;
 	ANONYMOUS_RATE_LIMIT: RateLimit;
 	VIZIER_API_KEY: string;
+	VIZIER_PRINCIPAL_KEYS: string;
 	AGENT_CARD_SIGNING_KEY: string;
 	RECEIPT_SIGNING_KEY: string;
 }
@@ -19,7 +20,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VIZIER_API_KEY" | "AGENT_CARD_SIGNING_KEY" | "RECEIPT_SIGNING_KEY">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "VIZIER_API_KEY" | "VIZIER_PRINCIPAL_KEYS" | "AGENT_CARD_SIGNING_KEY" | "RECEIPT_SIGNING_KEY">> {}
 }
 
 // Begin runtime types

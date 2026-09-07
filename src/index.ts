@@ -8,6 +8,7 @@ export default {
       anonymousRateLimiter: env.ANONYMOUS_RATE_LIMIT,
       agentCardSigningKey: env.AGENT_CARD_SIGNING_KEY,
       receiptSigningKey: env.RECEIPT_SIGNING_KEY,
+      principalKeySource: env.VIZIER_PRINCIPAL_KEYS,
       db: env.DB,
       ctx,
     });

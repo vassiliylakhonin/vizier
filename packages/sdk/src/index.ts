@@ -36,6 +36,27 @@ export interface VerificationRequest {
     timestamp: string | null;
     source: Source;
   };
+  /**
+   * Compact JWS signed by the principal, binding this exact `authority` to this
+   * `agent` for a bounded window. When present, Vizier verifies it against a
+   * key registered for the principal; a grant that does not verify is BLOCK.
+   * When absent, the authority above is taken on the caller's word.
+   */
+  grant?: string;
+}
+
+/** Where the authority a decision rested on actually came from. */
+export type AuthorityProvenance =
+  | "principal_signed"
+  | "trusted_integration"
+  | "unverified";
+
+export interface ReceiptGrant {
+  jti: string;
+  issuer: string;
+  subject: string;
+  key_id: string;
+  expires_at: string;
 }
 
 export interface PolicyResult {
@@ -59,6 +80,8 @@ export interface VerificationResponse {
     risk_score: number;
     policy_rule_ids: string[];
     reason_codes: string[];
+    authority_provenance: AuthorityProvenance;
+    grant?: ReceiptGrant;
   };
 }
 
@@ -270,6 +293,20 @@ const verificationResponseSchema = z.strictObject({
     risk_score: z.number().finite().min(0).max(1),
     policy_rule_ids: z.array(z.string().min(1).max(256)).min(1).max(100),
     reason_codes: z.array(reasonCodeSchema).max(100),
+    authority_provenance: z.enum([
+      "principal_signed",
+      "trusted_integration",
+      "unverified",
+    ]),
+    grant: z
+      .strictObject({
+        jti: z.string().trim().min(1).max(256),
+        issuer: z.string().trim().min(1).max(256),
+        subject: z.string().trim().min(1).max(256),
+        key_id: z.string().trim().min(1).max(256),
+        expires_at: z.iso.datetime({ offset: true }),
+      })
+      .optional(),
   }),
 });
 

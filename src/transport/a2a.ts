@@ -6,6 +6,7 @@ import {
   readLimitedJson,
   type TransportOptions,
   TransportRequestError,
+  resolvePrincipalKeys,
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
@@ -380,6 +381,7 @@ export async function handleA2aRequest(
   };
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
+    principalKeys: resolvePrincipalKeys(options),
   });
   const contextId =
     sendMessage.data.message.contextId ?? `ctx_${crypto.randomUUID()}`;

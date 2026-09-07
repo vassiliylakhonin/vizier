@@ -14,6 +14,8 @@ import {
   readLimitedJson,
   type TransportOptions,
   TransportRequestError,
+  principalKeysMisconfigured,
+  resolvePrincipalKeys,
 } from "./shared";
 import { createAgentCard, handleA2aRequest } from "./a2a";
 import { createAiCatalog, createMcpServerManifest } from "./catalog";
@@ -171,6 +173,7 @@ async function handleVerify(
   };
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
+    principalKeys: resolvePrincipalKeys(options),
   });
   const requestId =
     normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
@@ -351,7 +354,7 @@ function rootDocument(): Response {
   });
 }
 
-function docsDocument(): Response {
+function docsDocument(options: TransportOptions): Response {
   return jsonResponse({
     api_version: `v${SERVICE_VERSION}`,
     endpoints: {
@@ -387,6 +390,8 @@ function docsDocument(): Response {
         timestamp: "ISO-8601 | null",
         source: "a2a | mcp | rest | internal | unknown",
       },
+      grant:
+        "compact JWS signed by the principal, binding this exact authority to this agent (optional)",
     },
     decisions: ["ALLOW", "REVIEW", "BLOCK"],
     enforcement: {
@@ -397,6 +402,19 @@ function docsDocument(): Response {
         "VIZIER_API_KEY and RECEIPT_SIGNING_KEY configured: authenticated lifecycle with ES256 receipts",
       insights_mode:
         "VIZIER_API_KEY and D1 configured: authenticated metadata-only operational counts",
+      delegation_mode:
+        "VIZIER_PRINCIPAL_KEYS configured: a principal-signed grant is verified against a registered key, and the receipt records it",
+    },
+    delegation: {
+      grant_field: "grant",
+      grant_media_type: "compact JWS, typ vizier-delegation+jws, alg ES256",
+      registered_principals: resolvePrincipalKeys(options).size,
+      principal_keys_configured:
+        options.principalKeySource !== undefined &&
+        options.principalKeySource.trim().length > 0,
+      principal_keys_valid: !principalKeysMisconfigured(options),
+      authority_provenance: ["principal_signed", "trusted_integration", "unverified"],
+      note: "Without a grant the authority is whatever the caller asserts. A grant that does not verify is BLOCK, never a downgrade to the caller-asserted path.",
     },
     machine_contracts: {
       openapi_3_1: "/openapi.json",
@@ -509,7 +527,7 @@ export async function handleHttpRequest(
       return jsonResponse({ status: "ok" });
     }
     if (request.method === "GET" && url.pathname === "/docs") {
-      return docsDocument();
+      return docsDocument(options);
     }
     if (request.method === "GET" && url.pathname === "/examples") {
       return examplesDocument();

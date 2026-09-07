@@ -25,10 +25,13 @@ policy results and a SHA-256 receipt hash. The additive v0.2 Action Covenant
 lifecycle also binds one exact action to fresh evidence and invalidation signals,
 then signs both the authorization and its reported outcome.
 
-Status: experimental v0.2.2, deployed on the public Worker. There are no
-production users, paid pilots, or usage claims. Authority, principal acceptance,
-evidence, invalidation signals, and outcomes are still supplied by the
-integrating application rather than loaded or observed independently. Read the
+Status: experimental v0.3.0, deployed on the public Worker. There are no
+production users, paid pilots, or usage claims. Since v0.3.0 authority can be
+**proved** rather than asserted: a principal signs a delegation grant, Vizier
+verifies it against a key registered for that principal, and the receipt records
+which of the two the decision rested on. Principal acceptance, evidence,
+invalidation signals, and outcomes are still supplied by the integrating
+application rather than loaded or observed independently. Read the
 [threat model](docs/THREAT_MODEL.md) before placing this service in an execution
 path.
 
@@ -48,7 +51,7 @@ public. REST, MCP, and A2A enforcement require a private integration credential;
 no public demo credential is issued. The two credential-free endpoints are rate
 limited to 60 requests per minute per client IP; an authenticated integration is
 never counted against that budget. Action Covenant resources are authenticated
-REST endpoints in v0.2.2. `GET /v1/insights` is also authenticated and returns
+REST endpoints in v0.3.0. `GET /v1/insights` is also authenticated and returns
 only aggregate operational counts from the metadata-only audit store, including
 `anonymous_calls`: how many credential-free calls each of `/mcp` and `/a2a`
 served and throttled.
@@ -96,6 +99,55 @@ curl -sS http://127.0.0.1:8787/v1/verify \
   --data @examples/review.json
 ```
 
+## Proving the authority instead of asserting it
+
+By default the `authority` in a request is whatever the calling application says
+it is. Vizier checks the action against it faithfully and signs the result — but
+the receipt then attests to a decision, not to a delegation.
+
+A **delegation grant** closes that gap. The principal signs a compact JWS that
+binds one authority to one agent for a bounded window, the agent sends it as a
+`grant` field, and Vizier verifies it against a public key registered for that
+principal:
+
+```bash
+# once, on the principal's machine
+node scripts/mint-grant.mjs keygen --kid acme-2026-09 --out principal.jwk.json
+
+# per delegation
+node scripts/mint-grant.mjs sign --key principal.jwk.json --grant grant.json --ttl 3600
+```
+
+The public half is registered as `VIZIER_PRINCIPAL_KEYS`; the private half never
+leaves the principal, and no endpoint would accept it. A verified grant makes the
+receipt say so:
+
+```json
+{
+  "authority_provenance": "principal_signed",
+  "grant": {
+    "jti": "grant_5f1c…",
+    "issuer": "acme-corp",
+    "subject": "procurement-agent-01",
+    "key_id": "acme-2026-09",
+    "expires_at": "2026-09-07T16:00:00.000Z"
+  }
+}
+```
+
+Two properties are worth stating plainly:
+
+- **A grant that does not verify is `BLOCK`,** never a quiet fall back to the
+  caller-asserted path. Failing it open would make a forged grant strictly
+  better for an attacker than sending none.
+- **The request's `authority` must match the signed one exactly.** A genuine
+  grant carried beside an enlarged authority is `BLOCK`, not an allow at the
+  larger limit.
+
+Keys are registered out of band and never fetched at decision time, so the
+authorization kernel still makes no outbound request. Full contract, reason
+codes and limits: [docs/DELEGATION_GRANTS.md](docs/DELEGATION_GRANTS.md).
+
 ## API
 
 `POST /v1/verify` accepts one proposed action and its delegated authority.
@@ -137,7 +189,7 @@ score explains accumulated risk but does not override policy results.
 
 ### Action Covenant lifecycle
 
-The v0.2.2 resources are additive; `/v1/verify` remains compatible.
+The v0.3.0 resources are additive; `/v1/verify` remains compatible.
 
 1. `POST /v1/covenants` accepts a strict `ActionCovenantDraft` plus a
    principal acceptance bound to the draft hash. A model may produce the draft,
@@ -498,5 +550,5 @@ The repository structure and protocol sources are documented in
 Independent principal authentication, durable policy/evidence/full-receipt storage,
 principal-signed delegation and acceptance, billing, dashboards, reputation
 models, payment settlement, and LLM policy evaluation inside the privileged kernel
-remain outside v0.2.2. See
+remain outside v0.3.0. See
 [FUTURE.md](FUTURE.md).

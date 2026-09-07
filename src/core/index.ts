@@ -1,5 +1,23 @@
-export { verificationRequestSchema } from "./schemas";
+export { delegationGrantTokenSchema, verificationRequestSchema } from "./schemas";
 export type { VerificationRequest } from "./schemas";
+export {
+  CLOCK_SKEW_SECONDS,
+  DELEGATION_GRANT_TYP,
+  MAX_GRANT_LIFETIME_SECONDS,
+  PrincipalKeyRegistryError,
+  delegationGrantPayloadSchema,
+  mintDelegationGrant,
+  parsePrincipalKeyRegistry,
+  verifyDelegationGrant,
+} from "./grants";
+export type {
+  DelegationGrantPayload,
+  GrantFailureCode,
+  GrantVerification,
+  MintDelegationGrantInput,
+  PrincipalKeyRegistry,
+  VerifiedGrant,
+} from "./grants";
 export { DEFAULT_SENSITIVE_ACTIONS, evaluatePolicies } from "./policies";
 export type { PolicyEvaluator, PolicyOptions } from "./policies";
 export { aggregateDecision } from "./decision";
@@ -12,9 +30,12 @@ export {
   MAX_JSON_NODES,
 } from "./json-complexity";
 export { verifyAction } from "./verify";
+export type { VerificationOptions } from "./verify";
 export type {
+  AuthorityProvenance,
   Decision,
   PolicyResult,
   Receipt,
+  ReceiptGrant,
   VerificationResponse,
 } from "./types";
