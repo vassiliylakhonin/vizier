@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat"],
+  // VIZIER_PRINCIPAL_KEYS is deliberately not required: delegation grants are
+  // opt-in, and an unset registry simply means no grant can be verified.
   "secrets": {
     "required": [
       "VIZIER_API_KEY",

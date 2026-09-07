@@ -1,3 +1,4 @@
+import type { GrantVerification } from "./grants";
 import type { PolicyResult } from "./types";
 import type { VerificationRequest } from "./schemas";
 
@@ -17,6 +18,12 @@ export interface PolicyOptions {
   readonly sensitiveActions?: readonly string[];
   readonly trustedAuthority?: boolean;
   readonly customPolicies?: readonly PolicyEvaluator[];
+  /**
+   * Outcome of verifying a principal-signed delegation grant, when the request
+   * carried one. Verification is async and happens before policy evaluation so
+   * that this function stays synchronous and deterministic.
+   */
+  readonly grantVerification?: GrantVerification;
 }
 
 function result(
@@ -33,10 +40,41 @@ function result(
   });
 }
 
-function evaluatePrincipal(request: VerificationRequest): PolicyResult {
-  return request.principal === null
-    ? result("principal.verified", "REVIEW", "PRINCIPAL_UNVERIFIED")
+function evaluatePrincipal(
+  request: VerificationRequest,
+  grant: GrantVerification | undefined,
+): PolicyResult {
+  if (request.principal === null) {
+    return result("principal.verified", "REVIEW", "PRINCIPAL_UNVERIFIED");
+  }
+  // A verified grant makes this cryptographic rather than a matter of the
+  // caller having typed a principal id into the request.
+  return grant?.ok === true
+    ? result("principal.verified", "PASS", null, {
+        verified_by: "delegation_grant",
+        key_id: grant.grant.key_id,
+      })
     : result("principal.verified", "PASS", null);
+}
+
+/**
+ * Evaluate a principal-signed delegation grant, when one was supplied.
+ *
+ * Presenting a grant is an instruction to verify it. A grant that does not
+ * verify therefore fails the request outright rather than degrading to the
+ * caller-asserted path — otherwise a forged grant would be strictly better for
+ * an attacker than sending none at all.
+ */
+function evaluateDelegationGrant(grant: GrantVerification): PolicyResult {
+  return grant.ok
+    ? result("authority.grant.verified", "PASS", null, {
+        jti: grant.grant.jti,
+        issuer: grant.grant.issuer,
+        subject: grant.grant.subject,
+        key_id: grant.grant.key_id,
+        expires_at: grant.grant.expires_at,
+      })
+    : result("authority.grant.verified", "FAIL", grant.code, grant.details);
 }
 
 function evaluateAuthorityProvenance(trustedAuthority: boolean): PolicyResult {
@@ -165,15 +203,20 @@ export function evaluatePolicies(
   options: PolicyOptions = {},
 ): readonly PolicyResult[] {
   const sensitiveActions = options.sensitiveActions ?? DEFAULT_SENSITIVE_ACTIONS;
+  const { grantVerification } = options;
   const results: PolicyResult[] = [
     evaluateAuthorityProvenance(options.trustedAuthority ?? true),
-    evaluatePrincipal(request),
+    evaluatePrincipal(request, grantVerification),
     evaluateDelegatedAction(request),
     evaluateAmount(request),
     evaluateTarget(request),
     evaluateSensitiveAction(request, sensitiveActions),
     evaluateReversibility(request),
   ];
+
+  if (grantVerification !== undefined) {
+    results.push(evaluateDelegationGrant(grantVerification));
+  }
 
   if (options.customPolicies) {
     for (const evaluator of options.customPolicies) {

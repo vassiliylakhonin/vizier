@@ -132,7 +132,7 @@ export function createOpenApiDocument(
       title: "Vizier action authorization API",
       version: SERVICE_VERSION,
       description:
-        "Deterministic authorization for exact agent actions. The integration supplies authority, evidence, invalidation signals, and reported outcomes. Vizier verifies structure, freshness, exact matching, and cryptographic bindings; it does not independently establish that supplied facts or reported execution are true.",
+        "Deterministic authorization for exact agent actions. Authority may be asserted by the integration or proved with a delegation grant the principal signed, which Vizier verifies against a registered key and records in the receipt. Evidence, invalidation signals, and reported outcomes remain integration-supplied: Vizier verifies structure, freshness, exact matching, and cryptographic bindings, and does not independently establish that supplied facts or reported execution are true.",
       contact: {
         name: "Vassiliy Lakhonin",
         url: "https://github.com/vassiliylakhonin",
@@ -160,7 +160,7 @@ export function createOpenApiDocument(
           tags: ["Verification"],
           summary: "Evaluate one proposed agent action",
           description:
-            "Returns ALLOW, REVIEW, or BLOCK against caller-supplied authority. The public deployment requires a Bearer credential for enforcement results.",
+            "Returns ALLOW, REVIEW, or BLOCK. Authority is caller-asserted unless the request carries a `grant`: a compact JWS signed by the principal that binds this exact authority to this agent. A grant is verified against a key registered for the principal, must match the request, and is refused rather than downgraded when it does not verify. The receipt reports which of the two the decision rested on in `authority_provenance`. The public deployment requires a Bearer credential for enforcement results.",
           requestBody: requestBody("VerificationRequest"),
           responses: {
             "200": successResponse("Authorization decision.", "VerificationResponse"),

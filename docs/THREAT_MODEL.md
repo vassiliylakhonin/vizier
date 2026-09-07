@@ -1,10 +1,13 @@
 # Threat model
 
-Vizier v0.2 evaluates a proposed action against authority, covenant evidence,
-and invalidation signals supplied by the integrating application. It is a
-deterministic authorization and receipt-signing service with a minimal
-integration credential, not an independent principal identity, delegation
-issuer, evidence oracle, or execution observer.
+Vizier v0.3 evaluates a proposed action against authority, covenant evidence,
+and invalidation signals. Covenant evidence and invalidation signals are
+supplied by the integrating application. Authority may also be supplied that
+way, or proved with a delegation grant the principal signed and Vizier verified
+against a key registered for that principal. It is a deterministic authorization
+and receipt-signing service with a minimal integration credential — not an
+independent principal identity provider, evidence oracle, or execution observer,
+and it issues no delegation of its own.
 
 ## Assets
 
@@ -23,9 +26,20 @@ issuer, evidence oracle, or execution observer.
 External callers, drafts, action parameters, delegated authority, evidence,
 invalidation signals, outcomes, A2A messages, and MCP tool arguments are
 untrusted. In enforcement mode, a Bearer credential proves
-that the request came from the configured integration. It does not independently
+that the request came from the configured integration. It does not by itself
 prove that the principal issued the supplied delegation. The credential must
 remain in the controlled backend and outside the action-taking agent's reach.
+
+A **delegation grant** is the exception, and the only thing in a request that
+carries its own proof. It is a compact JWS signed by the principal, verified
+against a public key an operator registered out of band in
+`VIZIER_PRINCIPAL_KEYS`. Its claims are read before verification only to resolve
+that key; nothing inside it is acted on until the signature holds. A grant that
+fails any check is `BLOCK` and never degrades to the caller-asserted path, and
+the request's `authority` must canonicalise identically to the signed one — so
+holding the integration credential is not enough to widen an authority a
+principal actually signed. See
+[DELEGATION_GRANTS.md](DELEGATION_GRANTS.md).
 
 A draft marked `MODEL` is still untrusted data. The model cannot activate it:
 activation requires an acceptance naming the same principal and the exact draft
@@ -97,10 +111,19 @@ or network failure.
 
 - No per-principal authentication, rate limiting, durable policy/evidence store,
   or full-receipt store.
-- Authority is asserted by the authenticated integration and is not signed or
-  loaded from a principal-controlled store. An action-taking agent that gains
-  the integration credential or can alter the controlled backend's `authority`
-  input can still grant itself permission.
+- Authority without a delegation grant is asserted by the authenticated
+  integration. An action-taking agent that gains the integration credential, or
+  can alter the controlled backend's `authority` input, can still grant itself
+  permission for any request that carries no grant. A grant closes this for the
+  requests that carry one; it does not close it for the ones that do not, and
+  Vizier does not currently offer a way to require grants per principal.
+- A delegation grant proves delegation, not intent or possession. It shows the
+  principal signed this authority for this agent; it does not show a human
+  reviewed this particular action, nor that the signing key is still in the
+  principal's sole control. There is no revocation store: `jti` and `exp` are
+  recorded in the receipt so a downstream system can refuse a known-bad grant,
+  but Vizier will keep accepting a leaked key's grants until it is unregistered
+  or they expire. Short TTLs and rotation are the mechanism.
 - Legacy `/v1/verify` receipts remain unsigned. Complete covenant receipts and
   JWS tokens remain caller-held and are not independently timestamped; D1 keeps
   only selected receipt metadata and hashes.

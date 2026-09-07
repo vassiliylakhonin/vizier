@@ -1,4 +1,9 @@
-import { assertJsonComplexity, JsonComplexityError } from "../core/index";
+import {
+  assertJsonComplexity,
+  JsonComplexityError,
+  parsePrincipalKeyRegistry,
+  type PrincipalKeyRegistry,
+} from "../core/index";
 
 // JSON parsing temporarily holds encoded bytes, decoded text, and the parsed
 // object graph at the same time. Keep this well below the Worker's 128 MiB
@@ -18,6 +23,60 @@ export interface TransportOptions {
   readonly receiptSigningKey?: string;
   readonly db?: D1Database;
   readonly ctx?: BackgroundContext;
+  /**
+   * `VIZIER_PRINCIPAL_KEYS`: JSON mapping a principal id to the ES256 public
+   * JWK(s) its delegation grants are signed with. Parsed here rather than at
+   * the edge so a bad value cannot take the whole Worker down.
+   */
+  readonly principalKeySource?: string;
+}
+
+const EMPTY_PRINCIPAL_KEYS: PrincipalKeyRegistry = new Map();
+const principalKeyCache = new Map<string, PrincipalKeyRegistry>();
+
+/**
+ * Resolve the registered principal keys, failing closed.
+ *
+ * An unparseable registry yields no keys, so every grant that reaches the
+ * kernel is refused, while requests that carry no grant keep working. The
+ * alternative — refusing all traffic on a config typo — trades a security
+ * property that is already safe for an availability one that is not.
+ */
+export function resolvePrincipalKeys(
+  options: TransportOptions,
+): PrincipalKeyRegistry {
+  const source = options.principalKeySource;
+  if (source === undefined || source.trim().length === 0) {
+    return EMPTY_PRINCIPAL_KEYS;
+  }
+  const cached = principalKeyCache.get(source);
+  if (cached !== undefined) {
+    return cached;
+  }
+  let registry: PrincipalKeyRegistry;
+  try {
+    registry = parsePrincipalKeyRegistry(source);
+  } catch (error) {
+    registry = EMPTY_PRINCIPAL_KEYS;
+    console.error(
+      JSON.stringify({
+        event: "vizier.principal_keys.invalid",
+        error: error instanceof Error ? error.message : "UnknownError",
+      }),
+    );
+  }
+  principalKeyCache.set(source, registry);
+  return registry;
+}
+
+/** Whether `VIZIER_PRINCIPAL_KEYS` was set but could not be parsed. */
+export function principalKeysMisconfigured(options: TransportOptions): boolean {
+  const source = options.principalKeySource;
+  return (
+    source !== undefined &&
+    source.trim().length > 0 &&
+    resolvePrincipalKeys(options).size === 0
+  );
 }
 
 export class TransportRequestError extends Error {

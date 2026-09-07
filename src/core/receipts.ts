@@ -1,5 +1,11 @@
 import type { VerificationRequest } from "./schemas";
-import type { Decision, PolicyResult, Receipt } from "./types";
+import type {
+  AuthorityProvenance,
+  Decision,
+  PolicyResult,
+  Receipt,
+  ReceiptGrant,
+} from "./types";
 import { assertJsonComplexity } from "./json-complexity";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -43,11 +49,22 @@ export interface ReceiptOptions {
   readonly createId?: () => string;
 }
 
+/**
+ * What the decision rested on. Kept out of {@link ReceiptOptions} so that a
+ * caller of `verifyAction` cannot assert its own provenance: the kernel
+ * determines this from the verification it actually performed.
+ */
+export interface ReceiptProvenance {
+  readonly authorityProvenance: AuthorityProvenance;
+  readonly grant?: ReceiptGrant;
+}
+
 export async function createReceipt(
   request: VerificationRequest,
   decision: Decision,
   riskScore: number,
   policyResults: readonly PolicyResult[],
+  provenance: ReceiptProvenance,
   options: ReceiptOptions = {},
 ): Promise<Receipt> {
   const now = options.now ?? (() => new Date());
@@ -64,5 +81,9 @@ export async function createReceipt(
     risk_score: riskScore,
     policy_rule_ids: Object.freeze(policyResults.map((item) => item.rule_id)),
     reason_codes: Object.freeze(reasonCodes),
+    authority_provenance: provenance.authorityProvenance,
+    ...(provenance.grant === undefined
+      ? {}
+      : { grant: Object.freeze({ ...provenance.grant }) }),
   });
 }

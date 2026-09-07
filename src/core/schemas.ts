@@ -65,6 +65,16 @@ export const authoritySchema = z.strictObject({
   }),
 });
 
+/** Bound on the encoded delegation grant, checked before anything is decoded. */
+export const MAX_GRANT_TOKEN_CHARS = 8_192;
+
+/** A compact JWS signed by the principal. See `src/core/grants.ts`. */
+export const delegationGrantTokenSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_GRANT_TOKEN_CHARS);
+
 export const contextSchema = z.strictObject({
   request_id: identifierSchema.nullable(),
   timestamp: z.iso.datetime({ offset: true }).nullable(),
@@ -77,6 +87,12 @@ export const verificationRequestSchema = z.strictObject({
   action: actionSchema,
   authority: authoritySchema,
   context: contextSchema,
+  /**
+   * Optional principal-signed proof of the `authority` above. When present it
+   * is verified, and it must match this request or the decision is BLOCK.
+   * When absent, behaviour is unchanged: the authority is caller-asserted.
+   */
+  grant: delegationGrantTokenSchema.optional(),
 });
 
 export type VerificationRequest = z.infer<typeof verificationRequestSchema>;

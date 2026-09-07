@@ -37,6 +37,7 @@ function decision(
       risk_score: value === "ALLOW" ? 0 : 1,
       policy_rule_ids: ["target_scope"],
       reason_codes: reasonCodes,
+      authority_provenance: "trusted_integration" as const,
     },
   };
 }
