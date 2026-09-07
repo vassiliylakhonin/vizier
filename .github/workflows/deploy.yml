@@ -1,9 +1,28 @@
 name: Deploy
 
+# Every deploy this repository has ever run was triggered by a direct push to
+# main. On 2026-09-07 the first pull request merged since this workflow existed
+# (#12) produced no run at all: main moved to v0.3.0 and production kept serving
+# v0.2.2, with nothing to say so. The trigger was written for the way the
+# repository worked at the time, and did not follow it to pull requests.
+#
+# `workflow_dispatch` is the hand crank — until now there was no way to deploy
+# without pushing a commit. `drift` is the alarm: it runs the check that would
+# have caught this on the day it happened, rather than the next time someone
+# thought to look.
+
 on:
   push:
     branches:
       - main
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    # 04:17 UTC daily, offset from the audit prune cron at 03:17.
+    - cron: "17 4 * * *"
 
 permissions:
   contents: read
@@ -12,14 +31,26 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  # Deliberately not keyed on github.ref: a merge can raise both a push and a
+  # pull_request event, and those carry different refs for the same deploy.
+  group: deploy-main
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    # A closed pull request that was not merged must not deploy anything. The
+    # scheduled run is for drift detection only.
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # A pull_request event would otherwise check out the PR's merge ref.
+          # Production follows main, not a ref that stops existing.
+          ref: main
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -63,3 +94,21 @@ jobs:
       # meaning the deploy failed; read which step carries the X.
       - name: Publish the MCP Registry entry
         run: node scripts/publish-registry.mjs
+
+  # Answers one question daily: is production running what main says it is?
+  # The check needs Cloudflare credentials, which is why it cannot live in CI.
+  drift:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Compare main against the deployed Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run check:deployed
