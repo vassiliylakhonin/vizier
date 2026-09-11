@@ -1,4 +1,12 @@
-import { verificationRequestSchema, verifyAction } from "../core/index";
+import { z } from "zod";
+import {
+  evaluateEdgeCircuitBreaker,
+  identifierSchema,
+  resetEdgeCircuitBreaker,
+  verificationRequestSchema,
+  verifyAction,
+  type EdgeCircuitBreakerResult,
+} from "../core/index";
 import { publicJwkFromPrivate } from "../crypto/jws";
 import {
   activateActionCovenant,
@@ -172,9 +180,17 @@ async function handleVerify(
     ...parsed.data,
     context: { ...parsed.data.context, source: "rest" as const },
   };
+  let circuitBreakerResult: EdgeCircuitBreakerResult | undefined;
+  if (options.circuitBreakerKv !== undefined) {
+    circuitBreakerResult = await evaluateEdgeCircuitBreaker(
+      options.circuitBreakerKv,
+      normalizedRequest,
+    );
+  }
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
     principalKeys: resolvePrincipalKeys(options),
+    circuitBreaker: circuitBreakerResult,
   });
   const requestId =
     normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
@@ -195,6 +211,46 @@ async function handleVerify(
     (db) => storeReceipt(db, normalizedRequest, result.receipt),
   );
   return jsonResponse(result);
+}
+
+const resetCircuitBreakerSchema = z.strictObject({
+  session_id: identifierSchema,
+});
+
+async function handleCircuitBreakerReset(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "circuit breaker reset");
+  if (options.circuitBreakerKv === undefined) {
+    throw new TransportRequestError(
+      503,
+      "CIRCUIT_BREAKER_UNAVAILABLE",
+      "Circuit breaker KV storage is not configured on this Worker.",
+    );
+  }
+  const parsedJson = await readLimitedJson(request);
+  const parsed = resetCircuitBreakerSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Reset request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  await resetEdgeCircuitBreaker(options.circuitBreakerKv, parsed.data.session_id);
+  console.log(
+    JSON.stringify({
+      event: "vizier.circuit_breaker.reset",
+      session_id: parsed.data.session_id,
+    }),
+  );
+  return jsonResponse({
+    status: "ok",
+    session_id: parsed.data.session_id,
+    message: `Circuit breaker reset for session '${parsed.data.session_id}'.`,
+  });
 }
 
 async function handleCovenantActivation(
@@ -628,6 +684,9 @@ export async function handleHttpRequest(
     if (request.method === "POST" && url.pathname === "/v1/verify") {
       return await handleVerify(request, options);
     }
+    if (request.method === "POST" && url.pathname === "/v1/circuit-breaker/reset") {
+      return await handleCircuitBreakerReset(request, options);
+    }
     if (request.method === "POST" && url.pathname === "/v1/covenants") {
       return await handleCovenantActivation(request, options);
     }
@@ -653,6 +712,7 @@ export async function handleHttpRequest(
       );
     }
     if (
+      url.pathname === "/v1/circuit-breaker/reset" ||
       url.pathname === "/v1/covenants" ||
       url.pathname === "/v1/authorizations" ||
       url.pathname === "/v1/outcomes"

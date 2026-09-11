@@ -62,6 +62,10 @@ export const authoritySchema = z.strictObject({
     blocked_targets: stringSetSchema.optional(),
     allowed_sensitive_actions: z.array(actionTypeSchema).optional(),
     require_review_for_irreversible: z.boolean().optional(),
+    max_repeated_calls: z.number().int().min(1).max(100).optional(),
+    time_window_seconds: z.number().min(1).max(3600).optional(),
+    max_session_actions: z.number().int().min(1).max(10000).optional(),
+    cool_off_seconds: z.number().min(1).max(86400).optional(),
   }),
 });
 
@@ -77,6 +81,7 @@ export const delegationGrantTokenSchema = z
 
 export const contextSchema = z.strictObject({
   request_id: identifierSchema.nullable(),
+  session_id: identifierSchema.optional(),
   timestamp: z.iso.datetime({ offset: true }).nullable(),
   source: z.enum(["a2a", "mcp", "rest", "internal", "unknown"]),
 });

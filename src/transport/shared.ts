@@ -10,7 +10,7 @@ import {
 // memory limit while still allowing sizeable tool arguments and evidence.
 export const MAX_BODY_BYTES = 1024 * 1024;
 
-import type { D1Database, RateLimit } from "@cloudflare/workers-types";
+import type { D1Database, KVNamespace, RateLimit } from "@cloudflare/workers-types";
 
 export interface BackgroundContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -19,6 +19,7 @@ export interface BackgroundContext {
 export interface TransportOptions {
   readonly apiKey?: string;
   readonly anonymousRateLimiter?: RateLimit;
+  readonly circuitBreakerKv?: KVNamespace;
   readonly agentCardSigningKey?: string;
   readonly receiptSigningKey?: string;
   readonly db?: D1Database;

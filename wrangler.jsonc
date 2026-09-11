@@ -32,6 +32,12 @@
       "simple": { "limit": 60, "period": 60 }
     }
   ],
+  "kv_namespaces": [
+    {
+      "binding": "CIRCUIT_BREAKER_KV",
+      "id": "16d2952b18ea415b9cc5c4033c716fb5"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

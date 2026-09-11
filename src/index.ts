@@ -6,6 +6,7 @@ export default {
     return handleHttpRequest(request, {
       apiKey: env.VIZIER_API_KEY,
       anonymousRateLimiter: env.ANONYMOUS_RATE_LIMIT,
+      circuitBreakerKv: env.CIRCUIT_BREAKER_KV,
       agentCardSigningKey: env.AGENT_CARD_SIGNING_KEY,
       receiptSigningKey: env.RECEIPT_SIGNING_KEY,
       principalKeySource: env.VIZIER_PRINCIPAL_KEYS,
