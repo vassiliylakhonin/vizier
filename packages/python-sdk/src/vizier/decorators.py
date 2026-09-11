@@ -36,6 +36,11 @@ def vizier_guard(
     blocked_entities: Optional[List[str]] = None,
     dlp_check: bool = False,
     allowed_dlp_categories: Optional[List[str]] = None,
+    quorum_min_approvals: Optional[int] = None,
+    quorum_allowed_approvers: Optional[List[str]] = None,
+    quorum_require_distinct_owners: Optional[bool] = None,
+    quorum_proposal_id: Optional[Union[str, Callable[..., str]]] = None,
+    quorum_approvals: Optional[Union[List[Any], Callable[..., List[Any]]]] = None,
 ):
     """
     Decorator to protect any Python function / agent tool with Vizier deterministic authorization,
@@ -84,7 +89,27 @@ def vizier_guard(
             else:
                 resolved_session_id = params.get("session_id") or agent_id
 
-            return params, str(resolved_target), resolved_max_amount, curr, str(resolved_session_id)
+            if callable(quorum_proposal_id):
+                resolved_proposal_id = quorum_proposal_id(*args, **kwargs)
+            else:
+                resolved_proposal_id = quorum_proposal_id or params.get("proposal_id")
+
+            if callable(quorum_approvals):
+                resolved_approvals = quorum_approvals(*args, **kwargs)
+            else:
+                resolved_approvals = quorum_approvals or params.get("approvals")
+
+            resolved_quorum = None
+            if quorum_min_approvals is not None:
+                resolved_quorum = {
+                    "min_approvals": quorum_min_approvals,
+                }
+                if quorum_allowed_approvers is not None:
+                    resolved_quorum["allowed_approvers"] = quorum_allowed_approvers
+                if quorum_require_distinct_owners is not None:
+                    resolved_quorum["require_distinct_owners"] = quorum_require_distinct_owners
+
+            return params, str(resolved_target), resolved_max_amount, curr, str(resolved_session_id), resolved_proposal_id, resolved_approvals, resolved_quorum
 
         if is_async:
             if isinstance(client, AsyncVizierClient):
@@ -98,7 +123,7 @@ def vizier_guard(
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                params, resolved_target, resolved_max_amount, curr, resolved_session_id = _prepare_args(args, kwargs)
+                params, resolved_target, resolved_max_amount, curr, resolved_session_id, resolved_proposal_id, resolved_approvals, resolved_quorum = _prepare_args(args, kwargs)
 
                 # 1. Circuit Breaker check
                 if breaker:
@@ -131,10 +156,14 @@ def vizier_guard(
                     blocked_targets=blocked_targets,
                     agent_id=agent_id,
                     principal_id=principal_id,
+                    session_id=resolved_session_id,
                     sanctions_screening=True if sanctions_check else None,
                     blocked_entities=blocked_entities,
                     dlp_screening=True if dlp_check else None,
                     allowed_dlp_categories=allowed_dlp_categories,
+                    proposal_id=resolved_proposal_id,
+                    approvals=resolved_approvals,
+                    quorum=resolved_quorum,
                 )
 
                 if verification.decision == "REVIEW" and hitl_handler:
@@ -165,7 +194,7 @@ def vizier_guard(
 
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                params, resolved_target, resolved_max_amount, curr, resolved_session_id = _prepare_args(args, kwargs)
+                params, resolved_target, resolved_max_amount, curr, resolved_session_id, resolved_proposal_id, resolved_approvals, resolved_quorum = _prepare_args(args, kwargs)
 
                 # 1. Circuit Breaker check
                 if breaker:
@@ -198,10 +227,14 @@ def vizier_guard(
                     blocked_targets=blocked_targets,
                     agent_id=agent_id,
                     principal_id=principal_id,
+                    session_id=resolved_session_id,
                     sanctions_screening=True if sanctions_check else None,
                     blocked_entities=blocked_entities,
                     dlp_screening=True if dlp_check else None,
                     allowed_dlp_categories=allowed_dlp_categories,
+                    proposal_id=resolved_proposal_id,
+                    approvals=resolved_approvals,
+                    quorum=resolved_quorum,
                 )
 
                 if verification.decision == "REVIEW" and hitl_handler:

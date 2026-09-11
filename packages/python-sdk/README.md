@@ -328,4 +328,63 @@ if not scan_result["clean"]:
         print(f"  - {finding['category']} ({finding['detector']}): {finding['snippet_masked']}")
 ```
 
+---
+
+## 👥 Multi-Agent Quorum & Dual-Control Gate (4-Eyes Principle)
+
+Critical AI agent actions (financial transfers, infrastructure mutation, database drops, IAM role modifications) should never rely on a single autonomous agent. Vizier enforces a deterministic "4-eyes" principle requiring consensus and co-signing from independent supervisor or peer agents.
+
+* **Self-Approval Prohibited:** Proposing agent cannot approve its own action (`SELF_APPROVAL_DISALLOWED`).
+* **Canonical Action Hash Binding:** Approvals strictly bind to the exact action SHA-256 hash (`QUORUM_ACTION_MISMATCH`).
+* **Veto Power:** Any authorized approver casting `REJECT` immediately blocks the action.
+* **Both Stateful & Stateless Modes:** Support for Cloudflare KV proposal registry or inline stateless signatures.
+
+### 1. Asynchronous Coordination Workflow (Stateful Edge)
+
+```python
+from vizier import VizierClient
+
+client = VizierClient(api_key="your-api-key")
+
+# Step 1: Agent Alpha proposes high-risk deployment
+proposal = client.propose_quorum(
+    action_type="deploy_worker",
+    target="cloudflare_edge",
+    parameters={"worker": "payment-api", "version": "v2.0"},
+    min_approvals=2,
+    allowed_approvers=["security-auditor", "infra-lead"],
+)
+proposal_id = proposal["proposal_id"]
+action_hash = proposal["action_hash"]
+
+# Step 2: Peer Agent (Auditor) approves the proposal
+client.approve_quorum(
+    proposal_id=proposal_id,
+    approver_id="security-auditor",
+    action_hash=action_hash,
+    decision="APPROVE",
+    notes="Security review complete: 0 vulnerabilities found.",
+)
+
+# Step 3: Check proposal status
+status = client.get_quorum_proposal(proposal_id)
+print(f"Current status: {status['status']} (Approvals: {len(status['approvals'])})")
+```
+
+### 2. Protect Functions with `@vizier_guard(quorum_min_approvals=...)`
+
+```python
+@vizier_guard(
+    client=client,
+    action_type="transfer_funds",
+    target="wire_service",
+    quorum_min_approvals=2,
+    quorum_allowed_approvers=["treasury-bot", "compliance-bot"],
+)
+def wire_funds(recipient: str, amount: float):
+    # Executes ONLY if quorum requirement is verified by Vizier
+    return execute_wire(recipient, amount)
+```
+
+
 

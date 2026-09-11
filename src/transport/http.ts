@@ -1,10 +1,18 @@
 import { z } from "zod";
 import {
+  actionSchema,
   addCustomSanctionsEntry,
+  agentSchema,
+  createQuorumProposal,
   evaluateDlp,
   evaluateEdgeCircuitBreaker,
+  evaluateQuorum,
   evaluateSanctions,
+  getQuorumProposal,
   identifierSchema,
+  quorumApprovalSchema,
+  quorumConstraintsSchema,
+  recordQuorumApproval,
   resetEdgeCircuitBreaker,
   scanDlpParameters,
   scanDlpText,
@@ -13,6 +21,7 @@ import {
   type DlpEvaluationResult,
   type DlpFinding,
   type EdgeCircuitBreakerResult,
+  type QuorumEvaluationResult,
   type SanctionsEvaluationResult,
 } from "../core/index";
 import { publicJwkFromPrivate } from "../crypto/jws";
@@ -206,12 +215,20 @@ async function handleVerify(
   if (normalizedRequest.authority.constraints.dlp_screening !== false) {
     dlpResult = evaluateDlp(normalizedRequest);
   }
+  let quorumResult: QuorumEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.quorum !== undefined) {
+    quorumResult = await evaluateQuorum(
+      normalizedRequest,
+      options.circuitBreakerKv,
+    );
+  }
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
     principalKeys: resolvePrincipalKeys(options),
     circuitBreaker: circuitBreakerResult,
     sanctions: sanctionsResult,
     dlp: dlpResult,
+    quorum: quorumResult,
   });
   const requestId =
     normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
@@ -405,6 +422,91 @@ async function handleDlpScan(
     findings,
     total_leaks_prevented: findings.length,
   });
+}
+
+const quorumProposeRequestSchema = z.strictObject({
+  proposer: agentSchema,
+  action: actionSchema,
+  constraints: quorumConstraintsSchema,
+  ttl_seconds: z.number().int().min(60).max(86400).optional(),
+});
+
+const quorumApproveRequestSchema = z.strictObject({
+  proposal_id: z.string().regex(/^prp_[0-9a-zA-Z_-]+$/),
+  approval: quorumApprovalSchema,
+});
+
+async function handleQuorumPropose(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "quorum proposal creation");
+  const parsedJson = await readLimitedJson(request);
+  const parsed = quorumProposeRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Quorum propose request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const proposal = await createQuorumProposal({
+    kv: options.circuitBreakerKv,
+    proposer: parsed.data.proposer,
+    action: parsed.data.action,
+    constraints: parsed.data.constraints,
+    ttlSeconds: parsed.data.ttl_seconds,
+  });
+  return jsonResponse(proposal, 201);
+}
+
+async function handleQuorumApprove(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "quorum approval");
+  const parsedJson = await readLimitedJson(request);
+  const parsed = quorumApproveRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Quorum approve request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  try {
+    const updated = await recordQuorumApproval({
+      kv: options.circuitBreakerKv,
+      proposalId: parsed.data.proposal_id,
+      approval: parsed.data.approval,
+    });
+    return jsonResponse(updated);
+  } catch (err) {
+    throw new TransportRequestError(
+      400,
+      "QUORUM_APPROVAL_FAILED",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+async function handleQuorumGet(
+  proposalId: string,
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "quorum proposal lookup");
+  const proposal = await getQuorumProposal(proposalId, options.circuitBreakerKv);
+  if (!proposal) {
+    throw new TransportRequestError(
+      404,
+      "PROPOSAL_NOT_FOUND",
+      `Quorum proposal '${proposalId}' was not found or has expired.`,
+    );
+  }
+  return jsonResponse(proposal);
 }
 
 async function handleCovenantActivation(
@@ -850,6 +952,16 @@ export async function handleHttpRequest(
     if (request.method === "POST" && url.pathname === "/v1/dlp/scan") {
       return await handleDlpScan(request);
     }
+    if (request.method === "POST" && url.pathname === "/v1/quorum/propose") {
+      return await handleQuorumPropose(request, options);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/quorum/approve") {
+      return await handleQuorumApprove(request, options);
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/v1/quorum/proposals/")) {
+      const proposalId = url.pathname.slice("/v1/quorum/proposals/".length);
+      return await handleQuorumGet(proposalId, request, options);
+    }
     if (request.method === "POST" && url.pathname === "/v1/covenants") {
       return await handleCovenantActivation(request, options);
     }
@@ -879,6 +991,8 @@ export async function handleHttpRequest(
       url.pathname === "/v1/sanctions/screen" ||
       url.pathname === "/v1/sanctions/entries" ||
       url.pathname === "/v1/dlp/scan" ||
+      url.pathname === "/v1/quorum/propose" ||
+      url.pathname === "/v1/quorum/approve" ||
       url.pathname === "/v1/covenants" ||
       url.pathname === "/v1/authorizations" ||
       url.pathname === "/v1/outcomes"
@@ -892,6 +1006,18 @@ export async function handleHttpRequest(
         },
         405,
         { Allow: "POST" },
+      );
+    }
+    if (url.pathname.startsWith("/v1/quorum/proposals/")) {
+      return jsonResponse(
+        {
+          error: {
+            code: "METHOD_NOT_ALLOWED",
+            message: "Use GET for this endpoint.",
+          },
+        },
+        405,
+        { Allow: "GET" },
       );
     }
     if (url.pathname === "/v1/insights") {
