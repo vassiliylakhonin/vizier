@@ -70,8 +70,38 @@ export const authoritySchema = z.strictObject({
     blocked_entities: stringSetSchema.optional(),
     dlp_screening: z.boolean().optional(),
     allowed_dlp_categories: stringSetSchema.optional(),
+    quorum: z
+      .strictObject({
+        min_approvals: z.number().int().min(1).max(10),
+        allowed_approvers: stringSetSchema.optional(),
+        require_distinct_owners: z.boolean().optional(),
+        max_age_seconds: z.number().int().min(1).max(86400).optional(),
+      })
+      .optional(),
   }),
 });
+
+export const quorumConstraintsSchema = z.strictObject({
+  min_approvals: z.number().int().min(1).max(10),
+  allowed_approvers: stringSetSchema.optional(),
+  require_distinct_owners: z.boolean().optional(),
+  max_age_seconds: z.number().int().min(1).max(86400).optional(),
+});
+
+export type QuorumConstraints = z.infer<typeof quorumConstraintsSchema>;
+
+export const quorumApprovalSchema = z.strictObject({
+  approver_id: identifierSchema,
+  approver_owner: identifierSchema.optional(),
+  action_hash: z.string().regex(/^[a-f0-9]{64}$/),
+  timestamp: z.iso.datetime({ offset: true }),
+  decision: z.enum(["APPROVE", "REJECT"]).default("APPROVE"),
+  grant_token: z.string().optional(),
+  signature: z.string().optional(),
+  notes: z.string().max(1024).optional(),
+});
+
+export type QuorumApproval = z.infer<typeof quorumApprovalSchema>;
 
 /** Bound on the encoded delegation grant, checked before anything is decoded. */
 export const MAX_GRANT_TOKEN_CHARS = 8_192;
@@ -88,6 +118,8 @@ export const contextSchema = z.strictObject({
   session_id: identifierSchema.optional(),
   timestamp: z.iso.datetime({ offset: true }).nullable(),
   source: z.enum(["a2a", "mcp", "rest", "internal", "unknown"]),
+  proposal_id: z.string().regex(/^prp_[0-9a-zA-Z_-]+$/).optional(),
+  approvals: z.array(quorumApprovalSchema).optional(),
 });
 
 export const verificationRequestSchema = z.strictObject({

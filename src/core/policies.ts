@@ -2,6 +2,7 @@ import type { EdgeCircuitBreakerResult } from "./circuit-breaker";
 import type { DlpEvaluationResult } from "./dlp";
 import type { GrantVerification } from "./grants";
 import type { PolicyResult } from "./types";
+import type { QuorumEvaluationResult } from "./quorum";
 import type { SanctionsEvaluationResult } from "./sanctions";
 import type { VerificationRequest } from "./schemas";
 
@@ -30,6 +31,7 @@ export interface PolicyOptions {
   readonly circuitBreaker?: EdgeCircuitBreakerResult;
   readonly sanctions?: SanctionsEvaluationResult;
   readonly dlp?: DlpEvaluationResult;
+  readonly quorum?: QuorumEvaluationResult;
 }
 
 function result(
@@ -276,6 +278,23 @@ export function evaluatePolicies(
       );
     } else {
       results.push(result("security.dlp", "PASS", null));
+    }
+  }
+
+  if (options.quorum !== undefined && options.quorum.required) {
+    if (!options.quorum.satisfied) {
+      results.push(
+        result(
+          "governance.quorum",
+          "FAIL",
+          options.quorum.reasonCode ?? "QUORUM_NOT_MET",
+          options.quorum.details,
+        ),
+      );
+    } else {
+      results.push(
+        result("governance.quorum", "PASS", null, options.quorum.details),
+      );
     }
   }
 

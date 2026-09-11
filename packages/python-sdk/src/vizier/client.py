@@ -11,6 +11,9 @@ from .models import (
     AuthorityConstraints,
     Context,
     Principal,
+    QuorumApproval,
+    QuorumConstraints,
+    QuorumProposal,
     VerificationRequest,
     VerificationResponse,
 )
@@ -141,6 +144,83 @@ class VizierClient:
             payload["allowed_categories"] = allowed_categories
         return self._request("/v1/dlp/scan", payload)
 
+    def propose_quorum(
+        self,
+        action_type: str,
+        target: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        min_approvals: int = 1,
+        allowed_approvers: Optional[List[str]] = None,
+        require_distinct_owners: Optional[bool] = None,
+        proposer_id: str = "agent",
+        proposer_owner: Optional[str] = None,
+        ttl_seconds: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Propose a critical action for multi-agent quorum review and approval.
+        """
+        payload: Dict[str, Any] = {
+            "proposer": {"id": proposer_id, "owner": proposer_owner},
+            "action": {
+                "type": action_type,
+                "target": target,
+                "parameters": parameters or {},
+            },
+            "constraints": {
+                "min_approvals": min_approvals,
+            },
+        }
+        if allowed_approvers is not None:
+            payload["constraints"]["allowed_approvers"] = allowed_approvers
+        if require_distinct_owners is not None:
+            payload["constraints"]["require_distinct_owners"] = require_distinct_owners
+        if ttl_seconds is not None:
+            payload["ttl_seconds"] = ttl_seconds
+        return self._request("/v1/quorum/propose", payload)
+
+    def approve_quorum(
+        self,
+        proposal_id: str,
+        approver_id: str,
+        action_hash: str,
+        decision: str = "APPROVE",
+        approver_owner: Optional[str] = None,
+        notes: Optional[str] = None,
+        timestamp: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Approve or reject a pending quorum proposal as an independent agent/auditor.
+        """
+        import datetime
+        ts = timestamp or datetime.datetime.now(datetime.timezone.utc).isoformat()
+        approval: Dict[str, Any] = {
+            "approver_id": approver_id,
+            "action_hash": action_hash,
+            "timestamp": ts,
+            "decision": decision,
+        }
+        if approver_owner is not None:
+            approval["approver_owner"] = approver_owner
+        if notes is not None:
+            approval["notes"] = notes
+        return self._request(
+            "/v1/quorum/approve",
+            {"proposal_id": proposal_id, "approval": approval},
+        )
+
+    def get_quorum_proposal(self, proposal_id: str) -> Dict[str, Any]:
+        """
+        Query current status and approval records for a quorum proposal.
+        """
+        url = f"{self.base_url}/v1/quorum/proposals/{proposal_id}"
+        req = urllib.request.Request(url, headers=self._headers, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8")
+            raise VizierError(raw, status=e.code)
+
     def check(
         self,
         action_type: str,
@@ -153,12 +233,16 @@ class VizierClient:
         blocked_targets: Optional[List[str]] = None,
         agent_id: str = "agent",
         principal_id: str = "principal",
+        session_id: Optional[str] = None,
         is_reversible: Optional[bool] = None,
         grant: Optional[str] = None,
         sanctions_screening: Optional[bool] = None,
         blocked_entities: Optional[List[str]] = None,
         dlp_screening: Optional[bool] = None,
         allowed_dlp_categories: Optional[List[str]] = None,
+        proposal_id: Optional[str] = None,
+        approvals: Optional[List[Union[QuorumApproval, Dict[str, Any]]]] = None,
+        quorum: Optional[Union[QuorumConstraints, Dict[str, Any]]] = None,
     ) -> VerificationResponse:
         """
         Convenience method: verify an action in a single line of code.
@@ -183,7 +267,13 @@ class VizierClient:
                     blocked_entities=blocked_entities,
                     dlp_screening=dlp_screening,
                     allowed_dlp_categories=allowed_dlp_categories,
+                    quorum=quorum,
                 ),
+            ),
+            context=Context(
+                session_id=session_id,
+                proposal_id=proposal_id,
+                approvals=approvals,
             ),
             grant=grant,
         )

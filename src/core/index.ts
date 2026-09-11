@@ -1,4 +1,6 @@
 export {
+  actionSchema,
+  agentSchema,
   delegationGrantTokenSchema,
   identifierSchema,
   verificationRequestSchema,
@@ -77,6 +79,22 @@ export type {
   DlpFinding,
   DlpOptions,
 } from "./dlp";
+export {
+  clearMemoryProposalStore,
+  computeActionHash,
+  createQuorumProposal,
+  evaluateQuorum,
+  generateProposalId,
+  getQuorumProposal,
+  recordQuorumApproval,
+} from "./quorum";
+export type {
+  QuorumEvaluationResult,
+  QuorumFailureReason,
+  QuorumProposal,
+} from "./quorum";
+export { quorumApprovalSchema, quorumConstraintsSchema } from "./schemas";
+export type { QuorumApproval, QuorumConstraints } from "./schemas";
 export type {
   AuthorityProvenance,
   Decision,
@@ -85,4 +103,5 @@ export type {
   ReceiptGrant,
   VerificationResponse,
 } from "./types";
+
 

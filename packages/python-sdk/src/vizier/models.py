@@ -23,6 +23,63 @@ class Action:
     is_reversible: Optional[bool] = None
 
 @dataclass
+class QuorumConstraints:
+    min_approvals: int
+    allowed_approvers: Optional[List[str]] = None
+    require_distinct_owners: Optional[bool] = None
+    max_age_seconds: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = {"min_approvals": self.min_approvals}
+        if self.allowed_approvers is not None:
+            d["allowed_approvers"] = self.allowed_approvers
+        if self.require_distinct_owners is not None:
+            d["require_distinct_owners"] = self.require_distinct_owners
+        if self.max_age_seconds is not None:
+            d["max_age_seconds"] = self.max_age_seconds
+        return d
+
+@dataclass
+class QuorumApproval:
+    approver_id: str
+    action_hash: str
+    timestamp: str
+    decision: str = "APPROVE"
+    approver_owner: Optional[str] = None
+    grant_token: Optional[str] = None
+    signature: Optional[str] = None
+    notes: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = {
+            "approver_id": self.approver_id,
+            "action_hash": self.action_hash,
+            "timestamp": self.timestamp,
+            "decision": self.decision,
+        }
+        if self.approver_owner is not None:
+            d["approver_owner"] = self.approver_owner
+        if self.grant_token is not None:
+            d["grant_token"] = self.grant_token
+        if self.signature is not None:
+            d["signature"] = self.signature
+        if self.notes is not None:
+            d["notes"] = self.notes
+        return d
+
+@dataclass
+class QuorumProposal:
+    proposal_id: str
+    status: str
+    action_hash: str
+    proposer: Dict[str, Any]
+    action: Dict[str, Any]
+    constraints: Dict[str, Any]
+    created_at: str
+    expires_at: str
+    approvals: List[Dict[str, Any]]
+
+@dataclass
 class AuthorityConstraints:
     max_amount: Optional[float] = None
     currency: Optional[str] = None
@@ -34,6 +91,7 @@ class AuthorityConstraints:
     blocked_entities: Optional[List[str]] = None
     dlp_screening: Optional[bool] = None
     allowed_dlp_categories: Optional[List[str]] = None
+    quorum: Optional[Union[QuorumConstraints, Dict[str, Any]]] = None
 
 @dataclass
 class Authority:
@@ -43,8 +101,11 @@ class Authority:
 @dataclass
 class Context:
     request_id: Optional[str] = None
+    session_id: Optional[str] = None
     timestamp: Optional[str] = None
     source: Source = "rest"
+    proposal_id: Optional[str] = None
+    approvals: Optional[List[Union[QuorumApproval, Dict[str, Any]]]] = None
 
 @dataclass
 class VerificationRequest:
@@ -74,6 +135,15 @@ class VerificationRequest:
                 "source": self.context.source,
             },
         }
+        if self.context.session_id is not None:
+            d["context"]["session_id"] = self.context.session_id
+        if self.context.proposal_id is not None:
+            d["context"]["proposal_id"] = self.context.proposal_id
+        if self.context.approvals is not None:
+            d["context"]["approvals"] = [
+                a.to_dict() if hasattr(a, "to_dict") else a
+                for a in self.context.approvals
+            ]
         if self.action.is_reversible is not None:
             d["action"]["is_reversible"] = self.action.is_reversible
 
@@ -99,6 +169,8 @@ class VerificationRequest:
             cd["dlp_screening"] = c.dlp_screening
         if c.allowed_dlp_categories is not None:
             cd["allowed_dlp_categories"] = c.allowed_dlp_categories
+        if c.quorum is not None:
+            cd["quorum"] = c.quorum.to_dict() if hasattr(c.quorum, "to_dict") else c.quorum
 
         if self.grant is not None:
             d["grant"] = self.grant

@@ -5,6 +5,7 @@ import {
   type PrincipalKeyRegistry,
 } from "./grants";
 import { evaluatePolicies, type PolicyOptions } from "./policies";
+import { evaluateQuorum } from "./quorum";
 import { createReceipt, type ReceiptOptions } from "./receipts";
 import { calculateRiskScore } from "./risk";
 import type { VerificationRequest } from "./schemas";
@@ -68,7 +69,18 @@ export async function verifyAction(
           ...(options.now === undefined ? {} : { now: options.now() }),
         });
 
-  const policyResults = evaluatePolicies(request, { ...options, ...(grantVerification === undefined ? {} : { grantVerification }) });
+  const quorum =
+    options.quorum !== undefined
+      ? options.quorum
+      : request.authority.constraints.quorum !== undefined
+        ? await evaluateQuorum(request, undefined, options.now)
+        : undefined;
+
+  const policyResults = evaluatePolicies(request, {
+    ...options,
+    ...(grantVerification === undefined ? {} : { grantVerification }),
+    ...(quorum === undefined ? {} : { quorum }),
+  });
   const decision = aggregateDecision(policyResults);
   const riskScore = calculateRiskScore(policyResults);
   const reasonCodes = Object.freeze(
