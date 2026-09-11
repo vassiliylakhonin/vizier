@@ -64,4 +64,9 @@ __all__ = [
     "CircuitBreaker",
     "CircuitTrippedError",
     "CircuitStatus",
+    "VizierProxyConfig",
+    "configure_openai_proxy",
 ]
+
+from .proxy import VizierProxyConfig, configure_openai_proxy
+
