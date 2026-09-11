@@ -111,8 +111,10 @@ export const BUILT_IN_SANCTIONS: ReadonlyMap<string, SanctionsRecord> = new Map(
   ["wagner group", { entity_name: "Wagner Group", list: "EU_SANCTIONS", category: "entity_name" }],
 
   // High-Risk Maritime & Dark-Fleet Blocked Entities (OFAC SDN / EU / UK)
+  ["national iranian tanker", { entity_name: "National Iranian Tanker Company (NITC)", list: "OFAC_SDN", category: "entity_name" }],
   ["national iranian tanker company", { entity_name: "National Iranian Tanker Company (NITC)", list: "OFAC_SDN", category: "entity_name" }],
   ["nitc", { entity_name: "National Iranian Tanker Company (NITC)", list: "OFAC_SDN", category: "entity_name" }],
+  ["islamic republic of iran shipping", { entity_name: "Islamic Republic of Iran Shipping Lines (IRISL)", list: "OFAC_SDN", category: "entity_name" }],
   ["islamic republic of iran shipping lines", { entity_name: "Islamic Republic of Iran Shipping Lines (IRISL)", list: "OFAC_SDN", category: "entity_name" }],
   ["irisl", { entity_name: "Islamic Republic of Iran Shipping Lines (IRISL)", list: "OFAC_SDN", category: "entity_name" }],
   ["sovcomflot", { entity_name: "PAO Sovcomflot", list: "OFAC_SDN", category: "entity_name" }],
