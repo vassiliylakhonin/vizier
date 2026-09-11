@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { authenticateKey } from "../auth/keys";
+import { authenticateKey, incrementKeyUsage } from "../auth/keys";
 
 export type EnforcementAuthorization =
   | "authenticated"
@@ -66,7 +66,12 @@ export async function authorizeEnforcement(
   if (apiKey === undefined || apiKey.length === 0) {
     if (token?.startsWith("vz_live_") && options.db) {
       const authRes = await authenticateKey(token, { apiKey, db: options.db });
-      if (authRes.authenticated) return "authenticated";
+      if (authRes.authenticated) {
+        if (authRes.key_record && options.db) {
+          await incrementKeyUsage(options.db, authRes.key_record.id);
+        }
+        return "authenticated";
+      }
       if (authRes.quota_exceeded) return "quota_exceeded";
       return "denied";
     }
@@ -89,6 +94,9 @@ export async function authorizeEnforcement(
   if (token.startsWith("vz_live_") && options.db) {
     const authRes = await authenticateKey(token, { apiKey, db: options.db });
     if (authRes.authenticated) {
+      if (authRes.key_record && options.db) {
+        await incrementKeyUsage(options.db, authRes.key_record.id);
+      }
       return "authenticated";
     }
     if (authRes.quota_exceeded) {
