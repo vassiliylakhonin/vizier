@@ -26,7 +26,7 @@ import {
   type SanctionsEvaluationResult,
   type Shareholder,
 } from "../core/index";
-import { publicJwkFromPrivate } from "../crypto/jws";
+import { publicJwkFromPrivate, signCompactJws } from "../crypto/jws";
 import {
   activateActionCovenant,
   ActionCovenantError,
@@ -370,9 +370,10 @@ const shareholderSchema: z.ZodType<Shareholder> = z.lazy(() =>
 const screenEntity50RuleSchema = z.strictObject({
   entity_name: z.string().trim().min(1).max(512),
   country: z.string().trim().max(16).optional(),
+  jurisdiction: z.string().trim().max(16).optional(),
   lei: z.string().trim().max(32).optional(),
   registration_number: z.string().trim().max(64).optional(),
-  shareholders: z.array(shareholderSchema),
+  shareholders: z.array(shareholderSchema).optional().default([]),
   threshold_percentage: z.number().min(0.1).max(100).optional(),
 });
 
@@ -394,6 +395,29 @@ async function handleSanctionsScreenEntity(
     parsed.data,
     options.circuitBreakerKv,
   );
+  let receiptToken: string | null = null;
+  if (options.receiptSigningKey) {
+    try {
+      const receiptPayload = {
+        iss: "vizier-action-firewall",
+        sub: result.entity_name,
+        iat: Math.floor(Date.now() / 1000),
+        engine: "vizier_ofac_50_rule",
+        clean: result.clean,
+        violation: result.violation,
+        aggregate_blocked_percentage: result.aggregate_blocked_percentage,
+        threshold_percentage: result.threshold_percentage,
+        reason_codes: result.reason_codes,
+      };
+      receiptToken = await signCompactJws(
+        receiptPayload,
+        options.receiptSigningKey,
+        "application/vizier-receipt+jwt",
+      );
+    } catch (jwsErr) {
+      console.error("Failed to sign clearance receipt in screen-entity:", jwsErr);
+    }
+  }
   return jsonResponse({
     entity_name: result.entity_name,
     clean: result.clean,
@@ -403,6 +427,7 @@ async function handleSanctionsScreenEntity(
     blocked_shareholders: result.blocked_shareholders,
     reason_codes: result.reason_codes,
     explanation: result.explanation,
+    ...(receiptToken ? { receipt: receiptToken } : {}),
     ...(result.direct_match === undefined ? {} : { direct_match: result.direct_match }),
   });
 }

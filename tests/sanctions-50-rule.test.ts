@@ -216,4 +216,41 @@ describe("Sanctions 50% Rule via Core Verification & HTTP API", () => {
     expect(data.aggregate_blocked_percentage).toBe(55.0);
     expect(data.reason_codes).toContain("SANCTIONS_50_RULE_VIOLATION");
   });
+
+  it("mints signed JWS clearance receipt when receiptSigningKey is configured", async () => {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    );
+    const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+    const signingKey = JSON.stringify({ ...jwk, kid: "test-receipt-key", alg: "ES256", use: "sig" });
+
+    const body = JSON.stringify({
+      entity_name: "Clean Holding Co",
+      shareholders: [
+        { name: "Legitimate Investor", percentage: 100.0 },
+      ],
+    });
+
+    const res = await handleHttpRequest(
+      new Request("https://vizier.local/v1/sanctions/screen-entity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      }),
+      { receiptSigningKey: signingKey },
+    );
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as {
+      clean: boolean;
+      violation: boolean;
+      receipt?: string;
+    };
+    expect(data.clean).toBe(true);
+    expect(data.violation).toBe(false);
+    expect(typeof data.receipt).toBe("string");
+    expect(data.receipt).toMatch(/^eyJ/);
+  });
 });
