@@ -142,6 +142,27 @@ safe_crew_tool = VizierCrewAIToolGuard(
 )
 ```
 
+#### Human-in-the-Loop (Telegram / CLI / Webhooks) & Async:
+
+```python
+from vizier import AsyncVizierClient, vizier_guard, TelegramHITLHandler
+
+# Interactive approval buttons via Telegram Bot when decision is REVIEW
+telegram_approver = TelegramHITLHandler(
+    bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
+    chat_id=os.environ["TELEGRAM_CHAT_ID"]
+)
+
+@vizier_guard(
+    client=AsyncVizierClient(),
+    action_type="transfer_funds",
+    hitl_handler=telegram_approver
+)
+async def transfer(amount: float, target: str):
+    # Executes ONLY if human operator clicks [Approve] in Telegram
+    return await bank_api.send(amount, target)
+```
+
 ---
 
 ### 2. MCP Enforcement Proxy CLI
