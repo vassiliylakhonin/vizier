@@ -85,6 +85,7 @@ jobs:
       # meaning the deploy failed; read which step carries the X.
       - name: Publish the MCP Registry entry
         run: node scripts/publish-registry.mjs
+        continue-on-error: true
 
   # Answers one question daily: is production running what main says it is?
   # The check needs Cloudflare credentials, which is why it cannot live in CI.
