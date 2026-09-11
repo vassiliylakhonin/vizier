@@ -30,6 +30,8 @@ class AuthorityConstraints:
     blocked_targets: Optional[List[str]] = None
     allowed_sensitive_actions: Optional[List[str]] = None
     require_review_for_irreversible: Optional[bool] = None
+    sanctions_screening: Optional[bool] = None
+    blocked_entities: Optional[List[str]] = None
 
 @dataclass
 class Authority:
@@ -87,6 +89,10 @@ class VerificationRequest:
             cd["allowed_sensitive_actions"] = c.allowed_sensitive_actions
         if c.require_review_for_irreversible is not None:
             cd["require_review_for_irreversible"] = c.require_review_for_irreversible
+        if c.sanctions_screening is not None:
+            cd["sanctions_screening"] = c.sanctions_screening
+        if c.blocked_entities is not None:
+            cd["blocked_entities"] = c.blocked_entities
 
         if self.grant is not None:
             d["grant"] = self.grant

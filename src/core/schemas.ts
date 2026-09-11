@@ -66,6 +66,8 @@ export const authoritySchema = z.strictObject({
     time_window_seconds: z.number().min(1).max(3600).optional(),
     max_session_actions: z.number().int().min(1).max(10000).optional(),
     cool_off_seconds: z.number().min(1).max(86400).optional(),
+    sanctions_screening: z.boolean().optional(),
+    blocked_entities: stringSetSchema.optional(),
   }),
 });
 
