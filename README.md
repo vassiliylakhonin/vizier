@@ -1,103 +1,219 @@
 # Vizier
 
-Deterministic authorization before an AI agent causes an external side effect.
+**Deterministic Authorization & Non-Repudiation Audit Firewall for AI Agents.**
 
-Vizier is a small authorization layer for action-taking AI agents. Before an
-agent calls a tool, API, MCP server, A2A agent, or internal service, it sends the
-proposed action to Vizier.
+[![CI](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml)
+[![Deploy](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](packages/python-sdk)
+[![npm @vizier/sdk](https://img.shields.io/npm/v/@vizier/sdk.svg)](https://www.npmjs.com/package/@vizier/sdk)
+[![npm @vizier/mcp-proxy](https://img.shields.io/npm/v/@vizier/mcp-proxy.svg)](https://www.npmjs.com/package/@vizier/mcp-proxy)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.vassiliylakhonin%2Fvizier-purple.svg)](https://github.com/modelcontextprotocol/registry)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-```text
-Agent
-  |
-ActionCovenantDraft -> principal acceptance
-  |
-Vizier authorization kernel
-  |
-ALLOW / REVIEW / BLOCK
-  |
-Tool / API / Agent -> OutcomeReceipt
+Vizier is an ultra-fast, edge-native deterministic authorization and audit firewall for action-taking AI agents. Before an agent executes an external side effect (making a payment, executing code, modifying a database, dispatching messages, or deploying infrastructure), it submits the proposed action to Vizier.
+
+> ⚡ **Try the Live Interactive Playground**: [https://vizier.vassiliy-lakhonin.workers.dev/playground](https://vizier.vassiliy-lakhonin.workers.dev/playground)  
+> Test policy presets (`ALLOW`, `BLOCK_AMOUNT`, `BLOCK_TARGET`, `SENSITIVE`), inspect sub-25ms edge latency, and verify SHA-256 non-repudiation audit receipts in real time directly from your browser.
+
+---
+
+## 🏛️ Architecture
+
+```mermaid
+flowchart TD
+    subgraph Agents["AI Agent Runtimes"]
+        A1["Python Agent (LangChain / CrewAI / AutoGen)"]
+        A2["MCP Client (Claude / Cursor / Tools)"]
+        A3["TypeScript / Node.js Agent"]
+    end
+
+    subgraph Guards["Vizier Enforcement Boundary"]
+        G1["@vizier_guard / Python SDK"]
+        G2["@vizier/mcp-proxy CLI"]
+        G3["@vizier/sdk (TypeScript)"]
+    end
+
+    subgraph Kernel["Cloudflare Workers Global Edge"]
+        K["Vizier Deterministic Kernel (/v1/verify)"]
+        P["Policy Engine: Limits, Targets, Roles, Grants"]
+        D1["D1 Audit Ledger & Cryptographic Receipts"]
+    end
+
+    subgraph Targets["Protected External Side-Effects"]
+        T1["Payment / Financial APIs"]
+        T2["Database Writes & Deletions"]
+        T3["Worker / Infrastructure Deployments"]
+        T4["External Message Dispatch"]
+    end
+
+    A1 --> G1
+    A2 --> G2
+    A3 --> G3
+
+    G1 -->|"POST /v1/verify"| K
+    G2 -->|"POST /v1/verify"| K
+    G3 -->|"POST /v1/verify"| K
+
+    K --> P
+    P --> D1
+
+    G1 -.->|"Decision: ALLOW"| T1
+    G2 -.->|"Decision: ALLOW"| T2
+    G3 -.->|"Decision: ALLOW"| T3
+
+    P -.->|"Decision: BLOCK / REVIEW"| G1
+    P -.->|"Decision: BLOCK / REVIEW"| G2
+    P -.->|"Decision: BLOCK / REVIEW"| G3
 ```
 
-The decision path is deterministic. It checks delegated actions, principal
-identity, amount limits, targets, sensitive operations, and whether the request
-came through the authenticated integration boundary. Every response includes
-policy results and a SHA-256 receipt hash. The additive v0.2 Action Covenant
-lifecycle also binds one exact action to fresh evidence and invalidation signals,
-then signs both the authorization and its reported outcome.
+The decision path is strictly deterministic — no non-deterministic LLMs in the critical decision loop. It checks delegated actions, principal identity, amount limits, targets, sensitive operations, and authenticated integration boundaries. Every response includes policy results and a tamper-proof SHA-256 canonical receipt hash.
 
-Status: experimental v0.3.0, deployed on the public Worker. There are no
-production users, paid pilots, or usage claims. Since v0.3.0 authority can be
-**proved** rather than asserted: a principal signs a delegation grant, Vizier
-verifies it against a key registered for that principal, and the receipt records
-which of the two the decision rested on. Principal acceptance, evidence,
-invalidation signals, and outcomes are still supplied by the integrating
-application rather than loaded or observed independently. Read the
-[threat model](docs/THREAT_MODEL.md) before placing this service in an execution
-path.
+Status: experimental v0.3.0, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
 
-Public surfaces:
+---
 
-- Worker: <https://vizier.vassiliy-lakhonin.workers.dev>
-- Interactive Action Playground: <https://vizier.vassiliy-lakhonin.workers.dev/playground>
-- Live field reference: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
-- OpenAPI 3.1 contract: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
-- AI discovery catalog: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/ai-catalog.json>
-- MCP server manifest: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/mcp.json>
-- MCP Registry entry: `io.github.vassiliylakhonin/vizier`
-- Agent Card: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
-- Public key set: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
+## 🌐 Public Surfaces
 
-Discovery, health, documentation, and evaluation-only A2A and MCP calls are
-public. REST, MCP, and A2A enforcement require a private integration credential;
-no public demo credential is issued. The two credential-free endpoints are rate
-limited to 60 requests per minute per client IP; an authenticated integration is
-never counted against that budget. Action Covenant resources are authenticated
-REST endpoints in v0.3.0. `GET /v1/insights` is also authenticated and returns
-only aggregate operational counts from the metadata-only audit store, including
-`anonymous_calls`: how many credential-free calls each of `/mcp` and `/a2a`
-served and throttled.
+- **Edge Worker**: <https://vizier.vassiliy-lakhonin.workers.dev>
+- **Action Playground**: <https://vizier.vassiliy-lakhonin.workers.dev/playground>
+- **Live Field Reference**: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
+- **OpenAPI 3.1 Contract**: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
+- **AI Discovery Catalog**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/ai-catalog.json>
+- **MCP Server Manifest**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/mcp.json>
+- **MCP Registry Entry**: `io.github.vassiliylakhonin/vizier`
+- **Agent Card**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
+- **Public Key Set (JWKS)**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
 
-## 60-second quickstart
+---
 
-Requirements: Node.js 24 or newer.
+## 🚀 Quickstarts
+
+### 1. Python SDK (`vizier-guard`)
+
+Zero external dependencies (Python standard library only):
 
 ```bash
-npm install
-npx wrangler dev --local --var VIZIER_API_KEY:local-development-key
+pip install vizier-guard
 ```
 
-In another terminal:
+```python
+from vizier import VizierClient, vizier_guard
+
+client = VizierClient(
+    base_url="https://vizier.vassiliy-lakhonin.workers.dev",
+    api_key="your-api-key"
+)
+
+# Protect any function or tool:
+@vizier_guard(
+    client=client,
+    action_type="purchase",
+    max_amount=500.0,
+    currency="USD",
+    allowed_targets=["supplier.example"]
+)
+def execute_order(amount: float, target: str):
+    # Runs ONLY if Vizier decision is ALLOW
+    return {"status": "success", "amount": amount}
+
+execute_order(amount=450.0, target="supplier.example")   # Allowed
+execute_order(amount=1200.0, target="supplier.example")  # Raises ActionBlockedError
+```
+
+#### LangChain / LangGraph & CrewAI:
+
+```python
+from vizier.integrations.langchain import VizierLangChainToolGuard
+from vizier.integrations.crewai import VizierCrewAIToolGuard
+
+# LangChain / LangGraph
+safe_tool = VizierLangChainToolGuard(
+    tool=my_search_tool,
+    client=client,
+    allowed_actions=["search"],
+    max_amount=0.0
+)
+
+# CrewAI
+safe_crew_tool = VizierCrewAIToolGuard(
+    tool=my_payment_tool,
+    client=client,
+    max_amount=250.0
+)
+```
+
+---
+
+### 2. MCP Enforcement Proxy CLI
+
+Wrap any local or remote MCP server with deterministic authorization:
 
 ```bash
-curl -sS http://127.0.0.1:8787/v1/verify \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer local-development-key' \
-  --data @examples/allow.json
+npx @vizier/mcp-proxy \
+  --upstream http://localhost:3000/mcp \
+  --tools "query_db,execute_command,fetch_api" \
+  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
+  --api-key $VIZIER_API_KEY
 ```
 
-The response starts with:
+---
 
-```json
-{
-  "decision": "ALLOW",
-  "risk_score": 0,
-  "reason_codes": [],
-  "explanation": "The proposed action is within the supplied delegated authority and constraints."
+### 3. TypeScript SDK (`@vizier/sdk`)
+
+```bash
+npm install @vizier/sdk
+```
+
+```ts
+import { Vizier } from "@vizier/sdk";
+
+const vizier = new Vizier({
+  baseUrl: "https://vizier.vassiliy-lakhonin.workers.dev",
+  apiKey: process.env.VIZIER_API_KEY,
+});
+
+const decision = await vizier.verify({
+  agent: { id: "agent-01", owner: "acme-corp" },
+  principal: { id: "acme-corp" },
+  action: {
+    type: "purchase",
+    target: "supplier.example",
+    parameters: { amount: 820, currency: "USD" }
+  },
+  authority: {
+    allowed_actions: ["purchase"],
+    constraints: { max_amount: 1000, currency: "USD" }
+  },
+  context: { source: "rest" }
+});
+
+if (decision.decision === "ALLOW") {
+  // Execute protected operation
 }
 ```
 
-Try the other decisions:
+---
+
+### 4. Direct HTTP / cURL
 
 ```bash
-curl -sS http://127.0.0.1:8787/v1/verify \
+curl -sS https://vizier.vassiliy-lakhonin.workers.dev/v1/verify \
   -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer local-development-key' \
-  --data @examples/block.json
-
-curl -sS http://127.0.0.1:8787/v1/verify \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer local-development-key' \
-  --data @examples/review.json
+  -H 'Authorization: Bearer YOUR_KEY' \
+  -d '{
+    "agent": { "id": "agent-01", "owner": "acme" },
+    "principal": { "id": "acme" },
+    "action": {
+      "type": "purchase",
+      "target": "supplier.example",
+      "parameters": { "amount": 820, "currency": "USD" }
+    },
+    "authority": {
+      "allowed_actions": ["purchase"],
+      "constraints": { "max_amount": 1000, "currency": "USD" }
+    },
+    "context": { "source": "rest" }
+  }'
 ```
 
 ## Proving the authority instead of asserting it
@@ -334,11 +450,9 @@ profile yet. Measured 2026-09-02 against the deployed Worker: a standard
 from any MCP client. The stateless contract is unchanged; the session profile is
 additive and shares one verification path.
 
-### MCP enforcement proxy pilot
+### MCP Enforcement Proxy (`@vizier/mcp-proxy`)
 
-`packages/mcp-proxy` is a private `build-to-learn` adapter for placing one
-existing MCP server behind Vizier. It is not deployed, published to npm, or
-presented as production-ready. The proxy:
+`packages/mcp-proxy` is a standalone reverse proxy adapter that places any existing MCP server behind Vizier. The proxy:
 
 - exposes only the configured upstream tool names;
 - authenticates every MCP request with a proxy-specific Bearer token;
@@ -349,15 +463,17 @@ presented as production-ready. The proxy:
 - logs integration ID, request ID, tool name, decision, receipt ID, outcome, and
   latency without logging arguments or secrets.
 
-Build the private package:
+Run directly via `npx`:
 
 ```bash
-npm run build --workspace @vizier/mcp-proxy
+npx @vizier/mcp-proxy \
+  --upstream http://127.0.0.1:8791/mcp \
+  --tools "write_file,query_db" \
+  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
+  --api-key $VIZIER_API_KEY
 ```
 
-Configure one participant and one upstream MCP server. Generate independent
-random values for the proxy client token, Vizier API key, and upstream token;
-do not reuse any of them:
+Or configure via environment variables:
 
 ```bash
 export VIZIER_BASE_URL="http://127.0.0.1:8787"

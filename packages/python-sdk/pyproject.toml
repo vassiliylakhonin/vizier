@@ -41,3 +41,7 @@ test = [
 Homepage = "https://github.com/vassiliylakhonin/vizier"
 Documentation = "https://vizier.vassiliy-lakhonin.workers.dev/docs"
 Repository = "https://github.com/vassiliylakhonin/vizier"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
