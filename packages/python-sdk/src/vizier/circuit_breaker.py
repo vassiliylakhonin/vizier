@@ -40,10 +40,11 @@ class CircuitBreaker:
         time_window_seconds: float = 30.0,
         max_session_calls: int = 25,
         cool_off_seconds: float = 60.0,
+        max_session_actions: Optional[int] = None,
     ):
         self.max_repeated_calls = max_repeated_calls
         self.time_window_seconds = time_window_seconds
-        self.max_session_calls = max_session_calls
+        self.max_session_calls = max_session_actions if max_session_actions is not None else max_session_calls
         self.cool_off_seconds = cool_off_seconds
 
         self._history: Dict[str, collections.deque[Tuple[float, str]]] = collections.defaultdict(
