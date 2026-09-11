@@ -1,9 +1,10 @@
 import { z } from "zod";
 
-import type {
-  JsonValue,
-  VerificationRequest,
-  VerificationResponse,
+import {
+  hashCanonicalJson,
+  type JsonValue,
+  type VerificationRequest,
+  type VerificationResponse,
 } from "@vizier/sdk";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
@@ -76,7 +77,8 @@ export interface McpProxyEvent {
     | "forwarded"
     | "denied"
     | "verification_unavailable"
-    | "upstream_failed";
+    | "upstream_failed"
+    | "circuit_tripped";
   readonly decision?: VerificationResponse["decision"];
   readonly reason_codes?: readonly string[];
   readonly receipt_id?: string;
@@ -98,6 +100,10 @@ export interface McpEnforcementProxyOptions {
   readonly upstreamTimeoutMs?: number;
   readonly now?: () => Date;
   readonly log?: (event: McpProxyEvent) => void;
+  readonly circuitBreaker?: {
+    readonly maxRepeats?: number;
+    readonly windowMs?: number;
+  };
 }
 
 interface NormalizedOptions {
@@ -116,6 +122,13 @@ interface NormalizedOptions {
   readonly upstreamTimeoutMs: number;
   readonly now: () => Date;
   readonly log: (event: McpProxyEvent) => void;
+  readonly circuitBreaker?: {
+    readonly maxRepeats: number;
+    readonly windowMs: number;
+  };
+  readonly callHistory: {
+    entries: { timestamp: number; signature: string }[];
+  };
 }
 
 function targetFor(upstreamId: string, toolName: string): string {
@@ -130,6 +143,38 @@ function boundedTimeout(value: number | undefined, name: string): number {
     throw new TypeError(`${name} must be an integer between 100 and 60000.`);
   }
   return parsed.data;
+}
+
+function boundedCircuitBreaker(circuitBreaker?: {
+  readonly maxRepeats?: number;
+  readonly windowMs?: number;
+}): { readonly maxRepeats: number; readonly windowMs: number } | undefined {
+  if (circuitBreaker === undefined) {
+    return undefined;
+  }
+  const maxRepeats = z
+    .number()
+    .int()
+    .min(1)
+    .max(1_000)
+    .safeParse(circuitBreaker.maxRepeats ?? 4);
+  if (!maxRepeats.success) {
+    throw new TypeError(
+      "circuitBreaker.maxRepeats must be an integer between 1 and 1000.",
+    );
+  }
+  const windowMs = z
+    .number()
+    .int()
+    .min(100)
+    .max(300_000)
+    .safeParse(circuitBreaker.windowMs ?? 30_000);
+  if (!windowMs.success) {
+    throw new TypeError(
+      "circuitBreaker.windowMs must be an integer between 100 and 300000.",
+    );
+  }
+  return { maxRepeats: maxRepeats.data, windowMs: windowMs.data };
 }
 
 function normalizeOptions(options: McpEnforcementProxyOptions): NormalizedOptions {
@@ -182,6 +227,8 @@ function normalizeOptions(options: McpEnforcementProxyOptions): NormalizedOption
     upstreamTimeoutMs: boundedTimeout(options.upstreamTimeoutMs, "upstreamTimeoutMs"),
     now: options.now ?? (() => new Date()),
     log: options.log ?? ((event) => console.log(JSON.stringify(event))),
+    circuitBreaker: boundedCircuitBreaker(options.circuitBreaker),
+    callHistory: { entries: [] },
   };
 }
 
@@ -538,6 +585,42 @@ async function handleToolCall(
         reason_codes: ["TARGET_NOT_ALLOWED"],
       },
     );
+  }
+  if (options.circuitBreaker !== undefined) {
+    const signature = `${toolName.data}:${await hashCanonicalJson(argumentsValue.data)}`;
+    const nowMs = options.now().getTime();
+    const cutoff = nowMs - options.circuitBreaker.windowMs;
+    options.callHistory.entries = options.callHistory.entries.filter(
+      (entry) => entry.timestamp >= cutoff,
+    );
+    const repeats = options.callHistory.entries.filter(
+      (entry) => entry.signature === signature,
+    ).length;
+
+    if (repeats >= options.circuitBreaker.maxRepeats) {
+      options.log({
+        event: "vizier.mcp_proxy.completed",
+        integration_id: options.integrationId,
+        request_id: requestId,
+        tool_name: toolName.data,
+        outcome: "circuit_tripped",
+        decision: "BLOCK",
+        reason_codes: ["CIRCUIT_TRIPPED:LOOP_DETECTED"],
+        duration_ms: Math.round(performance.now() - startedAt),
+      });
+      return mcpError(
+        body.id,
+        -32028,
+        "Circuit breaker tripped: potential tool loop detected.",
+        200,
+        {
+          code: "CIRCUIT_TRIPPED",
+          decision: "BLOCK",
+          reason_codes: ["CIRCUIT_TRIPPED:LOOP_DETECTED"],
+        },
+      );
+    }
+    options.callHistory.entries.push({ timestamp: nowMs, signature });
   }
   let decision: VerificationResponse;
   try {
