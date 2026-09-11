@@ -7,6 +7,7 @@ from .client import VizierClient
 from .async_client import AsyncVizierClient
 from .models import VerificationResponse
 from .hitl.base import BaseHITLHandler, HITLApprovalResult
+from .circuit_breaker import CircuitBreaker, CircuitTrippedError
 
 class ActionBlockedError(Exception):
     def __init__(self, response: VerificationResponse):
@@ -26,25 +27,30 @@ def vizier_guard(
     blocked_targets: Optional[List[str]] = None,
     agent_id: str = "agent",
     principal_id: str = "principal",
+    session_id: Optional[Union[str, Callable[..., str]]] = None,
     on_block: str = "raise",  # "raise" or "callback"
-    on_block_callback: Optional[Callable[[VerificationResponse], Any]] = None,
+    on_block_callback: Optional[Callable[[Union[VerificationResponse, CircuitTrippedError]], Any]] = None,
     hitl_handler: Optional[BaseHITLHandler] = None,
+    circuit_breaker: Optional[Union[CircuitBreaker, bool]] = None,
 ):
     """
-    Decorator to protect any Python function / agent tool with Vizier deterministic authorization.
+    Decorator to protect any Python function / agent tool with Vizier deterministic authorization,
+    Circuit Breaker loop prevention, and Human-in-the-Loop review.
     Supports BOTH synchronous (def) and asynchronous (async def) functions seamlessly.
-
-    Before the function executes, Vizier checks the proposed action, parameters, and constraints.
-    - If ALLOW: executes immediately.
-    - If REVIEW and hitl_handler is configured: requests human operator approval (CLI / Telegram / Webhook).
-    - If BLOCK: halts execution immediately with ActionBlockedError.
     """
+    breaker: Optional[CircuitBreaker]
+    if isinstance(circuit_breaker, CircuitBreaker):
+        breaker = circuit_breaker
+    elif circuit_breaker is True:
+        breaker = CircuitBreaker()
+    else:
+        breaker = None
 
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         act_type = action_type or fn.__name__
         is_async = inspect.iscoroutinefunction(fn)
 
-        def _prepare_args(args: Any, kwargs: Any) -> tuple[Dict[str, Any], str, Optional[float], Optional[str]]:
+        def _prepare_args(args: Any, kwargs: Any) -> tuple[Dict[str, Any], str, Optional[float], Optional[str], str]:
             sig = inspect.signature(fn)
             bound = sig.bind(*args, **kwargs)
             bound.apply_defaults()
@@ -66,7 +72,14 @@ def vizier_guard(
             if curr and "currency" not in params:
                 params["currency"] = curr
 
-            return params, str(resolved_target), resolved_max_amount, curr
+            if callable(session_id):
+                resolved_session_id = session_id(*args, **kwargs)
+            elif session_id:
+                resolved_session_id = session_id
+            else:
+                resolved_session_id = params.get("session_id") or agent_id
+
+            return params, str(resolved_target), resolved_max_amount, curr, str(resolved_session_id)
 
         if is_async:
             if isinstance(client, AsyncVizierClient):
@@ -80,8 +93,28 @@ def vizier_guard(
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                params, resolved_target, resolved_max_amount, curr = _prepare_args(args, kwargs)
+                params, resolved_target, resolved_max_amount, curr, resolved_session_id = _prepare_args(args, kwargs)
 
+                # 1. Circuit Breaker check
+                if breaker:
+                    cb_status = breaker.check_and_record(act_type, resolved_target, params, session_id=resolved_session_id)
+                    if cb_status.tripped:
+                        err = CircuitTrippedError(
+                            code=cb_status.code or "CIRCUIT_TRIPPED",
+                            message=cb_status.message or "Agent circuit breaker tripped.",
+                            details={
+                                "action_type": act_type,
+                                "target": resolved_target,
+                                "session_id": resolved_session_id,
+                                "repeats": cb_status.consecutive_repeats,
+                                "session_calls": cb_status.session_calls_count,
+                            },
+                        )
+                        if on_block == "callback" and on_block_callback:
+                            return on_block_callback(err)
+                        raise err
+
+                # 2. Kernel verification
                 verification = await async_cli.check(
                     action_type=act_type,
                     target=resolved_target,
@@ -110,6 +143,7 @@ def vizier_guard(
                 return await fn(*args, **kwargs)
 
             async_wrapper.__vizier_client__ = async_cli  # type: ignore
+            async_wrapper.__circuit_breaker__ = breaker  # type: ignore
             return async_wrapper
 
         else:
@@ -122,8 +156,28 @@ def vizier_guard(
 
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                params, resolved_target, resolved_max_amount, curr = _prepare_args(args, kwargs)
+                params, resolved_target, resolved_max_amount, curr, resolved_session_id = _prepare_args(args, kwargs)
 
+                # 1. Circuit Breaker check
+                if breaker:
+                    cb_status = breaker.check_and_record(act_type, resolved_target, params, session_id=resolved_session_id)
+                    if cb_status.tripped:
+                        err = CircuitTrippedError(
+                            code=cb_status.code or "CIRCUIT_TRIPPED",
+                            message=cb_status.message or "Agent circuit breaker tripped.",
+                            details={
+                                "action_type": act_type,
+                                "target": resolved_target,
+                                "session_id": resolved_session_id,
+                                "repeats": cb_status.consecutive_repeats,
+                                "session_calls": cb_status.session_calls_count,
+                            },
+                        )
+                        if on_block == "callback" and on_block_callback:
+                            return on_block_callback(err)
+                        raise err
+
+                # 2. Kernel verification
                 verification = sync_cli.check(
                     action_type=act_type,
                     target=resolved_target,
@@ -152,6 +206,7 @@ def vizier_guard(
                 return fn(*args, **kwargs)
 
             sync_wrapper.__vizier_client__ = sync_cli  # type: ignore
+            sync_wrapper.__circuit_breaker__ = breaker  # type: ignore
             return sync_wrapper
 
     return decorator

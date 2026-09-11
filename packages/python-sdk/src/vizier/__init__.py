@@ -5,6 +5,7 @@ Vizier: Deterministic Authorization & Audit Kernel for AI Agents.
 from .canonical import canonicalize, sha256_canonical_json
 from .client import VizierClient, VizierError
 from .async_client import AsyncVizierClient
+from .circuit_breaker import CircuitBreaker, CircuitTrippedError, CircuitStatus
 from .decorators import vizier_guard, ActionBlockedError
 from .hitl import (
     BaseHITLHandler,
@@ -54,4 +55,7 @@ __all__ = [
     "CliHITLHandler",
     "TelegramHITLHandler",
     "WebhookHITLHandler",
+    "CircuitBreaker",
+    "CircuitTrippedError",
+    "CircuitStatus",
 ]

@@ -50,6 +50,32 @@ Agent (Claude / Cursor / Framework)
 2. **Deterministic Interception**: Calls to `tools/call` are intercepted and evaluated against Vizier's deterministic policy kernel.
 3. **Fail-Closed**: If Vizier returns `BLOCK` or `REVIEW`, the proxy halts execution and returns a standard JSON-RPC 2.0 error to the agent without ever calling the upstream server.
 4. **Credential Isolation**: Incoming agent bearer tokens are authenticated and replaced with upstream credentials before forwarding.
+5. **Loop Killer & Circuit Breaker**: Tracks tool call signatures via canonical JSON hashes in a sliding window. If an agent calls the same tool repeatedly with identical parameters, the proxy trips immediately with JSON-RPC error `-32028` (`CIRCUIT_TRIPPED:LOOP_DETECTED`), protecting against runaway LLM loops and burning API credits.
+
+---
+
+## 💻 Programmatic Usage
+
+```typescript
+import { createMcpEnforcementProxy } from "@vizier/mcp-proxy";
+import { Vizier } from "@vizier/sdk";
+
+const proxy = createMcpEnforcementProxy({
+  integrationId: "agent-mcp-gateway",
+  clientBearerToken: "your-client-token-min-16-chars",
+  upstreamId: "production-db",
+  upstreamUrl: "http://localhost:3000/mcp",
+  allowedTools: ["read_records", "write_record"],
+  agent: { id: "data-analyst-agent", owner: "acme" },
+  principal: { id: "platform-team" },
+  verifier: new Vizier({ apiKey: process.env.VIZIER_API_KEY! }),
+  // Enable Agent Circuit Breaker & Loop Killer:
+  circuitBreaker: {
+    maxRepeats: 3,     // Max repeated identical calls before tripping
+    windowMs: 30_000,  // Sliding window (30 seconds)
+  },
+});
+```
 
 ---
 

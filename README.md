@@ -237,6 +237,37 @@ curl -sS https://vizier.vassiliy-lakhonin.workers.dev/v1/verify \
   }'
 ```
 
+---
+
+## 🛑 Agent Circuit Breaker & Loop Killer
+
+Infinite tool loops and runaway retry storms are among the most catastrophic failure modes of autonomous agents — in minutes, an agent stuck in a loop can exhaust external API rate limits, burn through thousands of dollars in LLM tokens, or flood production databases.
+
+Vizier provides built-in circuit breakers across both Python and MCP environments:
+
+* **Sliding-Window Loop Detection**: Computes deterministic SHA-256 canonical JSON hashes of tool arguments. If the same tool is invoked repeatedly within a sliding window (e.g. 3 times in 30 seconds), the circuit trips immediately (`CIRCUIT_TRIPPED:LOOP_DETECTED`).
+* **Session Action Budgets**: Caps the total number of actions an agent can execute within a single task or session (`CIRCUIT_TRIPPED:BUDGET_EXCEEDED`).
+* **Python Guard Decorator**:
+  ```python
+  from vizier import CircuitBreaker, vizier_guard
+
+  breaker = CircuitBreaker(max_repeated_calls=3, time_window_seconds=30.0, max_session_actions=25)
+
+  @vizier_guard(action_type="query_db", circuit_breaker=breaker)
+  def query_database(query: str):
+      return db.execute(query)
+  ```
+* **MCP Enforcement Proxy**:
+  ```typescript
+  const proxy = createMcpEnforcementProxy({
+    // ...
+    circuitBreaker: { maxRepeats: 3, windowMs: 30_000 },
+  });
+  ```
+  Returns standardized JSON-RPC 2.0 error `-32028` on tripped loops without invoking the upstream tool.
+
+---
+
 ## Proving the authority instead of asserting it
 
 By default the `authority` in a request is whatever the calling application says

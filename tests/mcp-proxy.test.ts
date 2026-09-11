@@ -470,4 +470,170 @@ describe("MCP enforcement proxy", () => {
     });
     expect(upstreamFetch).toHaveBeenCalledOnce();
   });
+
+  it("trips circuit breaker and returns -32028 on repeated identical tool calls", async () => {
+    const upstreamFetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { id: string | number };
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { content: [{ type: "text", text: "ok" }] },
+      });
+    });
+    const logMock = vi.fn();
+    const proxy = createMcpEnforcementProxy({
+      ...proxyOptions({ fetch: upstreamFetch, log: logMock }),
+      circuitBreaker: { maxRepeats: 2, windowMs: 30_000 },
+    });
+
+    const call1 = await proxy.handle(
+      mcpRequest(
+        mcpBody("tools/call", "cb-1", {
+          name: "write_file",
+          arguments: { path: "loop.txt", content: "data" },
+        }),
+      ),
+    );
+    expect(call1.status).toBe(200);
+    await expect(call1.json()).resolves.toMatchObject({
+      result: { content: [{ text: "ok" }] },
+    });
+
+    const call2 = await proxy.handle(
+      mcpRequest(
+        mcpBody("tools/call", "cb-2", {
+          name: "write_file",
+          arguments: { path: "loop.txt", content: "data" },
+        }),
+      ),
+    );
+    expect(call2.status).toBe(200);
+    await expect(call2.json()).resolves.toMatchObject({
+      result: { content: [{ text: "ok" }] },
+    });
+
+    // 3rd call with same arguments exceeds maxRepeats=2
+    const call3 = await proxy.handle(
+      mcpRequest(
+        mcpBody("tools/call", "cb-3", {
+          name: "write_file",
+          arguments: { path: "loop.txt", content: "data" },
+        }),
+      ),
+    );
+    expect(call3.status).toBe(200);
+    await expect(call3.json()).resolves.toEqual({
+      jsonrpc: "2.0",
+      id: "cb-3",
+      error: {
+        code: -32028,
+        message: "Circuit breaker tripped: potential tool loop detected.",
+        data: {
+          code: "CIRCUIT_TRIPPED",
+          decision: "BLOCK",
+          reason_codes: ["CIRCUIT_TRIPPED:LOOP_DETECTED"],
+        },
+      },
+    });
+
+    // Verify upstream was NOT called for tripped request
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
+
+    // Verify log event was emitted
+    expect(logMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "circuit_tripped",
+        decision: "BLOCK",
+        reason_codes: ["CIRCUIT_TRIPPED:LOOP_DETECTED"],
+      }),
+    );
+
+    // Call with distinct arguments is still allowed
+    const callDifferent = await proxy.handle(
+      mcpRequest(
+        mcpBody("tools/call", "cb-4", {
+          name: "write_file",
+          arguments: { path: "other.txt", content: "different" },
+        }),
+      ),
+    );
+    expect(callDifferent.status).toBe(200);
+    await expect(callDifferent.json()).resolves.toMatchObject({
+      result: { content: [{ text: "ok" }] },
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("resets loop detection after circuit breaker window expires", async () => {
+    let nowMs = 1_700_000_000_000;
+    const upstreamFetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { id: string | number };
+      return Response.json({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { content: [{ type: "text", text: "ok" }] },
+      });
+    });
+    const proxy = createMcpEnforcementProxy({
+      ...proxyOptions({ fetch: upstreamFetch }),
+      now: () => new Date(nowMs),
+      circuitBreaker: { maxRepeats: 1, windowMs: 10_000 },
+    });
+
+    const call1 = await proxy.handle(
+      mcpRequest(
+        mcpBody("tools/call", "reset-1", {
+          name: "write_file",
+          arguments: { path: "temp.txt" },
+        }),
+      ),
+    );
+    expect(call1.status).toBe(200);
+
+    // Second call immediately trips (maxRepeats = 1)
+    const call2 = await proxy.handle(
+      mcpRequest(
+        mcpBody("tools/call", "reset-2", {
+          name: "write_file",
+          arguments: { path: "temp.txt" },
+        }),
+      ),
+    );
+    await expect(call2.json()).resolves.toMatchObject({
+      error: { code: -32028 },
+    });
+
+    // Advance clock past 10s window
+    nowMs += 11_000;
+
+    // Call succeeds again after window expiry
+    const call3 = await proxy.handle(
+      mcpRequest(
+        mcpBody("tools/call", "reset-3", {
+          name: "write_file",
+          arguments: { path: "temp.txt" },
+        }),
+      ),
+    );
+    expect(call3.status).toBe(200);
+    await expect(call3.json()).resolves.toMatchObject({
+      result: { content: [{ text: "ok" }] },
+    });
+  });
+
+  it("validates circuitBreaker options during proxy creation", () => {
+    expect(() =>
+      createMcpEnforcementProxy({
+        ...proxyOptions({}),
+        circuitBreaker: { maxRepeats: 0 },
+      }),
+    ).toThrow(TypeError);
+
+    expect(() =>
+      createMcpEnforcementProxy({
+        ...proxyOptions({}),
+        circuitBreaker: { windowMs: 50 },
+      }),
+    ).toThrow(TypeError);
+  });
 });

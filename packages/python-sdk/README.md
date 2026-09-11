@@ -190,3 +190,55 @@ from vizier import WebhookHITLHandler
 def deploy(service: str):
     print(f"Deployed {service}")
 ```
+
+---
+
+## 🛑 Agent Circuit Breaker & Loop Killer
+
+AI agents can get stuck in infinite retry loops, repeatedly invoking tools with identical parameters, burning API rate limits, and draining thousands of dollars in LLM tokens.
+
+The Vizier `CircuitBreaker` provides deterministic client-side protection:
+
+### 1. Loop Detection & Budget Capping with `@vizier_guard`
+
+```python
+from vizier import CircuitBreaker, vizier_guard
+
+# Trip if called 3 times with identical parameters within 30 seconds,
+# or if more than 20 total actions are performed in this session.
+breaker = CircuitBreaker(
+    max_repeated_calls=3,
+    time_window_seconds=30.0,
+    max_session_actions=20,
+    cool_off_seconds=60.0
+)
+
+@vizier_guard(
+    action_type="query_database",
+    circuit_breaker=breaker
+)
+def query_db(query: str):
+    return db.execute(query)
+
+# Calls with identical query parameters:
+query_db(query="SELECT * FROM users")  # 1st: OK
+query_db(query="SELECT * FROM users")  # 2nd: OK
+query_db(query="SELECT * FROM users")  # 3rd: OK
+query_db(query="SELECT * FROM users")  # 4th: Raises CircuitTrippedError (LOOP_DETECTED)
+```
+
+### 2. Standalone Circuit Breaker Usage
+
+```python
+from vizier import CircuitBreaker, CircuitTrippedError
+
+cb = CircuitBreaker(max_repeated_calls=2, max_session_actions=50)
+
+try:
+    cb.check(action_type="api_call", parameters={"endpoint": "/charge"})
+    # Perform external action...
+except CircuitTrippedError as err:
+    print(f"Safety tripped: {err.reason}")  # CIRCUIT_TRIPPED:LOOP_DETECTED
+    cb.reset()  # Reset when starting a new agent task
+```
+
