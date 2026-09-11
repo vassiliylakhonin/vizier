@@ -62,6 +62,22 @@ class AsyncVizierClient:
             query=query,
         )
 
+    async def scan_dlp(
+        self,
+        text: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        allowed_categories: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Asynchronously scan text or parameters for secrets and PII.
+        """
+        return await asyncio.to_thread(
+            self._sync_client.scan_dlp,
+            text=text,
+            parameters=parameters,
+            allowed_categories=allowed_categories,
+        )
+
     async def check(
         self,
         action_type: str,
@@ -78,6 +94,8 @@ class AsyncVizierClient:
         grant: Optional[str] = None,
         sanctions_screening: Optional[bool] = None,
         blocked_entities: Optional[List[str]] = None,
+        dlp_screening: Optional[bool] = None,
+        allowed_dlp_categories: Optional[List[str]] = None,
     ) -> VerificationResponse:
         """
         Asynchronously verify an action in a single line of code without blocking the event loop.
@@ -98,5 +116,7 @@ class AsyncVizierClient:
             grant=grant,
             sanctions_screening=sanctions_screening,
             blocked_entities=blocked_entities,
+            dlp_screening=dlp_screening,
+            allowed_dlp_categories=allowed_dlp_categories,
         )
 

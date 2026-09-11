@@ -68,6 +68,8 @@ export const authoritySchema = z.strictObject({
     cool_off_seconds: z.number().min(1).max(86400).optional(),
     sanctions_screening: z.boolean().optional(),
     blocked_entities: stringSetSchema.optional(),
+    dlp_screening: z.boolean().optional(),
+    allowed_dlp_categories: stringSetSchema.optional(),
   }),
 });
 

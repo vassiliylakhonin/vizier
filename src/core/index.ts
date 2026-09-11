@@ -63,6 +63,20 @@ export type {
   SanctionsMatch,
   SanctionsRecord,
 } from "./sanctions";
+export {
+  calculateShannonEntropy,
+  evaluateDlp,
+  isValidLuhn,
+  maskSecret,
+  scanDlpParameters,
+  scanDlpText,
+} from "./dlp";
+export type {
+  DlpCategory,
+  DlpEvaluationResult,
+  DlpFinding,
+  DlpOptions,
+} from "./dlp";
 export type {
   AuthorityProvenance,
   Decision,
@@ -71,3 +85,4 @@ export type {
   ReceiptGrant,
   VerificationResponse,
 } from "./types";
+

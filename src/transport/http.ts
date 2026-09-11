@@ -1,12 +1,17 @@
 import { z } from "zod";
 import {
   addCustomSanctionsEntry,
+  evaluateDlp,
   evaluateEdgeCircuitBreaker,
   evaluateSanctions,
   identifierSchema,
   resetEdgeCircuitBreaker,
+  scanDlpParameters,
+  scanDlpText,
   verificationRequestSchema,
   verifyAction,
+  type DlpEvaluationResult,
+  type DlpFinding,
   type EdgeCircuitBreakerResult,
   type SanctionsEvaluationResult,
 } from "../core/index";
@@ -197,11 +202,16 @@ async function handleVerify(
       options.circuitBreakerKv,
     );
   }
+  let dlpResult: DlpEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.dlp_screening !== false) {
+    dlpResult = evaluateDlp(normalizedRequest);
+  }
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
     principalKeys: resolvePrincipalKeys(options),
     circuitBreaker: circuitBreakerResult,
     sanctions: sanctionsResult,
+    dlp: dlpResult,
   });
   const requestId =
     normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
@@ -354,6 +364,46 @@ async function handleSanctionsEntry(
     key: added.key,
     normalized: added.normalized,
     entity_name: parsed.data.entity_name,
+  });
+}
+
+const dlpScanRequestSchema = z
+  .strictObject({
+    text: z.string().max(65536).optional(),
+    parameters: z.record(z.string(), z.unknown()).optional(),
+    allowed_categories: z.array(z.string()).optional(),
+  })
+  .refine((data) => data.text !== undefined || data.parameters !== undefined, {
+    message: "Either text or parameters must be provided.",
+  });
+
+async function handleDlpScan(
+  request: Request,
+): Promise<Response> {
+  const parsedJson = await readLimitedJson(request);
+  const parsed = dlpScanRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "DLP scan request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const allowedCategories = new Set(
+    (parsed.data.allowed_categories ?? []).map((c) => c.toLowerCase()),
+  );
+  const findings: DlpFinding[] = [];
+  if (parsed.data.text !== undefined) {
+    findings.push(...scanDlpText(parsed.data.text, "text", allowedCategories));
+  }
+  if (parsed.data.parameters !== undefined) {
+    findings.push(...scanDlpParameters(parsed.data.parameters, allowedCategories, "parameters"));
+  }
+  return jsonResponse({
+    clean: findings.length === 0,
+    findings,
+    total_leaks_prevented: findings.length,
   });
 }
 
@@ -797,6 +847,9 @@ export async function handleHttpRequest(
     if (request.method === "POST" && url.pathname === "/v1/sanctions/entries") {
       return await handleSanctionsEntry(request, options);
     }
+    if (request.method === "POST" && url.pathname === "/v1/dlp/scan") {
+      return await handleDlpScan(request);
+    }
     if (request.method === "POST" && url.pathname === "/v1/covenants") {
       return await handleCovenantActivation(request, options);
     }
@@ -825,6 +878,7 @@ export async function handleHttpRequest(
       url.pathname === "/v1/circuit-breaker/reset" ||
       url.pathname === "/v1/sanctions/screen" ||
       url.pathname === "/v1/sanctions/entries" ||
+      url.pathname === "/v1/dlp/scan" ||
       url.pathname === "/v1/covenants" ||
       url.pathname === "/v1/authorizations" ||
       url.pathname === "/v1/outcomes"
@@ -874,6 +928,7 @@ export async function handleHttpRequest(
               "POST /v1/circuit-breaker/reset": "operator reset for tripped agent circuit breaker",
               "POST /v1/sanctions/screen": "pre-action sanctions screening query",
               "POST /v1/sanctions/entries": "operator ingestion of custom sanctions entries",
+              "POST /v1/dlp/scan": "pre-flight PII and secret leak scan",
               "POST /v1/covenants": "activate an accepted Action Covenant",
               "POST /v1/authorizations": "authorize an exact covenant action",
               "POST /v1/outcomes": "bind an execution outcome to an authorization",

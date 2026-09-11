@@ -122,6 +122,25 @@ class VizierClient:
         """
         return self._request("/v1/sanctions/screen", {"query": query})
 
+    def scan_dlp(
+        self,
+        text: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        allowed_categories: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Scan text or parameters for secrets (API keys, private keys, JWTs) and PII (credit cards, SSNs).
+        Returns a dict with 'clean' (bool), 'findings' (list), and 'total_leaks_prevented' (int).
+        """
+        payload: Dict[str, Any] = {}
+        if text is not None:
+            payload["text"] = text
+        if parameters is not None:
+            payload["parameters"] = parameters
+        if allowed_categories is not None:
+            payload["allowed_categories"] = allowed_categories
+        return self._request("/v1/dlp/scan", payload)
+
     def check(
         self,
         action_type: str,
@@ -138,6 +157,8 @@ class VizierClient:
         grant: Optional[str] = None,
         sanctions_screening: Optional[bool] = None,
         blocked_entities: Optional[List[str]] = None,
+        dlp_screening: Optional[bool] = None,
+        allowed_dlp_categories: Optional[List[str]] = None,
     ) -> VerificationResponse:
         """
         Convenience method: verify an action in a single line of code.
@@ -160,6 +181,8 @@ class VizierClient:
                     blocked_targets=blocked_targets,
                     sanctions_screening=sanctions_screening,
                     blocked_entities=blocked_entities,
+                    dlp_screening=dlp_screening,
+                    allowed_dlp_categories=allowed_dlp_categories,
                 ),
             ),
             grant=grant,

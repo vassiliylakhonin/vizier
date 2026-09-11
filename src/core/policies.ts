@@ -1,4 +1,5 @@
 import type { EdgeCircuitBreakerResult } from "./circuit-breaker";
+import type { DlpEvaluationResult } from "./dlp";
 import type { GrantVerification } from "./grants";
 import type { PolicyResult } from "./types";
 import type { SanctionsEvaluationResult } from "./sanctions";
@@ -28,6 +29,7 @@ export interface PolicyOptions {
   readonly grantVerification?: GrantVerification;
   readonly circuitBreaker?: EdgeCircuitBreakerResult;
   readonly sanctions?: SanctionsEvaluationResult;
+  readonly dlp?: DlpEvaluationResult;
 }
 
 function result(
@@ -256,6 +258,24 @@ export function evaluatePolicies(
       );
     } else {
       results.push(result("compliance.sanctions", "PASS", null));
+    }
+  }
+
+  if (options.dlp !== undefined) {
+    if (!options.dlp.clean && options.dlp.findings.length > 0) {
+      results.push(
+        result(
+          "security.dlp",
+          "FAIL",
+          "SECRET_LEAK_PREVENTED",
+          {
+            findings: options.dlp.findings,
+            total_leaks_prevented: options.dlp.total_leaks_prevented,
+          },
+        ),
+      );
+    } else {
+      results.push(result("security.dlp", "PASS", null));
     }
   }
 
