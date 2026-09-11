@@ -229,6 +229,33 @@ describe("PII & Secret Leak Firewall (DLP)", () => {
       expect(data.findings[0]?.detector).toBe("aws_access_key");
     });
 
+    it("mints signed JWS clearance receipt on /v1/dlp/scan when receiptSigningKey is configured", async () => {
+      const keyPair = await crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign", "verify"],
+      );
+      const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+      const signingKey = JSON.stringify({ ...jwk, kid: "test-dlp-receipt-key", alg: "ES256", use: "sig" });
+
+      const res = await handleHttpRequest(
+        new Request("https://vizier.example/v1/dlp/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: "Clean text with no secrets.",
+          }),
+        }),
+        { receiptSigningKey: signingKey },
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { clean: boolean; receipt?: string; total_leaks_prevented: number };
+      expect(data.clean).toBe(true);
+      expect(data.total_leaks_prevented).toBe(0);
+      expect(typeof data.receipt).toBe("string");
+      expect(data.receipt?.split(".").length).toBe(3);
+    });
+
     it("blocks secret leak at /v1/verify with SECRET_LEAK_PREVENTED", async () => {
       const leakedPayload = {
         agent: { id: "leaking-bot", owner: "acme" },

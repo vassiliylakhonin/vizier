@@ -491,6 +491,7 @@ const dlpScanRequestSchema = z
 
 async function handleDlpScan(
   request: Request,
+  options?: TransportOptions,
 ): Promise<Response> {
   const parsedJson = await readLimitedJson(request);
   const parsed = dlpScanRequestSchema.safeParse(parsedJson);
@@ -512,10 +513,33 @@ async function handleDlpScan(
   if (parsed.data.parameters !== undefined) {
     findings.push(...scanDlpParameters(parsed.data.parameters, allowedCategories, "parameters"));
   }
+  const clean = findings.length === 0;
+  let receiptToken: string | null = null;
+  if (options?.receiptSigningKey) {
+    try {
+      const receiptPayload = {
+        iss: "vizier-action-firewall",
+        sub: "dlp-scan",
+        iat: Math.floor(Date.now() / 1000),
+        engine: "vizier_dlp_firewall",
+        clean,
+        findings_count: findings.length,
+        categories: Array.from(new Set(findings.map((f) => f.category))),
+      };
+      receiptToken = await signCompactJws(
+        receiptPayload,
+        options.receiptSigningKey,
+        "application/vizier-receipt+jwt",
+      );
+    } catch (jwsErr) {
+      console.error("Failed to sign clearance receipt in dlp-scan:", jwsErr);
+    }
+  }
   return jsonResponse({
-    clean: findings.length === 0,
+    clean,
     findings,
     total_leaks_prevented: findings.length,
+    ...(receiptToken ? { receipt: receiptToken } : {}),
   });
 }
 
@@ -1146,7 +1170,7 @@ export async function handleHttpRequest(
       return await handleSanctionsEntry(request, options);
     }
     if (request.method === "POST" && url.pathname === "/v1/dlp/scan") {
-      return await handleDlpScan(request);
+      return await handleDlpScan(request, options);
     }
     if (request.method === "POST" && url.pathname === "/v1/quorum/propose") {
       return await handleQuorumPropose(request, options);
