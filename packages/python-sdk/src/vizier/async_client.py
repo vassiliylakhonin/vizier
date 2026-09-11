@@ -65,6 +65,28 @@ class AsyncVizierClient:
             query=query,
         )
 
+    async def screen_sanctions_entity(
+        self,
+        entity_name: str,
+        shareholders: List[Dict[str, Any]],
+        threshold_percentage: Optional[float] = None,
+        country: Optional[str] = None,
+        lei: Optional[str] = None,
+        registration_number: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Asynchronously screen an entity under the OFAC 50% Rule and evaluate aggregate beneficial ownership.
+        """
+        return await asyncio.to_thread(
+            self._sync_client.screen_sanctions_entity,
+            entity_name=entity_name,
+            shareholders=shareholders,
+            threshold_percentage=threshold_percentage,
+            country=country,
+            lei=lei,
+            registration_number=registration_number,
+        )
+
     async def scan_dlp(
         self,
         text: Optional[str] = None,

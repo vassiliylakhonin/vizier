@@ -1,5 +1,11 @@
 import type { KVNamespace } from "@cloudflare/workers-types";
 import type { VerificationRequest } from "./schemas";
+import type {
+  EntityOwnershipGraph,
+  Sanctions50EvaluationResult,
+  Shareholder,
+} from "./sanctions-50-rule";
+import { evaluateSanctions50Rule } from "./sanctions-50-rule";
 
 export interface SanctionsMatch {
   readonly matched_value: string;
@@ -13,6 +19,7 @@ export interface SanctionsMatch {
 export interface SanctionsEvaluationResult {
   readonly clean: boolean;
   readonly match?: SanctionsMatch;
+  readonly rule50_result?: Sanctions50EvaluationResult;
 }
 
 export interface CandidateEntity {
@@ -253,6 +260,51 @@ export async function evaluateSanctions(
           })
         );
       }
+    }
+  }
+
+  // Check Tier 4: OFAC 50% Rule if ownership structure or shareholders provided
+  const params = request.action.parameters ?? {};
+  let ownershipGraph: EntityOwnershipGraph | null = null;
+
+  if (params.ownership_graph && typeof params.ownership_graph === "object") {
+    ownershipGraph = params.ownership_graph as unknown as EntityOwnershipGraph;
+  } else if (Array.isArray(params.shareholders)) {
+    const rawTarget = (params.counterparty || params.entity_name || params.company || params.vendor || params.payee || "counterparty");
+    ownershipGraph = {
+      entity_name: typeof rawTarget === "string" ? rawTarget : "counterparty",
+      shareholders: params.shareholders as unknown as Shareholder[],
+    };
+  } else if (params.counterparty && typeof params.counterparty === "object") {
+    const cp = params.counterparty as Record<string, unknown>;
+    if (Array.isArray(cp.shareholders)) {
+      ownershipGraph = {
+        entity_name: (cp.name || cp.entity_name || "counterparty") as string,
+        shareholders: cp.shareholders as unknown as Shareholder[],
+      };
+    }
+  }
+
+  if (ownershipGraph && ownershipGraph.shareholders && ownershipGraph.shareholders.length > 0) {
+    const rule50Result = await evaluateSanctions50Rule(ownershipGraph, kv, customBlocked);
+    if (!rule50Result.clean) {
+      return {
+        clean: false,
+        match: {
+          matched_value: rule50Result.entity_name,
+          candidate_type: "entity_name",
+          list: rule50Result.reason_codes[0] ?? "SANCTIONS_50_RULE_VIOLATION",
+          entity_name: rule50Result.entity_name,
+          source: rule50Result.direct_match ? rule50Result.direct_match.source : "built_in",
+          details: {
+            aggregate_blocked_percentage: rule50Result.aggregate_blocked_percentage,
+            threshold_percentage: rule50Result.threshold_percentage,
+            blocked_shareholders: rule50Result.blocked_shareholders,
+            explanation: rule50Result.explanation,
+          },
+        },
+        rule50_result: rule50Result,
+      };
     }
   }
 

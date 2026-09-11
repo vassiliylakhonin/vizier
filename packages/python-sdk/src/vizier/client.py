@@ -128,6 +128,33 @@ class VizierClient:
         """
         return self._request("/v1/sanctions/screen", {"query": query})
 
+    def screen_sanctions_entity(
+        self,
+        entity_name: str,
+        shareholders: List[Dict[str, Any]],
+        threshold_percentage: Optional[float] = None,
+        country: Optional[str] = None,
+        lei: Optional[str] = None,
+        registration_number: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Screen an entity under the OFAC 50% Rule and evaluate aggregate beneficial ownership.
+        Returns a dict with 'clean' (bool), 'violation' (bool), 'aggregate_blocked_percentage', and 'blocked_shareholders'.
+        """
+        payload: Dict[str, Any] = {
+            "entity_name": entity_name,
+            "shareholders": shareholders,
+        }
+        if threshold_percentage is not None:
+            payload["threshold_percentage"] = threshold_percentage
+        if country is not None:
+            payload["country"] = country
+        if lei is not None:
+            payload["lei"] = lei
+        if registration_number is not None:
+            payload["registration_number"] = registration_number
+        return self._request("/v1/sanctions/screen-entity", payload)
+
     def scan_dlp(
         self,
         text: Optional[str] = None,

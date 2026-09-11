@@ -103,5 +103,13 @@ export type {
   ReceiptGrant,
   VerificationResponse,
 } from "./types";
-
-
+export {
+  evaluateSanctions50Rule,
+  lookupDirectSanctions,
+} from "./sanctions-50-rule";
+export type {
+  BlockedShareholderDetail,
+  EntityOwnershipGraph,
+  Sanctions50EvaluationResult,
+  Shareholder,
+} from "./sanctions-50-rule";
