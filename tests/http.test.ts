@@ -80,6 +80,21 @@ describe("REST transport", () => {
     expect(await playgroundResponse.text()).toContain("Vizier Action Firewall");
   });
 
+  it("serves security management console on /console and /dashboard", async () => {
+    for (const path of ["/console", "/dashboard"]) {
+      const response = await handleHttpRequest(
+        new Request(`https://vizier.example${path}`),
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+      const html = await response.text();
+      expect(html).toContain("Vizier Security Console");
+      expect(html).toContain("OFAC 50% Rule & Ownership Graph");
+      expect(html).toContain("HITL Quorum Gate");
+      expect(html).toContain("API Keys & Quotas");
+    }
+  });
+
   it("returns an ALLOW decision and receipt", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await postJson(requestBody(), {

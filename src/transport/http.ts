@@ -8,6 +8,7 @@ import {
   evaluateEdgeCircuitBreaker,
   evaluateQuorum,
   evaluateSanctions,
+  evaluateSanctions50Rule,
   getQuorumProposal,
   identifierSchema,
   quorumApprovalSchema,
@@ -23,6 +24,7 @@ import {
   type EdgeCircuitBreakerResult,
   type QuorumEvaluationResult,
   type SanctionsEvaluationResult,
+  type Shareholder,
 } from "../core/index";
 import { publicJwkFromPrivate } from "../crypto/jws";
 import {
@@ -46,10 +48,12 @@ import { createAgentCard, handleA2aRequest } from "./a2a";
 import { createAiCatalog, createMcpServerManifest } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
+import { generateApiKey, listApiKeys, revokeApiKey } from "../auth/keys";
 import { createJwks, maybeSignAgentCard } from "./jws";
 import { SERVICE_VERSION } from "../version";
 import { createOpenApiDocument } from "./openapi";
 import { createPlaygroundHtml } from "./playground";
+import { createConsoleHtml } from "../console/index";
 import { handleChatCompletions, handleModels } from "../proxy/index";
 import {
   getInsights,
@@ -122,12 +126,19 @@ async function requireAuthenticatedIntegration(
   options: TransportOptions,
   resourceName: string,
 ): Promise<void> {
-  const authorization = await authorizeEnforcement(request, options.apiKey);
+  const authorization = await authorizeEnforcement(request, options.apiKey, { db: options.db });
+  if (authorization === "quota_exceeded") {
+    throw new TransportRequestError(
+      429,
+      "QUOTA_EXCEEDED",
+      `Monthly API quota exceeded for this API key.`,
+    );
+  }
   if (authorization === "denied") {
     throw new TransportRequestError(
       401,
       "AUTHENTICATION_REQUIRED",
-      `A valid Bearer token is required for ${resourceName}.`,
+      `A valid Bearer token or X-Vizier-Key is required for ${resourceName}.`,
     );
   }
   if (authorization === "evaluation") {
@@ -175,12 +186,19 @@ async function handleVerify(
   options: TransportOptions,
 ): Promise<Response> {
   const startedAt = performance.now();
-  const authorization = await authorizeEnforcement(request, options.apiKey);
+  const authorization = await authorizeEnforcement(request, options.apiKey, { db: options.db });
+  if (authorization === "quota_exceeded") {
+    throw new TransportRequestError(
+      429,
+      "QUOTA_EXCEEDED",
+      "Monthly API quota exceeded for this API key.",
+    );
+  }
   if (authorization === "denied") {
     throw new TransportRequestError(
       401,
       "AUTHENTICATION_REQUIRED",
-      "A valid Bearer token is required for enforcement mode.",
+      "A valid Bearer token or X-Vizier-Key is required for enforcement mode.",
     );
   }
   const parsedJson = await readLimitedJson(request);
@@ -335,6 +353,57 @@ async function handleSanctionsScreen(
     query,
     clean: result.clean,
     ...(result.match === undefined ? {} : { match: result.match }),
+    ...(result.rule50_result === undefined ? {} : { rule50_result: result.rule50_result }),
+  });
+}
+
+const shareholderSchema: z.ZodType<Shareholder> = z.lazy(() =>
+  z.strictObject({
+    name: z.string().trim().min(1).max(512),
+    percentage: z.number().min(0).max(100),
+    lei: z.string().trim().max(32).optional(),
+    country: z.string().trim().max(16).optional(),
+    shareholders: z.array(shareholderSchema).optional(),
+  })
+);
+
+const screenEntity50RuleSchema = z.strictObject({
+  entity_name: z.string().trim().min(1).max(512),
+  country: z.string().trim().max(16).optional(),
+  lei: z.string().trim().max(32).optional(),
+  registration_number: z.string().trim().max(64).optional(),
+  shareholders: z.array(shareholderSchema),
+  threshold_percentage: z.number().min(0.1).max(100).optional(),
+});
+
+async function handleSanctionsScreenEntity(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  const parsedJson = await readLimitedJson(request);
+  const parsed = screenEntity50RuleSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Entity sanctions 50% rule request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const result = await evaluateSanctions50Rule(
+    parsed.data,
+    options.circuitBreakerKv,
+  );
+  return jsonResponse({
+    entity_name: result.entity_name,
+    clean: result.clean,
+    violation: result.violation,
+    aggregate_blocked_percentage: result.aggregate_blocked_percentage,
+    threshold_percentage: result.threshold_percentage,
+    blocked_shareholders: result.blocked_shareholders,
+    reason_codes: result.reason_codes,
+    explanation: result.explanation,
+    ...(result.direct_match === undefined ? {} : { direct_match: result.direct_match }),
   });
 }
 
@@ -642,6 +711,86 @@ async function handleInsights(
   return jsonResponse(await getInsights(options.db));
 }
 
+const createApiKeyRequestSchema = z.strictObject({
+  org_id: z.string().trim().min(1).max(128),
+  name: z.string().trim().min(1).max(128),
+  tier: z.enum(["developer", "team", "enterprise"]).optional(),
+  monthly_quota: z.number().int().min(1).max(100_000_000).optional(),
+});
+
+async function requireMasterKey(
+  request: Request,
+  options: TransportOptions,
+  action: string,
+): Promise<void> {
+  const token =
+    request.headers.get("X-Vizier-Key") ||
+    (request.headers.get("Authorization")?.replace(/^Bearer\s+/i, ""));
+  if (!token || !options.apiKey || token.trim() !== options.apiKey.trim()) {
+    throw new TransportRequestError(
+      401,
+      "UNAUTHORIZED",
+      `Master API key required to ${action}.`,
+    );
+  }
+  if (!options.db) {
+    throw new TransportRequestError(
+      503,
+      "DATABASE_UNAVAILABLE",
+      `Database is required to ${action}.`,
+    );
+  }
+}
+
+async function handleAdminCreateKey(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireMasterKey(request, options, "create tenant API keys");
+  const parsedJson = await readLimitedJson(request);
+  const parsed = createApiKeyRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "API key creation failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const generated = await generateApiKey(options.db!, parsed.data);
+  return jsonResponse(generated, 201);
+}
+
+async function handleAdminListKeys(
+  request: Request,
+  options: TransportOptions,
+  url: URL,
+): Promise<Response> {
+  await requireMasterKey(request, options, "list tenant API keys");
+  const orgId = url.searchParams.get("org_id") || "default";
+  const keys = await listApiKeys(options.db!, orgId);
+  return jsonResponse({ org_id: orgId, keys });
+}
+
+async function handleAdminRevokeKey(
+  request: Request,
+  options: TransportOptions,
+  keyId: string,
+  url: URL,
+): Promise<Response> {
+  await requireMasterKey(request, options, "revoke tenant API keys");
+  const orgId = url.searchParams.get("org_id") ?? undefined;
+  const revoked = await revokeApiKey(options.db!, keyId, orgId);
+  if (!revoked) {
+    throw new TransportRequestError(
+      404,
+      "KEY_NOT_FOUND",
+      `API key '${keyId}' not found or already revoked.`,
+    );
+  }
+  return jsonResponse({ success: true, revoked_id: keyId });
+}
+
 function rootDocument(): Response {
   return jsonResponse({
     name: "Vizier",
@@ -654,6 +803,8 @@ function rootDocument(): Response {
       "REVIEW requires a human decision before the external action.",
     ],
     docs: "/docs",
+    console: "/console",
+    playground: "/playground",
     openapi: "/openapi.json",
     ai_catalog: "/.well-known/ai-catalog.json",
     health: "/health",
@@ -854,6 +1005,12 @@ export async function handleHttpRequest(
       }
       return rootDocument();
     }
+    if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/dashboard")) {
+      return new Response(createConsoleHtml(url.origin), {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
     if (request.method === "GET" && url.pathname === "/health") {
       return jsonResponse({ status: "ok" });
     }
@@ -957,6 +1114,9 @@ export async function handleHttpRequest(
     if (request.method === "POST" && url.pathname === "/v1/sanctions/screen") {
       return await handleSanctionsScreen(request, options);
     }
+    if (request.method === "POST" && url.pathname === "/v1/sanctions/screen-entity") {
+      return await handleSanctionsScreenEntity(request, options);
+    }
     if (request.method === "POST" && url.pathname === "/v1/sanctions/entries") {
       return await handleSanctionsEntry(request, options);
     }
@@ -990,6 +1150,16 @@ export async function handleHttpRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/models") {
       return await handleModels();
+    }
+    if (request.method === "POST" && url.pathname === "/v1/admin/keys") {
+      return await handleAdminCreateKey(request, options);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/admin/keys") {
+      return await handleAdminListKeys(request, options, url);
+    }
+    if (request.method === "DELETE" && url.pathname.startsWith("/v1/admin/keys/")) {
+      const keyId = url.pathname.slice("/v1/admin/keys/".length);
+      return await handleAdminRevokeKey(request, options, keyId, url);
     }
     if (url.pathname === "/v1/chat/completions") {
       return jsonResponse(
@@ -1030,6 +1200,7 @@ export async function handleHttpRequest(
     if (
       url.pathname === "/v1/circuit-breaker/reset" ||
       url.pathname === "/v1/sanctions/screen" ||
+      url.pathname === "/v1/sanctions/screen-entity" ||
       url.pathname === "/v1/sanctions/entries" ||
       url.pathname === "/v1/dlp/scan" ||
       url.pathname === "/v1/quorum/propose" ||
@@ -1094,6 +1265,7 @@ export async function handleHttpRequest(
               "POST /v1/verify": "REST verification",
               "POST /v1/circuit-breaker/reset": "operator reset for tripped agent circuit breaker",
               "POST /v1/sanctions/screen": "pre-action sanctions screening query",
+              "POST /v1/sanctions/screen-entity": "OFAC 50% Rule and aggregated beneficial ownership screening",
               "POST /v1/sanctions/entries": "operator ingestion of custom sanctions entries",
               "POST /v1/dlp/scan": "pre-flight PII and secret leak scan",
               "POST /v1/covenants": "activate an accepted Action Covenant",

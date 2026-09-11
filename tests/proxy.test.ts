@@ -431,4 +431,61 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     const data = (await res.json()) as OpenAIChatCompletionPayload;
     expect(data.choices[0]?.message?.content).toBe("The weather is sunny in Almaty.");
   });
+
+  it("Post-LLM Sanctions Gate: blocks tool call with 403 SANCTIONS_50_RULE_VIOLATION when counterparty has >= 50% blocked ownership", async () => {
+    const testOptions: TransportOptions = {
+      ...options,
+      upstreamFetch: async () =>
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl-sanctions-50",
+            object: "chat.completion",
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call_vendor_create",
+                      type: "function",
+                      function: {
+                        name: "create_vendor_profile",
+                        arguments: JSON.stringify({
+                          counterparty: "Eurasia Import Export",
+                          shareholders: [
+                            { name: "Garantex Europe", percentage: 35.0 },
+                            { name: "Tornado Cash", percentage: 20.0 },
+                          ],
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    };
+
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Create vendor profile for Eurasia Import Export" }],
+      }),
+    });
+
+    const res = await handleHttpRequest(req, testOptions);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as OpenAIErrorPayload;
+    expect(body.error.code).toBe("SANCTIONS_50_RULE_VIOLATION");
+    expect(body.error.message).toContain("blocked under OFAC 50% Rule");
+    expect(body.error.message).toContain("55.00%");
+  });
 });

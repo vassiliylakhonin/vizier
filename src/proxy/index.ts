@@ -9,6 +9,7 @@ import {
   createQuorumProposal,
   getQuorumProposal,
 } from "../core/quorum";
+import { evaluateSanctions } from "../core/sanctions";
 import { DEFAULT_SENSITIVE_ACTIONS } from "../core/policies";
 import { sha256 } from "../core/receipts";
 import { signCompactJws } from "../crypto/jws";
@@ -18,6 +19,7 @@ import {
   type TransportOptions,
   TransportRequestError,
 } from "../transport/shared";
+import { authorizeEnforcement } from "../transport/auth";
 import type { VerificationRequest } from "../core/schemas";
 
 export interface ProxyMessage {
@@ -102,27 +104,33 @@ function extractTextFromContent(
 
 /**
  * Validates Vizier authentication.
- * Returns true if authenticated or if no apiKey is configured.
+ * Supports root master key (VIZIER_API_KEY) and tenant keys (vz_live_...).
  */
-function isVizierAuthenticated(
+async function checkProxyAuth(
   request: Request,
   options: TransportOptions,
-): boolean {
+): Promise<{ ok: boolean; status: number; code: string; message: string }> {
   if (!options.apiKey || options.apiKey.length === 0) {
-    return true;
+    return { ok: true, status: 200, code: "", message: "" };
   }
-  const vizierHeader = request.headers.get("X-Vizier-Key");
-  if (vizierHeader && vizierHeader === options.apiKey) {
-    return true;
+  const auth = await authorizeEnforcement(request, options.apiKey, { db: options.db });
+  if (auth === "authenticated" || auth === "evaluation") {
+    return { ok: true, status: 200, code: "", message: "" };
   }
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice("Bearer ".length).trim();
-    if (token === options.apiKey) {
-      return true;
-    }
+  if (auth === "quota_exceeded") {
+    return {
+      ok: false,
+      status: 429,
+      code: "QUOTA_EXCEEDED",
+      message: "Vizier Proxy: Monthly API quota exceeded for this API key. Upgrade your tier to proceed.",
+    };
   }
-  return false;
+  return {
+    ok: false,
+    status: 401,
+    code: "invalid_api_key",
+    message: "Unauthorized: Invalid or missing Vizier API key. Provide it via 'Authorization: Bearer <key>' or 'X-Vizier-Key' header.",
+  };
 }
 
 /**
@@ -188,11 +196,12 @@ export async function handleChatCompletions(
   const startedAt = performance.now();
 
   // 1. Authentication
-  if (!isVizierAuthenticated(request, options)) {
+  const authCheck = await checkProxyAuth(request, options);
+  if (!authCheck.ok) {
     return openAiError(
-      "Unauthorized: Invalid or missing Vizier API key. Provide it via 'Authorization: Bearer <key>' or 'X-Vizier-Key' header.",
-      "invalid_api_key",
-      401,
+      authCheck.message,
+      authCheck.code,
+      authCheck.status,
       "authentication_error",
     );
   }
@@ -491,7 +500,63 @@ interface ChatCompletionResponse {
             }
           }
 
-          // C. Post-LLM Quorum Gate (4-Eyes Principle) on sensitive tools
+          // C. Post-LLM Sanctions & OFAC 50% Rule screening on tool calls
+          const dummySanctionsReq: VerificationRequest = {
+            agent: { id: sessionId, owner: null },
+            principal: null,
+            action: {
+              type: fnName,
+              target: fnName,
+              parameters: parsedArgs as VerificationRequest["action"]["parameters"],
+            },
+            authority: {
+              allowed_actions: [fnName],
+              constraints: {},
+            },
+            context: {
+              request_id: `req_${crypto.randomUUID()}`,
+              session_id: sessionId,
+              timestamp: new Date().toISOString(),
+              source: "rest",
+            },
+          };
+
+          const sanctionsRes = await evaluateSanctions(
+            dummySanctionsReq,
+            options.circuitBreakerKv,
+          );
+
+          if (!sanctionsRes.clean && sanctionsRes.match) {
+            const is50Rule = sanctionsRes.rule50_result !== undefined;
+            const errCode = is50Rule ? "SANCTIONS_50_RULE_VIOLATION" : "SANCTIONED_ENTITY_MATCH";
+            const errMsg = is50Rule
+              ? sanctionsRes.rule50_result!.explanation
+              : `Vizier Sanctions Gate: tool call '${fnName}' matched sanctioned entity '${sanctionsRes.match.entity_name}' (${sanctionsRes.match.list}).`;
+
+            console.warn(
+              JSON.stringify({
+                event: "vizier.proxy.sanctions_blocked",
+                session_id: sessionId,
+                tool_name: fnName,
+                code: errCode,
+                match: sanctionsRes.match,
+              }),
+            );
+
+            return openAiError(
+              errMsg,
+              errCode,
+              403,
+              "vizier_sanctions_violation",
+              `tool_calls[${tIdx}].function.arguments`,
+              {
+                match: sanctionsRes.match,
+                ...(sanctionsRes.rule50_result ? { rule50_result: sanctionsRes.rule50_result } : {}),
+              },
+            );
+          }
+
+          // D. Post-LLM Quorum Gate (4-Eyes Principle) on sensitive tools
           const customQuorumActions = request.headers
             .get("X-Quorum-Actions")
             ?.split(",")

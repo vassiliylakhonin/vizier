@@ -243,11 +243,19 @@ export function evaluatePolicies(
 
   if (options.sanctions !== undefined) {
     if (!options.sanctions.clean && options.sanctions.match) {
+      const is50Rule = options.sanctions.rule50_result !== undefined;
+      const policyId = is50Rule ? "compliance.sanctions_50_rule" : "compliance.sanctions";
+      const reasonCode =
+        options.sanctions.rule50_result?.reason_codes[0] ??
+        (options.sanctions.match.list === "SANCTIONS_50_RULE_VIOLATION"
+          ? "SANCTIONS_50_RULE_VIOLATION"
+          : "SANCTIONED_ENTITY_MATCH");
+
       results.push(
         result(
-          "compliance.sanctions",
+          policyId,
           "FAIL",
-          "SANCTIONED_ENTITY_MATCH",
+          reasonCode,
           {
             matched_value: options.sanctions.match.matched_value,
             entity_name: options.sanctions.match.entity_name,
@@ -255,6 +263,14 @@ export function evaluatePolicies(
             candidate_type: options.sanctions.match.candidate_type,
             source: options.sanctions.match.source,
             ...(options.sanctions.match.details ?? {}),
+            ...(options.sanctions.rule50_result
+              ? {
+                  aggregate_blocked_percentage: options.sanctions.rule50_result.aggregate_blocked_percentage,
+                  threshold_percentage: options.sanctions.rule50_result.threshold_percentage,
+                  blocked_shareholders: options.sanctions.rule50_result.blocked_shareholders,
+                  explanation: options.sanctions.rule50_result.explanation,
+                }
+              : {}),
           },
         ),
       );
