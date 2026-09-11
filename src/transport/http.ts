@@ -1,11 +1,14 @@
 import { z } from "zod";
 import {
+  addCustomSanctionsEntry,
   evaluateEdgeCircuitBreaker,
+  evaluateSanctions,
   identifierSchema,
   resetEdgeCircuitBreaker,
   verificationRequestSchema,
   verifyAction,
   type EdgeCircuitBreakerResult,
+  type SanctionsEvaluationResult,
 } from "../core/index";
 import { publicJwkFromPrivate } from "../crypto/jws";
 import {
@@ -187,10 +190,18 @@ async function handleVerify(
       normalizedRequest,
     );
   }
+  let sanctionsResult: SanctionsEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.sanctions_screening !== false) {
+    sanctionsResult = await evaluateSanctions(
+      normalizedRequest,
+      options.circuitBreakerKv,
+    );
+  }
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
     principalKeys: resolvePrincipalKeys(options),
     circuitBreaker: circuitBreakerResult,
+    sanctions: sanctionsResult,
   });
   const requestId =
     normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
@@ -250,6 +261,99 @@ async function handleCircuitBreakerReset(
     status: "ok",
     session_id: parsed.data.session_id,
     message: `Circuit breaker reset for session '${parsed.data.session_id}'.`,
+  });
+}
+
+const sanctionsScreenRequestSchema = z.strictObject({
+  query: z.string().trim().min(1).max(2048),
+  type: z.enum(["domain", "crypto_address", "entity_name", "iban"]).optional(),
+});
+
+async function handleSanctionsScreen(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  const parsedJson = await readLimitedJson(request);
+  const parsed = sanctionsScreenRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Sanctions screening request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const query = parsed.data.query;
+  const dummyRequest = {
+    agent: { id: "screening", owner: null },
+    principal: null,
+    action: {
+      type: "screen",
+      target: query,
+      parameters: { counterparty: query },
+    },
+    authority: {
+      allowed_actions: ["screen"],
+      constraints: {},
+    },
+    context: {
+      request_id: null,
+      timestamp: null,
+      source: "rest" as const,
+    },
+  };
+  const result = await evaluateSanctions(dummyRequest, options.circuitBreakerKv);
+  return jsonResponse({
+    query,
+    clean: result.clean,
+    ...(result.match === undefined ? {} : { match: result.match }),
+  });
+}
+
+const addSanctionsEntrySchema = z.strictObject({
+  raw_value: z.string().trim().min(1).max(2048),
+  entity_name: z.string().trim().min(1).max(512),
+  list: z.string().trim().min(1).max(128).optional(),
+  type: z.enum(["domain", "crypto_address", "entity_name", "iban"]).optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
+async function handleSanctionsEntry(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "sanctions entry management");
+  if (options.circuitBreakerKv === undefined) {
+    throw new TransportRequestError(
+      503,
+      "STORAGE_UNAVAILABLE",
+      "KV storage is not configured on this Worker.",
+    );
+  }
+  const parsedJson = await readLimitedJson(request);
+  const parsed = addSanctionsEntrySchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Add sanctions entry request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const added = await addCustomSanctionsEntry(options.circuitBreakerKv, parsed.data);
+  console.log(
+    JSON.stringify({
+      event: "vizier.sanctions.entry_added",
+      entity_name: parsed.data.entity_name,
+      normalized: added.normalized,
+      key: added.key,
+    }),
+  );
+  return jsonResponse({
+    status: "ok",
+    key: added.key,
+    normalized: added.normalized,
+    entity_name: parsed.data.entity_name,
   });
 }
 
@@ -687,6 +791,12 @@ export async function handleHttpRequest(
     if (request.method === "POST" && url.pathname === "/v1/circuit-breaker/reset") {
       return await handleCircuitBreakerReset(request, options);
     }
+    if (request.method === "POST" && url.pathname === "/v1/sanctions/screen") {
+      return await handleSanctionsScreen(request, options);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/sanctions/entries") {
+      return await handleSanctionsEntry(request, options);
+    }
     if (request.method === "POST" && url.pathname === "/v1/covenants") {
       return await handleCovenantActivation(request, options);
     }
@@ -713,6 +823,8 @@ export async function handleHttpRequest(
     }
     if (
       url.pathname === "/v1/circuit-breaker/reset" ||
+      url.pathname === "/v1/sanctions/screen" ||
+      url.pathname === "/v1/sanctions/entries" ||
       url.pathname === "/v1/covenants" ||
       url.pathname === "/v1/authorizations" ||
       url.pathname === "/v1/outcomes"
@@ -759,6 +871,9 @@ export async function handleHttpRequest(
               "GET /.well-known/mcp.json": "MCP server manifest (registry server.json)",
               "POST /mcp": "MCP JSON-RPC",
               "POST /v1/verify": "REST verification",
+              "POST /v1/circuit-breaker/reset": "operator reset for tripped agent circuit breaker",
+              "POST /v1/sanctions/screen": "pre-action sanctions screening query",
+              "POST /v1/sanctions/entries": "operator ingestion of custom sanctions entries",
               "POST /v1/covenants": "activate an accepted Action Covenant",
               "POST /v1/authorizations": "authorize an exact covenant action",
               "POST /v1/outcomes": "bind an execution outcome to an authorization",

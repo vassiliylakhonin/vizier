@@ -1,6 +1,7 @@
 import type { EdgeCircuitBreakerResult } from "./circuit-breaker";
 import type { GrantVerification } from "./grants";
 import type { PolicyResult } from "./types";
+import type { SanctionsEvaluationResult } from "./sanctions";
 import type { VerificationRequest } from "./schemas";
 
 export const DEFAULT_SENSITIVE_ACTIONS = Object.freeze([
@@ -26,6 +27,7 @@ export interface PolicyOptions {
    */
   readonly grantVerification?: GrantVerification;
   readonly circuitBreaker?: EdgeCircuitBreakerResult;
+  readonly sanctions?: SanctionsEvaluationResult;
 }
 
 function result(
@@ -232,6 +234,28 @@ export function evaluatePolicies(
       );
     } else {
       results.push(result("agent.circuit_breaker", "PASS", null));
+    }
+  }
+
+  if (options.sanctions !== undefined) {
+    if (!options.sanctions.clean && options.sanctions.match) {
+      results.push(
+        result(
+          "compliance.sanctions",
+          "FAIL",
+          "SANCTIONED_ENTITY_MATCH",
+          {
+            matched_value: options.sanctions.match.matched_value,
+            entity_name: options.sanctions.match.entity_name,
+            list: options.sanctions.match.list,
+            candidate_type: options.sanctions.match.candidate_type,
+            source: options.sanctions.match.source,
+            ...(options.sanctions.match.details ?? {}),
+          },
+        ),
+      );
+    } else {
+      results.push(result("compliance.sanctions", "PASS", null));
     }
   }
 

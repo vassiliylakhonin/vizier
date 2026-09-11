@@ -112,6 +112,16 @@ class VizierClient:
 
         return resp
 
+    def screen_sanctions(
+        self,
+        query: str,
+    ) -> Dict[str, Any]:
+        """
+        Screen an entity, domain, crypto address, or IBAN against built-in and custom sanctions lists.
+        Returns a dict with 'query', 'clean' (bool), and optional 'match' dict.
+        """
+        return self._request("/v1/sanctions/screen", {"query": query})
+
     def check(
         self,
         action_type: str,
@@ -126,6 +136,8 @@ class VizierClient:
         principal_id: str = "principal",
         is_reversible: Optional[bool] = None,
         grant: Optional[str] = None,
+        sanctions_screening: Optional[bool] = None,
+        blocked_entities: Optional[List[str]] = None,
     ) -> VerificationResponse:
         """
         Convenience method: verify an action in a single line of code.
@@ -146,8 +158,11 @@ class VizierClient:
                     currency=currency,
                     allowed_targets=allowed_targets,
                     blocked_targets=blocked_targets,
+                    sanctions_screening=sanctions_screening,
+                    blocked_entities=blocked_entities,
                 ),
             ),
             grant=grant,
         )
         return self.verify(req)
+

@@ -242,3 +242,43 @@ except CircuitTrippedError as err:
     cb.reset()  # Reset when starting a new agent task
 ```
 
+---
+
+## 🛡️ Pre-Action Sanctions & Anti-Fraud Gate (OFAC / EU / Crypto)
+
+Prevent autonomous agents from interacting with sanctioned entities, flagged crypto mixers (Tornado Cash, Lazarus, Garantex, SUEX), rogue vendor domains, or blacklisted IBANs.
+
+All screening is evaluated deterministically in sub-2ms edge latency with zero outbound HTTP requests at evaluation time.
+
+### 1. Screening via `@vizier_guard`
+
+```python
+from vizier import VizierClient, vizier_guard
+
+client = VizierClient(api_key="your-api-key")
+
+@vizier_guard(
+    client=client,
+    action_type="crypto_payout",
+    sanctions_check=True,
+    blocked_entities=["rogue-vendor.com"]  # Optional custom blocked entities
+)
+def send_crypto(recipient_address: str, amount: float):
+    # Safe to execute:
+    print(f"Transferring {amount} ETH to {recipient_address}")
+
+# Clean transfer: ALLOW
+send_crypto("0x71c6bfb764b85770f4ac626088409617329fe24a", 0.5)
+
+# Sanctioned entity (e.g. Tornado Cash): raises ActionBlockedError with SANCTIONED_ENTITY_MATCH
+send_crypto("0xd90e2f925da726b50c4ed8d0fb90ad053324f31b", 10.0)
+```
+
+### 2. Pre-flight Screening Queries
+
+```python
+result = client.screen_sanctions("garantex.org")
+if not result["clean"]:
+    print(f"Blocked match: {result['match']['entity_name']} on {result['match']['list']}")
+```
+

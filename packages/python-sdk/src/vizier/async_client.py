@@ -50,6 +50,18 @@ class AsyncVizierClient:
             verify_receipt_hash,
         )
 
+    async def screen_sanctions(
+        self,
+        query: str,
+    ) -> Dict[str, Any]:
+        """
+        Asynchronously screen an entity, domain, crypto address, or IBAN against sanctions lists.
+        """
+        return await asyncio.to_thread(
+            self._sync_client.screen_sanctions,
+            query=query,
+        )
+
     async def check(
         self,
         action_type: str,
@@ -64,6 +76,8 @@ class AsyncVizierClient:
         principal_id: str = "principal",
         is_reversible: Optional[bool] = None,
         grant: Optional[str] = None,
+        sanctions_screening: Optional[bool] = None,
+        blocked_entities: Optional[List[str]] = None,
     ) -> VerificationResponse:
         """
         Asynchronously verify an action in a single line of code without blocking the event loop.
@@ -82,4 +96,7 @@ class AsyncVizierClient:
             principal_id=principal_id,
             is_reversible=is_reversible,
             grant=grant,
+            sanctions_screening=sanctions_screening,
+            blocked_entities=blocked_entities,
         )
+

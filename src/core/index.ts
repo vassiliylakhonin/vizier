@@ -47,6 +47,22 @@ export type {
   EdgeCircuitBreakerOptions,
   EdgeCircuitBreakerResult,
 } from "./circuit-breaker";
+export {
+  BUILT_IN_SANCTIONS,
+  addCustomSanctionsEntry,
+  evaluateSanctions,
+  extractSanctionsCandidates,
+  normalizeCryptoAddress,
+  normalizeDomain,
+  normalizeEntityName,
+  normalizeIban,
+} from "./sanctions";
+export type {
+  CandidateEntity,
+  SanctionsEvaluationResult,
+  SanctionsMatch,
+  SanctionsRecord,
+} from "./sanctions";
 export type {
   AuthorityProvenance,
   Decision,
