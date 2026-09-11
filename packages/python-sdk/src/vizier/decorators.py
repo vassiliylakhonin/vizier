@@ -34,10 +34,13 @@ def vizier_guard(
     circuit_breaker: Optional[Union[CircuitBreaker, bool]] = None,
     sanctions_check: bool = False,
     blocked_entities: Optional[List[str]] = None,
+    dlp_check: bool = False,
+    allowed_dlp_categories: Optional[List[str]] = None,
 ):
     """
     Decorator to protect any Python function / agent tool with Vizier deterministic authorization,
-    Pre-Action Sanctions Screening, Circuit Breaker loop prevention, and Human-in-the-Loop review.
+    Pre-Action Sanctions Screening, PII & Secret Leak Firewall (DLP), Circuit Breaker loop prevention,
+    and Human-in-the-Loop review.
     Supports BOTH synchronous (def) and asynchronous (async def) functions seamlessly.
     """
     breaker: Optional[CircuitBreaker]
@@ -130,6 +133,8 @@ def vizier_guard(
                     principal_id=principal_id,
                     sanctions_screening=True if sanctions_check else None,
                     blocked_entities=blocked_entities,
+                    dlp_screening=True if dlp_check else None,
+                    allowed_dlp_categories=allowed_dlp_categories,
                 )
 
                 if verification.decision == "REVIEW" and hitl_handler:
@@ -195,6 +200,8 @@ def vizier_guard(
                     principal_id=principal_id,
                     sanctions_screening=True if sanctions_check else None,
                     blocked_entities=blocked_entities,
+                    dlp_screening=True if dlp_check else None,
+                    allowed_dlp_categories=allowed_dlp_categories,
                 )
 
                 if verification.decision == "REVIEW" and hitl_handler:

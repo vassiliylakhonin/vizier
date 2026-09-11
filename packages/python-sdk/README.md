@@ -282,3 +282,50 @@ if not result["clean"]:
     print(f"Blocked match: {result['match']['entity_name']} on {result['match']['list']}")
 ```
 
+---
+
+## 🔒 PII & Secret Leak Firewall (DLP for Tool Calls)
+
+AI agents invoking external tools (Google search, Slack, email, external APIs) risk exfiltrating sensitive credentials or personal data—either via prompt hallucinations or Indirect Prompt Injection attacks.
+
+Vizier provides deterministic, sub-millisecond Data Loss Prevention (DLP) screening for every tool call:
+
+* **API Keys & Secrets:** OpenAI (`sk-...`), Anthropic (`sk-ant-...`), AWS Access & Secret Keys, GitHub PATs, Stripe Live Keys, Slack tokens, Google Cloud keys, Private Key PEM blocks, and JWT tokens.
+* **PII:** Payment Cards (validated via Luhn algorithm to prevent false positives), US Social Security Numbers (SSN).
+* **Entropy Anomaly Detector:** Shannon entropy analysis for unstructured passwords and raw tokens.
+* **Privacy by Design:** Leaked secrets are automatically masked (`sk-p******1234`) in receipts and audit logs.
+
+### 1. Protect Tool Calls with `@vizier_guard(dlp_check=True)`
+
+```python
+from vizier import VizierClient, vizier_guard
+
+client = VizierClient(api_key="your-api-key")
+
+@vizier_guard(
+    client=client,
+    action_type="web_search",
+    dlp_check=True,
+)
+def search_online(query: str):
+    # This runs ONLY if no secrets or PII are found in query
+    return external_search_api(query)
+
+# Allowed: regular query
+search_online("latest AI research papers")
+
+# Blocked: raises ActionBlockedError with SECRET_LEAK_PREVENTED
+search_online("debug prompt with sk-proj-1234567890abcdef1234567890")
+```
+
+### 2. Standalone DLP Scanner
+
+```python
+scan_result = client.scan_dlp(text="Look at this key: AKIAIOSFODNN7EXAMPLE")
+if not scan_result["clean"]:
+    print(f"Prevented {scan_result['total_leaks_prevented']} secret leak(s):")
+    for finding in scan_result["findings"]:
+        print(f"  - {finding['category']} ({finding['detector']}): {finding['snippet_masked']}")
+```
+
+
