@@ -44,17 +44,18 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "NPM_TOKEN secret is not configured; skipping publish."
-            exit 1
+            echo "::warning::NPM_TOKEN secret is not configured; skipping npm publish."
+          else
+            npm publish --workspace @vizier/sdk --access public
+            npm publish --workspace @vizier/mcp-proxy --access public
           fi
-          npm publish --workspace @vizier/sdk --access public
-          npm publish --workspace @vizier/mcp-proxy --access public
 
   pypi:
     name: Build & Publish Python SDK
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
@@ -72,12 +73,9 @@ jobs:
 
       - name: Publish to PyPI
         if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          if [ -z "$TWINE_PASSWORD" ]; then
-            echo "PYPI_API_TOKEN secret is not configured; skipping publish."
-            exit 1
-          fi
-          twine upload packages/python-sdk/dist/*
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/python-sdk/dist/
+          skip-existing: true
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
