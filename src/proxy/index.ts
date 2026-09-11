@@ -1,11 +1,9 @@
 import {
   evaluateEdgeCircuitBreaker,
-  type EdgeCircuitBreakerResult,
 } from "../core/circuit-breaker";
 import {
   scanDlpParameters,
   scanDlpText,
-  type DlpFinding,
 } from "../core/dlp";
 import {
   createQuorumProposal,
@@ -370,15 +368,35 @@ export async function handleChatCompletions(
     });
   }
 
+interface ChatCompletionResponse {
+  readonly id?: string;
+  readonly object?: string;
+  readonly choices?: readonly {
+    readonly message?: {
+      readonly role?: string;
+      readonly content?: string | null;
+      readonly tool_calls?: readonly {
+        readonly id?: string;
+        readonly type?: string;
+        readonly function?: {
+          readonly name?: string;
+          readonly arguments?: string;
+        };
+      }[];
+    };
+  }[];
+  readonly [key: string]: unknown;
+}
+
   // Non-streaming JSON response inspection
-  let responseData: any;
+  let responseData: ChatCompletionResponse;
   try {
-    responseData = await upstreamResponse.json();
+    responseData = (await upstreamResponse.json()) as ChatCompletionResponse;
   } catch {
     return openAiError("Upstream returned non-JSON response.", "invalid_upstream_response", 502);
   }
 
-  const choices = responseData?.choices;
+  const choices = responseData.choices;
   if (Array.isArray(choices) && choices.length > 0) {
     for (const choice of choices) {
       const toolCalls = choice?.message?.tool_calls;
@@ -388,9 +406,9 @@ export async function handleChatCompletions(
           const fnName = toolCall?.function?.name || "unknown_tool";
           const rawArgs = toolCall?.function?.arguments || "{}";
 
-          let parsedArgs: Record<string, unknown> = {};
+          let parsedArgs: Record<string, unknown>;
           try {
-            parsedArgs = JSON.parse(rawArgs);
+            parsedArgs = JSON.parse(rawArgs) as Record<string, unknown>;
           } catch {
             parsedArgs = { raw: rawArgs };
           }
@@ -430,7 +448,7 @@ export async function handleChatCompletions(
               action: {
                 type: fnName,
                 target: fnName,
-                parameters: parsedArgs,
+                parameters: parsedArgs as VerificationRequest["action"]["parameters"],
               },
               authority: {
                 allowed_actions: [fnName],
@@ -481,7 +499,7 @@ export async function handleChatCompletions(
             .filter(Boolean) || [];
 
           const isSensitive =
-            DEFAULT_SENSITIVE_ACTIONS.includes(fnName as any) ||
+            (DEFAULT_SENSITIVE_ACTIONS as readonly string[]).includes(fnName) ||
             customQuorumActions.includes(fnName);
 
           if (isSensitive) {
@@ -508,7 +526,7 @@ export async function handleChatCompletions(
                   action: {
                     type: fnName,
                     target: fnName,
-                    parameters: parsedArgs as any,
+                    parameters: parsedArgs as VerificationRequest["action"]["parameters"],
                   },
                   constraints: {
                     min_approvals: 2,

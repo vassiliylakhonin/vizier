@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { webcrypto } from "node:crypto";
+import type { KVNamespace } from "@cloudflare/workers-types";
 import { handleHttpRequest } from "../src/transport/http";
 import type { TransportOptions } from "../src/transport/shared";
 
@@ -20,6 +21,52 @@ class MemoryKv {
   }
 }
 
+interface OpenAIErrorPayload {
+  readonly error: {
+    readonly message: string;
+    readonly type: string;
+    readonly param?: string | null;
+    readonly code: string;
+    readonly details?: {
+      readonly findings?: ReadonlyArray<{
+        readonly category: string;
+        readonly detector: string;
+        readonly snippet_masked: string;
+      }>;
+      readonly proposal_id?: string;
+      readonly action_type?: string;
+    };
+  };
+}
+
+interface OpenAIModelListPayload {
+  readonly object: string;
+  readonly data: ReadonlyArray<{
+    readonly id: string;
+    readonly object: string;
+    readonly created: number;
+    readonly owned_by: string;
+  }>;
+}
+
+interface OpenAIChatCompletionPayload {
+  readonly id: string;
+  readonly object: string;
+  readonly choices: ReadonlyArray<{
+    readonly message: {
+      readonly role: string;
+      readonly content?: string;
+      readonly tool_calls?: ReadonlyArray<{
+        readonly id: string;
+        readonly function: {
+          readonly name: string;
+          readonly arguments: string;
+        };
+      }>;
+    };
+  }>;
+}
+
 async function createTestSigningKey(): Promise<string> {
   const keyPair = await webcrypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
@@ -36,11 +83,11 @@ async function createTestSigningKey(): Promise<string> {
 }
 
 describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
-  let kv: any;
+  let kv: KVNamespace;
   let options: TransportOptions;
 
   beforeAll(async () => {
-    kv = new MemoryKv();
+    kv = new MemoryKv() as unknown as KVNamespace;
     const receiptKey = await createTestSigningKey();
     options = {
       apiKey: "test-vizier-key",
@@ -65,10 +112,10 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     });
     const res = await handleHttpRequest(req, options);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as OpenAIModelListPayload;
     expect(body.object).toBe("list");
-    expect(body.data.some((m: any) => m.id === "gpt-4o")).toBe(true);
-    expect(body.data.some((m: any) => m.id === "claude-3-5-sonnet")).toBe(true);
+    expect(body.data.some((m) => m.id === "gpt-4o")).toBe(true);
+    expect(body.data.some((m) => m.id === "claude-3-5-sonnet")).toBe(true);
   });
 
   it("rejects unauthorized requests with 401 when apiKey is configured", async () => {
@@ -85,7 +132,7 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     });
     const res = await handleHttpRequest(req, options);
     expect(res.status).toBe(401);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as OpenAIErrorPayload;
     expect(body.error.code).toBe("invalid_api_key");
   });
 
@@ -108,14 +155,14 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     });
     const res = await handleHttpRequest(req, options);
     expect(res.status).toBe(400);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as OpenAIErrorPayload;
     expect(body.error.code).toBe("SECRET_LEAK_PREVENTED");
     expect(body.error.message).toContain("Vizier DLP Firewall");
-    expect(body.error.details.findings[0].detector).toBe("openai_api_key");
+    expect(body.error.details?.findings?.[0]?.detector).toBe("openai_api_key");
   });
 
   it("Pre-LLM Circuit Breaker: trips on prompt repeat storm with 429 CIRCUIT_TRIPPED", async () => {
-    const testKv = new MemoryKv() as any;
+    const testKv = new MemoryKv() as unknown as KVNamespace;
     const testOptions: TransportOptions = {
       ...options,
       circuitBreakerKv: testKv,
@@ -162,7 +209,7 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     // Call 4: Tripped! (max_repeated_calls = 3)
     const r4 = await makeCall();
     expect(r4.status).toBe(429);
-    const b4 = (await r4.json()) as any;
+    const b4 = (await r4.json()) as OpenAIErrorPayload;
     expect(b4.error.code).toBe("CIRCUIT_TRIPPED");
     expect(b4.error.message).toContain("prompt repeat storm detected");
   });
@@ -214,13 +261,13 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
 
     const res = await handleHttpRequest(req, testOptions);
     expect(res.status).toBe(400);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as OpenAIErrorPayload;
     expect(body.error.code).toBe("SECRET_LEAK_PREVENTED");
     expect(body.error.message).toContain("tool call 'search_web'");
   });
 
   it("Post-LLM Tool Call Loop Killer: trips when agent invokes identical tool call 3 times", async () => {
-    const testKv = new MemoryKv() as any;
+    const testKv = new MemoryKv() as unknown as KVNamespace;
     const testOptions: TransportOptions = {
       ...options,
       circuitBreakerKv: testKv,
@@ -283,13 +330,13 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     // Call 4: Tripped!
     const r4 = await makeToolCall(4);
     expect(r4.status).toBe(429);
-    const b4 = (await r4.json()) as any;
+    const b4 = (await r4.json()) as OpenAIErrorPayload;
     expect(b4.error.code).toBe("CIRCUIT_TRIPPED");
     expect(b4.error.message).toContain("Vizier Loop Killer tripped on tool call 'query_database'");
   });
 
   it("Post-LLM Quorum Gate: intercepts sensitive tool 'transfer_funds' with 403 QUORUM_REQUIRED and creates proposal", async () => {
-    const testKv = new MemoryKv() as any;
+    const testKv = new MemoryKv() as unknown as KVNamespace;
     const testOptions: TransportOptions = {
       ...options,
       circuitBreakerKv: testKv,
@@ -335,11 +382,11 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
 
     const res = await handleHttpRequest(req, testOptions);
     expect(res.status).toBe(403);
-    const body = (await res.json()) as any;
+    const body = (await res.json()) as OpenAIErrorPayload;
     expect(body.error.code).toBe("QUORUM_REQUIRED");
     expect(body.error.message).toContain("dual-control approval (4-eyes principle)");
-    expect(body.error.details.proposal_id).toMatch(/^prp_/);
-    expect(body.error.details.action_type).toBe("transfer_funds");
+    expect(body.error.details?.proposal_id).toMatch(/^prp_/);
+    expect(body.error.details?.action_type).toBe("transfer_funds");
   });
 
   it("Clean request passes through with X-Vizier-Status: PASSED and X-Vizier-Receipt JWS header", async () => {
@@ -381,7 +428,7 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     expect(res.headers.get("X-Vizier-Receipt")).toBeDefined();
     expect(res.headers.get("X-Vizier-Receipt")?.split(".")).toHaveLength(3);
 
-    const data = (await res.json()) as any;
-    expect(data.choices[0].message.content).toBe("The weather is sunny in Almaty.");
+    const data = (await res.json()) as OpenAIChatCompletionPayload;
+    expect(data.choices[0]?.message?.content).toBe("The weather is sunny in Almaty.");
   });
 });
