@@ -110,3 +110,83 @@ if decision.is_allowed:
 else:
     print(f"Action rejected ({decision.decision}): {decision.explanation}")
 ```
+
+---
+
+## ⚡ Asynchronous Support (`AsyncVizierClient`)
+
+For asynchronous agent runtimes (FastAPI, LangGraph, AutoGen):
+
+```python
+from vizier import AsyncVizierClient, vizier_guard
+
+client = AsyncVizierClient(
+    base_url="https://vizier.vassiliy-lakhonin.workers.dev",
+    api_key="your-api-key"
+)
+
+# Protect async coroutine functions
+@vizier_guard(client=client, action_type="fetch_data", max_amount=100.0)
+async def fetch_async(target: str, amount: float):
+    return {"status": "success", "target": target}
+
+# In async context:
+result = await fetch_async("api.service", amount=50.0)
+```
+
+---
+
+## 🧑‍💼 Human-in-the-Loop (HITL) Approval
+
+When a proposed action returns `REVIEW` (e.g., sensitive operations like money transfers, database drops, or large payments), Vizier can halt and request interactive human approval:
+
+### 1. Telegram Bot (Interactive Buttons)
+
+Send an approval request with **[ Approve ]** and **[ Reject ]** buttons directly to your Telegram:
+
+```python
+from vizier import VizierClient, vizier_guard, TelegramHITLHandler
+
+telegram_approver = TelegramHITLHandler(
+    bot_token="123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
+    chat_id="987654321",
+    timeout=60.0  # Wait up to 60s for operator response
+)
+
+@vizier_guard(
+    action_type="transfer_funds",
+    max_amount=1000.0,
+    hitl_handler=telegram_approver
+)
+def transfer(amount: float, target: str):
+    # Executes ONLY if operator clicks [Approve] in Telegram
+    print(f"Transferred ${amount} to {target}")
+```
+
+### 2. Terminal / CLI Prompt
+
+For local development or command-line agent runs:
+
+```python
+from vizier import CliHITLHandler
+
+@vizier_guard(
+    action_type="delete_table",
+    hitl_handler=CliHITLHandler()
+)
+def drop_database(table: str):
+    print(f"Dropped {table}")
+```
+
+### 3. Webhook (Slack / Internal Dashboard)
+
+```python
+from vizier import WebhookHITLHandler
+
+@vizier_guard(
+    action_type="deploy_worker",
+    hitl_handler=WebhookHITLHandler("https://hooks.slack.com/services/...")
+)
+def deploy(service: str):
+    print(f"Deployed {service}")
+```
