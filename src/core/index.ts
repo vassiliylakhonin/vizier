@@ -1,4 +1,8 @@
-export { delegationGrantTokenSchema, verificationRequestSchema } from "./schemas";
+export {
+  delegationGrantTokenSchema,
+  identifierSchema,
+  verificationRequestSchema,
+} from "./schemas";
 export type { VerificationRequest } from "./schemas";
 export {
   CLOCK_SKEW_SECONDS,
@@ -31,6 +35,18 @@ export {
 } from "./json-complexity";
 export { verifyAction } from "./verify";
 export type { VerificationOptions } from "./verify";
+export {
+  DEFAULT_COOL_OFF_SECONDS,
+  DEFAULT_MAX_REPEATED_CALLS,
+  DEFAULT_MAX_SESSION_ACTIONS,
+  DEFAULT_TIME_WINDOW_SECONDS,
+  evaluateEdgeCircuitBreaker,
+  resetEdgeCircuitBreaker,
+} from "./circuit-breaker";
+export type {
+  EdgeCircuitBreakerOptions,
+  EdgeCircuitBreakerResult,
+} from "./circuit-breaker";
 export type {
   AuthorityProvenance,
   Decision,

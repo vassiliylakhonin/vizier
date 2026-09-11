@@ -1,3 +1,4 @@
+import type { EdgeCircuitBreakerResult } from "./circuit-breaker";
 import type { GrantVerification } from "./grants";
 import type { PolicyResult } from "./types";
 import type { VerificationRequest } from "./schemas";
@@ -24,6 +25,7 @@ export interface PolicyOptions {
    * that this function stays synchronous and deterministic.
    */
   readonly grantVerification?: GrantVerification;
+  readonly circuitBreaker?: EdgeCircuitBreakerResult;
 }
 
 function result(
@@ -216,6 +218,21 @@ export function evaluatePolicies(
 
   if (grantVerification !== undefined) {
     results.push(evaluateDelegationGrant(grantVerification));
+  }
+
+  if (options.circuitBreaker !== undefined) {
+    if (options.circuitBreaker.tripped) {
+      results.push(
+        result(
+          "agent.circuit_breaker",
+          "FAIL",
+          options.circuitBreaker.reasonCode ?? "CIRCUIT_TRIPPED:LOOP_DETECTED",
+          options.circuitBreaker.details ?? {},
+        ),
+      );
+    } else {
+      results.push(result("agent.circuit_breaker", "PASS", null));
+    }
   }
 
   if (options.customPolicies) {
