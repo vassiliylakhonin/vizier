@@ -30,6 +30,8 @@ export interface TransportOptions {
    * the edge so a bad value cannot take the whole Worker down.
    */
   readonly principalKeySource?: string;
+  readonly upstreamFetch?: typeof fetch;
+  readonly upstreamUrl?: string;
 }
 
 const EMPTY_PRINCIPAL_KEYS: PrincipalKeyRegistry = new Map();

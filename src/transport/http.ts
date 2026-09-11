@@ -50,6 +50,7 @@ import { createJwks, maybeSignAgentCard } from "./jws";
 import { SERVICE_VERSION } from "../version";
 import { createOpenApiDocument } from "./openapi";
 import { createPlaygroundHtml } from "./playground";
+import { handleChatCompletions, handleModels } from "../proxy/index";
 import {
   getInsights,
   storeAuthorization,
@@ -833,6 +834,16 @@ export async function handleHttpRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
   try {
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Vizier-Key, X-Upstream-Key, X-Upstream-Url, X-Session-Id, X-Quorum-Proposal-Id, X-Quorum-Actions",
+        },
+      });
+    }
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/playground")) {
       const accept = request.headers.get("accept") ?? "";
       if (url.pathname === "/playground" || accept.includes("text/html")) {
@@ -973,6 +984,36 @@ export async function handleHttpRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/insights") {
       return await handleInsights(request, options);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+      return await handleChatCompletions(request, options);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/models") {
+      return await handleModels();
+    }
+    if (url.pathname === "/v1/chat/completions") {
+      return jsonResponse(
+        {
+          error: {
+            code: "METHOD_NOT_ALLOWED",
+            message: "Use POST for this endpoint.",
+          },
+        },
+        405,
+        { Allow: "POST" },
+      );
+    }
+    if (url.pathname === "/v1/models") {
+      return jsonResponse(
+        {
+          error: {
+            code: "METHOD_NOT_ALLOWED",
+            message: "Use GET for this endpoint.",
+          },
+        },
+        405,
+        { Allow: "GET" },
+      );
     }
     if (url.pathname === "/v1/verify") {
       return jsonResponse(
