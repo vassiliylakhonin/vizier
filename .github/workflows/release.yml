@@ -1,0 +1,83 @@
+name: Release Packages
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (do not publish to registries)"
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    name: Build & Publish npm Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+      - name: Verify npm package tarballs
+        run: |
+          npm pack --dry-run --workspace @vizier/sdk
+          npm pack --dry-run --workspace @vizier/mcp-proxy
+
+      - name: Publish to npm
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret is not configured; skipping publish."
+            exit 1
+          fi
+          npm publish --workspace @vizier/sdk --access public
+          npm publish --workspace @vizier/mcp-proxy --access public
+
+  pypi:
+    name: Build & Publish Python SDK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build wheel and sdist
+        run: python -m build packages/python-sdk
+
+      - name: Verify package integrity
+        run: twine check packages/python-sdk/dist/*
+
+      - name: Publish to PyPI
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$TWINE_PASSWORD" ]; then
+            echo "PYPI_API_TOKEN secret is not configured; skipping publish."
+            exit 1
+          fi
+          twine upload packages/python-sdk/dist/*

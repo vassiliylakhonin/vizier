@@ -1,0 +1,85 @@
+# @vizier/mcp-proxy
+
+Deterministic authorization proxy for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers and AI agents.
+
+Place any existing local or remote MCP server behind Vizier to enforce strict deterministic authority limits, tool allowlists, target restrictions, and tamper-proof SHA-256 audit receipts before actions execute.
+
+[![npm version](https://img.shields.io/npm/v/@vizier/mcp-proxy.svg)](https://www.npmjs.com/package/@vizier/mcp-proxy)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+## ⚡ Quickstart
+
+Run with `npx` (no installation required):
+
+```bash
+npx @vizier/mcp-proxy \
+  --upstream http://localhost:3000/mcp \
+  --tools "query_db,execute_command,fetch_api" \
+  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
+  --api-key $VIZIER_API_KEY
+```
+
+Your AI agent (Claude Desktop, Cursor, LangChain, etc.) now connects to `http://127.0.0.1:8790/mcp` instead of the raw upstream MCP server.
+
+---
+
+## 🛡️ How It Works
+
+```
+Agent (Claude / Cursor / Framework)
+               │  JSON-RPC 2.0 (tools/call)
+               ▼
+   ┌───────────────────────┐
+   │   @vizier/mcp-proxy   │
+   └───────────┬───────────┘
+               │  POST /v1/verify
+               ▼
+   ┌───────────────────────┐
+   │  Vizier Kernel (Edge) │  ──► ALLOW / BLOCK / REVIEW
+   └───────────┬───────────┘
+               │
+      [ If Decision == ALLOW ]
+               │
+               ▼
+      Upstream MCP Server
+```
+
+1. **Discovery Filtering**: Responses to `tools/list` are automatically filtered to only expose the tools configured in `--tools`.
+2. **Deterministic Interception**: Calls to `tools/call` are intercepted and evaluated against Vizier's deterministic policy kernel.
+3. **Fail-Closed**: If Vizier returns `BLOCK` or `REVIEW`, the proxy halts execution and returns a standard JSON-RPC 2.0 error to the agent without ever calling the upstream server.
+4. **Credential Isolation**: Incoming agent bearer tokens are authenticated and replaced with upstream credentials before forwarding.
+
+---
+
+## ⚙️ CLI Options
+
+| Flag | Env Variable | Default | Description |
+| --- | --- | --- | --- |
+| `--upstream <url>` | `VIZIER_PROXY_UPSTREAM_URL` | *(required)* | Upstream MCP server URL |
+| `--tools <list>` | `VIZIER_PROXY_ALLOWED_TOOLS` | *(required)* | Comma-separated list of allowed tools |
+| `--vizier <url>` | `VIZIER_BASE_URL` | `https://vizier.vassiliy-lakhonin.workers.dev` | Vizier authorization kernel URL |
+| `--api-key <key>` | `VIZIER_API_KEY` | *(required)* | Vizier integration API key |
+| `--port <port>` | `VIZIER_PROXY_PORT` | `8790` | Proxy listen port |
+| `--host <host>` | `VIZIER_PROXY_HOST` | `127.0.0.1` | Proxy listen host (`127.0.0.1` or `localhost`) |
+| `--token <token>` | `VIZIER_PROXY_CLIENT_TOKEN` | *(auto-generated)* | Bearer token required from agent |
+| `--upstream-token <token>`| `VIZIER_PROXY_UPSTREAM_BEARER_TOKEN` | `none` | Optional Bearer token for upstream |
+| `--agent-id <id>` | `VIZIER_PROXY_AGENT_ID` | `agent` | Agent identifier for audit log |
+| `--principal-id <id>` | `VIZIER_PROXY_PRINCIPAL_ID` | `principal` | Principal identifier |
+| `-h, --help` | — | — | Show CLI help message |
+
+---
+
+## 🔒 Security
+
+* **Loopback by default**: Listens on `127.0.0.1` to prevent unintended external exposure.
+* **Payload size limit**: Enforces a strict 64 KB incoming request body ceiling (`HTTP 413`) to prevent memory exhaustion attacks.
+* **No plaintext credentials in logs**: Tokens and secrets are stripped from operational event logging.
+
+---
+
+## 🌐 Links
+
+* **Live Action Playground**: [https://vizier.vassiliy-lakhonin.workers.dev/playground](https://vizier.vassiliy-lakhonin.workers.dev/playground)
+* **GitHub Repository**: [https://github.com/vassiliylakhonin/vizier](https://github.com/vassiliylakhonin/vizier)

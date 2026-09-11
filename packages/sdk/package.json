@@ -2,6 +2,26 @@
   "name": "@vizier/sdk",
   "version": "0.3.0",
   "description": "Thin TypeScript client for the Vizier verification API.",
+  "license": "MIT",
+  "author": "Vassiliy Lakhonin",
+  "homepage": "https://github.com/vassiliylakhonin/vizier#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vassiliylakhonin/vizier.git",
+    "directory": "packages/sdk"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "security",
+    "authorization",
+    "guardrails",
+    "sdk",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,6 +42,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "license": "MIT"
+  }
 }
