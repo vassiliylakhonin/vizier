@@ -43,15 +43,18 @@ class VizierClient:
         self.api_key = api_key
         self.timeout = timeout
 
-    def _request(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        url = f"{self.base_url}{path}"
+    def _get_headers(self) -> Dict[str, str]:
         headers = {
             "Content-Type": "application/json",
             "User-Agent": "vizier-guard-python/0.3.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
 
+    def _request(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        headers = self._get_headers()
         payload_bytes = json.dumps(data).encode("utf-8")
         req = urllib.request.Request(url, data=payload_bytes, headers=headers, method="POST")
 
@@ -213,7 +216,7 @@ class VizierClient:
         Query current status and approval records for a quorum proposal.
         """
         url = f"{self.base_url}/v1/quorum/proposals/{proposal_id}"
-        req = urllib.request.Request(url, headers=self._headers, method="GET")
+        req = urllib.request.Request(url, headers=self._get_headers(), method="GET")
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
