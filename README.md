@@ -38,6 +38,7 @@ path.
 Public surfaces:
 
 - Worker: <https://vizier.vassiliy-lakhonin.workers.dev>
+- Interactive Action Playground: <https://vizier.vassiliy-lakhonin.workers.dev/playground>
 - Live field reference: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
 - OpenAPI 3.1 contract: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
 - AI discovery catalog: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/ai-catalog.json>
@@ -229,10 +230,52 @@ The thin TypeScript client lives in `packages/sdk`:
 import { Vizier } from "@vizier/sdk";
 
 const vizier = new Vizier({
-  baseUrl: "http://127.0.0.1:8787",
+  baseUrl: "https://vizier.vassiliy-lakhonin.workers.dev",
   apiKey: process.env.VIZIER_API_KEY,
 });
 const decision = await vizier.verify(request);
+```
+
+### Python SDK (`vizier-guard`)
+
+The Python SDK lives in `packages/python-sdk` with zero external dependencies:
+
+```python
+from vizier import VizierClient, vizier_guard
+
+client = VizierClient(
+    base_url="https://vizier.vassiliy-lakhonin.workers.dev",
+    api_key=os.environ["VIZIER_API_KEY"],
+)
+
+# Protect any function / agent tool:
+@vizier_guard(client=client, action_type="purchase", max_amount=1000.0, currency="USD")
+def execute_order(amount: float, target: str):
+    return {"status": "success", "amount": amount}
+```
+
+Or protect LangChain / LangGraph tools:
+
+```python
+from vizier.integrations.langchain import VizierLangChainToolGuard
+
+guarded_tool = VizierLangChainToolGuard(
+    tool=my_search_or_db_tool,
+    client=client,
+    allowed_actions=["query_db"],
+)
+```
+
+### MCP Enforcement Proxy
+
+Protect any existing local or remote MCP server with deterministic policy checks:
+
+```bash
+npx @vizier/mcp-proxy \
+  --upstream http://localhost:3000/mcp \
+  --tools "query_db,transfer_funds,send_message" \
+  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
+  --api-key $VIZIER_API_KEY
 ```
 
 The API key belongs only in a controlled backend or orchestrator. Do not expose it

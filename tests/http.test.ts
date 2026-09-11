@@ -62,6 +62,24 @@ describe("REST transport", () => {
     expect(await response.text()).toContain(expectedText);
   });
 
+  it("serves interactive HTML playground on /playground and when Accept includes text/html", async () => {
+    const htmlResponse = await handleHttpRequest(
+      new Request("https://vizier.example/", {
+        headers: { Accept: "text/html,application/xhtml+xml" },
+      }),
+    );
+    expect(htmlResponse.status).toBe(200);
+    expect(htmlResponse.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(await htmlResponse.text()).toContain("Vizier Action Firewall");
+
+    const playgroundResponse = await handleHttpRequest(
+      new Request("https://vizier.example/playground"),
+    );
+    expect(playgroundResponse.status).toBe(200);
+    expect(playgroundResponse.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(await playgroundResponse.text()).toContain("Vizier Action Firewall");
+  });
+
   it("returns an ALLOW decision and receipt", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const response = await postJson(requestBody(), {

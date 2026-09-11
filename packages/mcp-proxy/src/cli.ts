@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { randomBytes } from "node:crypto";
+import { parseArgs } from "node:util";
 
 import { Vizier } from "@vizier/sdk";
 import { z } from "zod";
@@ -9,41 +11,91 @@ import { createMcpEnforcementProxy } from "./index.js";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+const helpText = `
+Vizier MCP Enforcement Proxy (v0.3.0)
+Deterministic authorization firewall for MCP servers and AI agents.
+
+Usage:
+  vizier-mcp-proxy --upstream <url> --tools <allowed_tools> [options]
+
+Options:
+  --upstream <url>          Upstream MCP server URL (e.g. http://localhost:3000/mcp)
+  --tools <list>            Comma-separated list of allowed tool names (e.g. "search,query_db")
+  --vizier <url>            Vizier base URL (default: https://vizier.vassiliy-lakhonin.workers.dev)
+  --api-key <key>           Vizier API key (or env VIZIER_API_KEY)
+  --port <port>             Proxy listen port (default: 8790)
+  --host <host>             Proxy listen host (default: 127.0.0.1)
+  --token <token>           Client bearer token for agent authentication (auto-generated if omitted)
+  --upstream-token <token>  Optional upstream Bearer token if upstream requires auth
+  --agent-id <id>           Agent identifier (default: agent)
+  --principal-id <id>       Principal identifier (default: principal)
+  -h, --help                Show this help message
+
+Environment Variables:
+  VIZIER_PROXY_UPSTREAM_URL, VIZIER_PROXY_ALLOWED_TOOLS, VIZIER_BASE_URL,
+  VIZIER_API_KEY, VIZIER_PROXY_PORT, VIZIER_PROXY_HOST, VIZIER_PROXY_CLIENT_TOKEN
+`;
+
 const configSchema = z.strictObject({
   host: z.enum(["127.0.0.1", "localhost"]).default("127.0.0.1"),
   port: z.coerce.number().int().min(1).max(65_535).default(8_790),
-  vizierBaseUrl: z.string().url(),
+  vizierBaseUrl: z.string().url().default("https://vizier.vassiliy-lakhonin.workers.dev"),
   vizierApiKey: z.string().min(1),
-  integrationId: z.string().trim().min(1).max(256),
+  integrationId: z.string().trim().min(1).max(256).default("mcp-proxy-integration"),
   clientBearerToken: z.string().min(16),
-  upstreamId: z.string().trim().min(1).max(256),
+  upstreamId: z.string().trim().min(1).max(256).default("upstream-mcp"),
   upstreamUrl: z.string().url(),
   upstreamBearerToken: z.string().min(1).optional(),
   allowedTools: z
     .string()
     .transform((value) => value.split(",").map((item) => item.trim()).filter(Boolean))
     .pipe(z.array(z.string().min(1).max(256)).min(1).max(100)),
-  agentId: z.string().trim().min(1).max(256),
-  agentOwner: z.string().trim().min(1).max(256).nullable(),
-  principalId: z.string().trim().min(1).max(256),
+  agentId: z.string().trim().min(1).max(256).default("agent"),
+  agentOwner: z.string().trim().min(1).max(256).nullable().default(null),
+  principalId: z.string().trim().min(1).max(256).default("principal"),
 });
 
 function loadConfig(): z.infer<typeof configSchema> {
-  const config = configSchema.parse({
-    host: process.env.VIZIER_PROXY_HOST,
-    port: process.env.VIZIER_PROXY_PORT,
-    vizierBaseUrl: process.env.VIZIER_BASE_URL,
-    vizierApiKey: process.env.VIZIER_API_KEY,
-    integrationId: process.env.VIZIER_PROXY_INTEGRATION_ID,
-    clientBearerToken: process.env.VIZIER_PROXY_CLIENT_TOKEN,
-    upstreamId: process.env.VIZIER_PROXY_UPSTREAM_ID,
-    upstreamUrl: process.env.VIZIER_PROXY_UPSTREAM_URL,
-    upstreamBearerToken: process.env.VIZIER_PROXY_UPSTREAM_BEARER_TOKEN,
-    allowedTools: process.env.VIZIER_PROXY_ALLOWED_TOOLS,
-    agentId: process.env.VIZIER_PROXY_AGENT_ID,
-    agentOwner: process.env.VIZIER_PROXY_AGENT_OWNER ?? null,
-    principalId: process.env.VIZIER_PROXY_PRINCIPAL_ID,
+  const { values } = parseArgs({
+    options: {
+      help: { type: "boolean", short: "h" },
+      upstream: { type: "string" },
+      tools: { type: "string" },
+      vizier: { type: "string" },
+      "api-key": { type: "string" },
+      port: { type: "string" },
+      host: { type: "string" },
+      token: { type: "string" },
+      "upstream-token": { type: "string" },
+      "agent-id": { type: "string" },
+      "principal-id": { type: "string" },
+    },
+    strict: false,
   });
+
+  if (values.help) {
+    console.log(helpText);
+    process.exit(0);
+  }
+
+  const generatedToken = randomBytes(16).toString("hex");
+
+  const config = configSchema.parse({
+    host: values.host ?? process.env.VIZIER_PROXY_HOST ?? "127.0.0.1",
+    port: values.port ?? process.env.VIZIER_PROXY_PORT ?? 8790,
+    vizierBaseUrl: values.vizier ?? process.env.VIZIER_BASE_URL ?? "https://vizier.vassiliy-lakhonin.workers.dev",
+    vizierApiKey: values["api-key"] ?? process.env.VIZIER_API_KEY,
+    integrationId: process.env.VIZIER_PROXY_INTEGRATION_ID ?? "mcp-proxy-integration",
+    clientBearerToken: values.token ?? process.env.VIZIER_PROXY_CLIENT_TOKEN ?? generatedToken,
+    upstreamId: process.env.VIZIER_PROXY_UPSTREAM_ID ?? "upstream-mcp",
+    upstreamUrl: values.upstream ?? process.env.VIZIER_PROXY_UPSTREAM_URL,
+    upstreamBearerToken: values["upstream-token"] ?? process.env.VIZIER_PROXY_UPSTREAM_BEARER_TOKEN,
+    allowedTools: values.tools ?? process.env.VIZIER_PROXY_ALLOWED_TOOLS,
+    agentId: values["agent-id"] ?? process.env.VIZIER_PROXY_AGENT_ID ?? "agent",
+    agentOwner: process.env.VIZIER_PROXY_AGENT_OWNER ?? null,
+    principalId: values["principal-id"] ?? process.env.VIZIER_PROXY_PRINCIPAL_ID ?? "principal",
+  });
+
   const vizierUrl = new URL(config.vizierBaseUrl);
   if (
     vizierUrl.protocol !== "https:" &&
@@ -143,7 +195,8 @@ async function main(): Promise<void> {
         event: "vizier.mcp_proxy.started",
         integration_id: config.integrationId,
         listen: `http://${config.host}:${config.port}/mcp`,
-        upstream_id: config.upstreamId,
+        client_bearer_token: config.clientBearerToken,
+        upstream_url: config.upstreamUrl,
         allowed_tools: config.allowedTools,
       }),
     );
@@ -163,7 +216,7 @@ try {
           : [],
       message:
         error instanceof z.ZodError
-          ? "Required proxy configuration is missing or invalid."
+          ? "Required proxy configuration is missing or invalid. Use --help for usage."
           : error instanceof Error
             ? error.message
             : "Proxy startup failed.",

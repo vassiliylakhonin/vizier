@@ -24,6 +24,7 @@ import { authorizeEnforcement } from "./auth";
 import { createJwks, maybeSignAgentCard } from "./jws";
 import { SERVICE_VERSION } from "../version";
 import { createOpenApiDocument } from "./openapi";
+import { createPlaygroundHtml } from "./playground";
 import {
   getInsights,
   storeAuthorization,
@@ -520,7 +521,14 @@ export async function handleHttpRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
   try {
-    if (request.method === "GET" && url.pathname === "/") {
+    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/playground")) {
+      const accept = request.headers.get("accept") ?? "";
+      if (url.pathname === "/playground" || accept.includes("text/html")) {
+        return new Response(createPlaygroundHtml(url.origin), {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
       return rootDocument();
     }
     if (request.method === "GET" && url.pathname === "/health") {
