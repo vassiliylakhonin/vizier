@@ -163,6 +163,25 @@ async def transfer(amount: float, target: str):
     return await bank_api.send(amount, target)
 ```
 
+#### MCP Server for Claude Desktop & Cursor:
+
+Equip Claude Desktop or Cursor with deterministic guardrails (`vizier_screen_action`, `vizier_verify_receipt`, `vizier_check_policy`):
+
+```json
+{
+  "mcpServers": {
+    "vizier": {
+      "command": "uvx",
+      "args": ["vizier-guard", "mcp"],
+      "env": {
+        "VIZIER_BASE_URL": "https://vizier.vassiliy-lakhonin.workers.dev",
+        "VIZIER_API_KEY": "your-vizier-api-key"
+      }
+    }
+  }
+}
+```
+
 ---
 
 ### 2. MCP Enforcement Proxy CLI

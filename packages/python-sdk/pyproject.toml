@@ -42,6 +42,10 @@ Homepage = "https://github.com/vassiliylakhonin/vizier"
 Documentation = "https://vizier.vassiliy-lakhonin.workers.dev/docs"
 Repository = "https://github.com/vassiliylakhonin/vizier"
 
+[project.scripts]
+vizier-guard = "vizier.mcp:main"
+vizier-mcp = "vizier.mcp:main"
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

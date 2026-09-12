@@ -19,6 +19,65 @@ Zero external dependencies required out of the box (uses Python standard library
 
 ---
 
+## 🛡️ Model Context Protocol (MCP) Server for Claude Desktop & Cursor
+
+`vizier-guard` includes a first-class MCP server that equips **Claude Desktop**, **Cursor**, **Zed**, and **Windsurf** with deterministic authorization and audit tools:
+
+- `vizier_screen_action`: Screens proposed tool calls, shell executions, or writes before execution; returns cryptographic ALLOW / BLOCK receipts.
+- `vizier_verify_receipt`: Validates cryptographic JWS receipts and action hash bindings.
+- `vizier_check_policy`: Scans inputs/parameters for leaked API keys (DLP), sanctions matches, or loop storms.
+
+### Claude Desktop Configuration (`claude_desktop_config.json`)
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "vizier": {
+      "command": "uvx",
+      "args": ["vizier-guard", "mcp"],
+      "env": {
+        "VIZIER_BASE_URL": "https://vizier.vassiliy-lakhonin.workers.dev",
+        "VIZIER_API_KEY": "your-vizier-api-key"
+      }
+    }
+  }
+}
+```
+
+Or using an existing Python environment:
+
+```json
+{
+  "mcpServers": {
+    "vizier": {
+      "command": "python",
+      "args": ["-m", "vizier.mcp"],
+      "env": {
+        "VIZIER_BASE_URL": "https://vizier.vassiliy-lakhonin.workers.dev",
+        "VIZIER_API_KEY": "your-vizier-api-key"
+      }
+    }
+  }
+}
+```
+
+### Cursor Configuration (`.cursor/mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "vizier": {
+      "command": "uvx",
+      "args": ["vizier-guard", "mcp"]
+    }
+  }
+}
+```
+
+---
+
 ## 30-Second Quickstart: `@vizier_guard` Decorator
 
 Wrap any dangerous tool or Python function with deterministic policy rules:

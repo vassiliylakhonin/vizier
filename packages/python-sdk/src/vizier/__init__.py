@@ -66,7 +66,17 @@ __all__ = [
     "CircuitStatus",
     "VizierProxyConfig",
     "configure_openai_proxy",
+    "VizierMCPServer",
+    "run_mcp_server",
 ]
 
 from .proxy import VizierProxyConfig, configure_openai_proxy
+
+
+def __getattr__(name: str):
+    if name in ("VizierMCPServer", "run_mcp_server"):
+        from . import mcp
+        return getattr(mcp, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
