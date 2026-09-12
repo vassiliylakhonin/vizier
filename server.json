@@ -1,24 +1,22 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.vassiliylakhonin/vizier-guard",
-  "description": "Deterministic authorization and security guard for AI agent actions with signed receipts.",
-  "title": "Vizier Guard",
-  "repository": {
-    "url": "https://github.com/vassiliylakhonin/vizier",
-    "source": "github"
-  },
-  "version": "0.3.2",
-  "packages": [
+  "name": "io.github.vassiliylakhonin/vizier",
+  "title": "Vizier",
+  "description": "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
+  "version": "0.3.0",
+  "websiteUrl": "https://vizier.vassiliy-lakhonin.workers.dev/docs",
+  "remotes": [
     {
-      "registryType": "pypi",
-      "registryBaseUrl": "https://pypi.org",
-      "identifier": "vizier-guard",
-      "version": "0.3.2",
-      "runtimeHint": "uvx",
-      "transport": {
-        "type": "stdio"
-      }
+      "type": "streamable-http",
+      "url": "https://vizier.vassiliy-lakhonin.workers.dev/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <integration credential>. Optional: an anonymous call returns an evaluation-only decision that never grants ALLOW, and the credential unlocks enforcement results.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
     }
-  ],
-  "websiteUrl": "https://vizier.vassiliy-lakhonin.workers.dev"
+  ]
 }

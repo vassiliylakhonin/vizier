@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.vassiliylakhonin/vizier-guard",
+  "description": "Deterministic authorization and security guard for AI agent actions with signed receipts.",
+  "title": "Vizier Guard",
+  "repository": {
+    "url": "https://github.com/vassiliylakhonin/vizier",
+    "source": "github"
+  },
+  "version": "0.3.2",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "vizier-guard",
+      "version": "0.3.2",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "websiteUrl": "https://vizier.vassiliy-lakhonin.workers.dev"
+}

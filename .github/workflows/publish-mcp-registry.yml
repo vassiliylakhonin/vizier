@@ -1,14 +1,20 @@
 name: Publish to MCP Registry
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
+      target:
+        description: 'Target to publish (vizier-guard or vizier)'
+        required: true
+        default: 'vizier-guard'
+        type: choice
+        options:
+          - vizier-guard
+          - vizier
       version:
-        description: 'Version to publish (e.g. 0.3.1). Required for manual catch-up runs; ignored when triggered by a tag push.'
-        required: false
-        default: '0.3.1'
+        description: 'Version to publish (e.g. 0.3.2)'
+        required: true
+        default: '0.3.2'
 
 jobs:
   publish:
@@ -21,27 +27,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Determine version
-        id: version
+      - name: Prepare manifest
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
-          elif [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          TARGET="${{ inputs.target }}"
+          VERSION="${{ inputs.version }}"
+          echo "Publishing MCP registry entry for $TARGET version $VERSION"
+          if [ "$TARGET" = "vizier-guard" ]; then
+            cp packages/python-sdk/server.json server.json
+            jq --arg v "$VERSION" '.version = $v | (.packages[].version) = $v' server.json > server.tmp
+            mv server.tmp server.json
           else
-            echo "::error::workflow_dispatch requires the 'version' input"
-            exit 1
+            jq --arg v "$VERSION" '.version = $v' server.json > server.tmp
+            mv server.tmp server.json
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing MCP registry entry for version $VERSION"
-
-      - name: Sync server.json version to release version
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          jq --arg v "$VERSION" '.version = $v | (.packages[].version) = $v' server.json > server.tmp
-          mv server.tmp server.json
-          echo "--- server.json after sync ---"
-          jq '.name, .version, (.packages[].version)' server.json
+          echo "--- server.json to be published ---"
+          cat server.json
 
       - name: Install mcp-publisher
         run: |
@@ -51,10 +51,11 @@ jobs:
       - name: Authenticate to MCP Registry (GitHub OIDC)
         run: ./mcp-publisher login github-oidc
 
-      - name: Wait for package version on PyPI
+      - name: Wait for package version on PyPI (if vizier-guard)
+        if: inputs.target == 'vizier-guard'
         shell: bash
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ inputs.version }}"
           package_url="https://pypi.org/pypi/vizier-guard/${VERSION}/json"
           for attempt in {1..10}; do
             if curl --fail --silent --show-error "$package_url" >/dev/null; then
