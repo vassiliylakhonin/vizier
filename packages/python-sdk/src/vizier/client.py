@@ -46,7 +46,7 @@ class VizierClient:
     def _get_headers(self) -> Dict[str, str]:
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "vizier-guard-python/0.3.1",
+            "User-Agent": "vizier-guard-python/0.3.2",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

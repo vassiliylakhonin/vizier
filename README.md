@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.vassiliylakhonin/vizier-guard -->
 # Vizier
 
 **Deterministic Authorization & Non-Repudiation Audit Firewall for AI Agents.**

@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.vassiliylakhonin/vizier-guard -->
 # Vizier Guard (Python SDK)
 
 Deterministic Authorization & Audit Firewall for AI Agent Actions.
