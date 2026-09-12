@@ -38,7 +38,7 @@ from .models import (
 MCP_PROTOCOL_VERSIONS = ["2024-11-05", "2025-03-26", "2026-07-28"]
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "vizier-guard"
-SERVER_VERSION = "0.3.0"
+SERVER_VERSION = "0.3.1"
 
 # DLP pattern detectors (Standard library regex)
 DLP_PATTERNS = {
@@ -310,7 +310,7 @@ class VizierMCPServer:
                 "decision": "ALLOW",
                 "action_hash": action_hash,
                 "timestamp": timestamp,
-                "issuer": "vizier-guard-local/0.3.0",
+                "issuer": "vizier-guard-local/0.3.1",
                 "valid": True,
             },
             "receipt_id": receipt_id,

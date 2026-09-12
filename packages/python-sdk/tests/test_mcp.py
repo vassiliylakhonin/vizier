@@ -45,7 +45,7 @@ def test_initialize_handshake(mcp_server):
     assert resp["id"] == 1
     assert resp["result"]["protocolVersion"] == "2024-11-05"
     assert resp["result"]["serverInfo"]["name"] == "vizier-guard"
-    assert resp["result"]["serverInfo"]["version"] == "0.3.0"
+    assert resp["result"]["serverInfo"]["version"] == "0.3.1"
     assert resp["result"]["capabilities"]["tools"]["listChanged"] is False
     assert "deterministic authorization" in resp["result"]["instructions"].lower()
 
