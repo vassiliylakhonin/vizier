@@ -105,12 +105,13 @@ describe("machine-readable discovery contracts", () => {
     const response = await get("/.well-known/ai-catalog.json");
     const body = (await response.json()) as {
       specVersion: string;
-      entries: Array<{ type: string; url: string; capabilities: string[] }>;
+      entries: Array<{ identifier: string; type: string; url: string; capabilities: string[] }>;
     };
 
     expect(response.status).toBe(200);
     expect(body.specVersion).toBe("1.0");
     expect(body.entries).toHaveLength(3);
+    expect(body.entries.every((e) => e.identifier.startsWith("urn:air:"))).toBe(true);
     expect(body.entries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -129,6 +130,33 @@ describe("machine-readable discovery contracts", () => {
         }),
       ]),
     );
+  });
+
+  it("publishes the ARD manifest at /.well-known/ard.json", async () => {
+    const response = await get("/.well-known/ard.json");
+    const body = (await response.json()) as {
+      specVersion: string;
+      entries: Array<{ identifier: string }>;
+    };
+    expect(response.status).toBe(200);
+    expect(body.specVersion).toBe("1.0");
+    expect(body.entries.every((e) => e.identifier.startsWith("urn:air:"))).toBe(true);
+  });
+
+  it("serves /llms.txt and /agents.txt discovery files", async () => {
+    const llmsRes = await get("/llms.txt");
+    expect(llmsRes.status).toBe(200);
+    expect(llmsRes.headers.get("content-type")).toContain("text/plain");
+    const llmsText = await llmsRes.text();
+    expect(llmsText).toContain("# Vizier");
+    expect(llmsText).toContain("/.well-known/ard.json");
+
+    const agentsRes = await get("/agents.txt");
+    expect(agentsRes.status).toBe(200);
+    expect(agentsRes.headers.get("content-type")).toContain("text/plain");
+    const agentsText = await agentsRes.text();
+    expect(agentsText).toContain("User-agent: *");
+    expect(agentsText).toContain("LLMs-txt:");
   });
 
   // A registry listing is only useful while it points at the endpoint this

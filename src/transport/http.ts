@@ -45,7 +45,12 @@ import {
   resolvePrincipalKeys,
 } from "./shared";
 import { createAgentCard, handleA2aRequest } from "./a2a";
-import { createAiCatalog, createMcpServerManifest } from "./catalog";
+import {
+  createAiCatalog,
+  createMcpServerManifest,
+  createVizierAgentsTxt,
+  createVizierLlmsTxt,
+} from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
 import { generateApiKey, listApiKeys, revokeApiKey } from "../auth/keys";
@@ -1080,10 +1085,35 @@ export async function handleHttpRequest(
     }
     if (
       request.method === "GET" &&
-      url.pathname === "/.well-known/ai-catalog.json"
+      (url.pathname === "/.well-known/ai-catalog.json" ||
+        url.pathname === "/.well-known/ard.json")
     ) {
       return jsonResponse(createAiCatalog(url.origin), 200, {
         "Cache-Control": "public, max-age=300",
+      });
+    }
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/llms.txt" || url.pathname === "/.well-known/llms.txt")
+    ) {
+      return new Response(createVizierLlmsTxt(url.origin), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+        },
+      });
+    }
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/agents.txt" || url.pathname === "/.well-known/agents.txt")
+    ) {
+      return new Response(createVizierAgentsTxt(url.origin), {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+        },
       });
     }
     if (

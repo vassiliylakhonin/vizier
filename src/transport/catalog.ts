@@ -12,7 +12,7 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
     },
     entries: [
       {
-        identifier: "urn:ai:vizier.vassiliy-lakhonin.workers.dev:agent:vizier",
+        identifier: "urn:air:vizier.vassiliy-lakhonin.workers.dev:agent:vizier",
         displayName: "Vizier",
         type: "application/a2a-agent-card+json",
         url: `${origin}/.well-known/agent-card.json`,
@@ -40,7 +40,7 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
         updatedAt: "2026-08-24T00:00:00Z",
       },
       {
-        identifier: "urn:ai:vizier.vassiliy-lakhonin.workers.dev:api:openapi",
+        identifier: "urn:air:vizier.vassiliy-lakhonin.workers.dev:api:openapi",
         displayName: "Vizier action authorization API",
         type: "application/vnd.oai.openapi+json;version=3.1",
         url: `${origin}/openapi.json`,
@@ -59,7 +59,7 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
         updatedAt: "2026-08-24T00:00:00Z",
       },
       {
-        identifier: "urn:ai:vizier.vassiliy-lakhonin.workers.dev:mcp:vizier",
+        identifier: "urn:air:vizier.vassiliy-lakhonin.workers.dev:mcp:vizier",
         displayName: "Vizier MCP server",
         type: `application/json;profile=${MCP_SERVER_SCHEMA}`,
         url: `${origin}/.well-known/mcp.json`,
@@ -115,3 +115,46 @@ export function createMcpServerManifest(
     ],
   });
 }
+
+export function createVizierLlmsTxt(origin: string): string {
+  return `# Vizier
+
+Primary interface: Deterministic authorization for proposed AI agent actions, with an authenticated Action Covenant lifecycle and signed authorization and reported-outcome receipts.
+
+## Discovery & Standards
+- ARD (Agent Resource Discovery): ${origin}/.well-known/ard.json
+- AI Catalog: ${origin}/.well-known/ai-catalog.json
+- A2A Agent Card: ${origin}/.well-known/agent-card.json
+- MCP Server Manifest: ${origin}/.well-known/mcp.json
+- OpenAPI 3.1: ${origin}/openapi.json
+- Documentation: ${origin}/docs
+
+## Protocols
+- MCP (Model Context Protocol): Streamable HTTP endpoint at ${origin}/mcp exposing vizier_verify_action.
+- A2A (Agent-to-Agent): JSON-RPC endpoint at ${origin}/message/send.
+
+## Core Capabilities
+- verify-agent-action: deterministic allow/block verdicts before tool execution.
+- activate-action-covenant: bind delegated authority, evidence, and scope to action sessions.
+- record-action-outcome: post-execution receipt binding for audit trails.
+- signed-receipts: ECDSA/Ed25519 compact JWS receipts for cryptographic non-repudiation.
+`;
+}
+
+export function createVizierAgentsTxt(origin: string): string {
+  return `# agents.txt - Agent Discovery & Policy Declaration
+# Ref: https://llmstxt.org / draft-car-agents-txt-wellknown
+
+User-agent: *
+Allow: /
+
+# Canonical discovery surfaces
+LLMs-txt: ${origin}/llms.txt
+Agent-Card: ${origin}/.well-known/agent-card.json
+AI-Catalog: ${origin}/.well-known/ai-catalog.json
+ARD: ${origin}/.well-known/ard.json
+MCP: ${origin}/.well-known/mcp.json
+OpenAPI: ${origin}/openapi.json
+`;
+}
+
