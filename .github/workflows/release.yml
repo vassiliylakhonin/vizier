@@ -23,6 +23,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -52,7 +54,7 @@ jobs:
           fi
 
       - name: Verify published npm packages install cleanly
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && secrets.NPM_TOKEN != '' }}
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_NPM_TOKEN == 'true' }}
         run: |
           echo "Verifying npm packages can be installed from npmjs.org..."
           mkdir -p "$RUNNER_TEMP/npm-install-test"
