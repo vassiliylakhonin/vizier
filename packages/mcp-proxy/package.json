@@ -34,7 +34,7 @@
   ],
   "dependencies": {
     "@vizier/sdk": "0.3.0",
-    "zod": "4.4.3"
+    "zod": "4.6.2"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

@@ -24,7 +24,7 @@
     "typecheck": "wrangler types --check && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p packages/sdk/tsconfig.json --noEmit && tsc -p packages/gated-deploy/tsconfig.json --noEmit && tsc -p packages/mcp-proxy/tsconfig.json --noEmit"
   },
   "dependencies": {
-    "zod": "4.4.3"
+    "zod": "4.6.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260831.1",
