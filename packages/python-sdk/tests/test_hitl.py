@@ -58,6 +58,47 @@ def test_webhook_hitl_handler():
         assert res.approved
         assert res.operator_id == "manager_bob"
 
+def test_webhook_hitl_handler_non_json_fails_closed():
+    handler = WebhookHITLHandler(webhook_url="https://hooks.example/approval")
+    review = mock_review_response()
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = b"<html><body>502 Bad Gateway</body></html>"
+    mock_resp.status = 200
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
+        assert not res.approved
+        assert "non-JSON" in res.reason
+
+def test_webhook_hitl_handler_invalid_structure_fails_closed():
+    handler = WebhookHITLHandler(webhook_url="https://hooks.example/approval")
+    review = mock_review_response()
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = b'["not", "an", "object"]'
+    mock_resp.status = 200
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
+        assert not res.approved
+        assert "non-object" in res.reason
+
+def test_webhook_hitl_handler_missing_approved_field_defaults_to_false():
+    handler = WebhookHITLHandler(webhook_url="https://hooks.example/approval")
+    review = mock_review_response()
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = b'{"status": "ok", "message": "acknowledged"}'
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
+        assert not res.approved
+        assert "Rejected" in res.reason
+
 def test_telegram_hitl_handler():
     handler = TelegramHITLHandler(bot_token="123456:ABC-DEF", chat_id="100200300", timeout=5.0)
     review = mock_review_response()

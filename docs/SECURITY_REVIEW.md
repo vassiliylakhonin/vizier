@@ -25,6 +25,20 @@ penetration test.
 | Medium | A remote plaintext endpoint or network-bound pilot listener could expose credentials. | Mitigated: the CLI binds only to loopback hosts, and non-loopback Vizier and upstream URLs must use HTTPS. |
 | Medium | A malicious upstream could return oversized, deeply nested, or malformed JSON. | Mitigated: request and response bodies are capped at 1 MiB, JSON complexity is bounded, response media type and JSON-RPC ID are validated, and invalid content is replaced with a stable error. |
 
+## September 14, 2026 Review (Post-v0.3 Surface Hardening)
+
+Reviewed after the introduction of the Transparent AI Proxy, Quorum Gate, Multi-Tenant API Keys, and Webhook HITL.
+
+| Severity | Finding | Disposition |
+| --- | --- | --- |
+| Critical | Transparent proxy streaming (`stream: true`) bypassed post-LLM tool call inspection (DLP, sanctions, quorum, circuit breaker). | Fixed: streaming is rejected with `400 streaming_tools_unsupported` whenever tools or functions are configured; pure text streams return with `X-Vizier-Status: STREAMING_UNINSPECTED_OUTPUT`. |
+| Critical | Quorum approvals could be replayed across different actions or parameters because the proxy checked only proposal approval status without binding action hashes. | Fixed: the transparent proxy computes the SHA-256 hash of the tool action (`fnName` + parameters) and rejects mismatches with `403 QUORUM_ACTION_MISMATCH`. Expired proposals are rejected with `403 PROPOSAL_EXPIRED`. |
+| Critical | Webhook HITL handler in Python SDK failed open on non-JSON or HTML 200 HTTP responses. | Fixed: strict fail-closed parsing requiring schema-valid JSON object with boolean `approved: true`. Any parsing error or non-JSON body yields `approved=False`. |
+| High | Transparent proxy accepted arbitrary caller-controlled `X-Upstream-Url` and leaked inbound Vizier tenant Bearer credentials to upstream servers. | Fixed: destination URLs are validated against authorized HTTPS origins (`api.openai.com` and configured allowlists); loopback/private destinations are blocked; client `Authorization` headers are never forwarded upstream. |
+| High | Multi-tenant "monthly" API key quotas were monotonic lifetime counters that never reset. | Fixed: added migration `0005_api_keys_quota_period.sql` tracking `period_month` (`YYYY-MM`). Rollovers reset effective usage to zero and increments update atomically. |
+| Medium | Live playground returned 401 Unauthorized in production deployments when calling `/v1/verify` without credentials. | Fixed: added safe evaluation route `/v1/verify/evaluate` (with anonymous rate limiting and no audit log writes) and added API key storage to the playground interface. |
+| Low | License mismatch between root MIT license and Python SDK `pyproject.toml` (Apache-2.0). | Fixed: aligned Python SDK package metadata and classifiers to MIT. |
+
 The remediations are covered by transport and SDK regression tests. The full
 test suite and Cloudflare dry-run build passed after the changes.
 

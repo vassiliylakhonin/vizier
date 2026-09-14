@@ -131,6 +131,22 @@ describe("REST transport", () => {
     });
   });
 
+  it("allows safe anonymous evaluation via /v1/verify/evaluate without a token even when enforcement is configured", async () => {
+    const response = await handleHttpRequest(
+      new Request("https://vizier.example/v1/verify/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody()),
+      }),
+      { apiKey: TEST_API_KEY },
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { decision: string; receipt: { id: string } };
+    expect(body.decision).toBe("REVIEW");
+    expect(body.receipt.id).toBeDefined();
+  });
+
   it("returns a structured validation error", async () => {
     const response = await postJson({ agent: { id: "incomplete" } });
     const result = (await response.json()) as {

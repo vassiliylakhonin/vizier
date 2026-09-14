@@ -59,8 +59,10 @@ or network failure.
 - the default evaluation mode never returns `ALLOW`
 - enforcement mode requires a constant-time checked Bearer credential
 - anonymous A2A calls remain evaluation-only even when enforcement is configured;
-  a supplied invalid credential is rejected
-- no URL fetching, dynamic evaluation, code execution, or secret reflection
+- the core evaluation kernel does not fetch URLs, run dynamic code, or reflect secrets
+- the transparent AI proxy restricts outbound requests strictly to authorized HTTPS origins (`api.openai.com` or configured `allowedUpstreamOrigins`), disallows non-loopback plaintext or private/link-local destinations, and never forwards incoming Vizier credentials to upstream servers
+- transparent proxy streaming with tools/functions is prohibited (fail-closed) to ensure complete post-LLM tool call evaluation
+- quorum dual-control gate verifies cryptographic action hashes (`action_hash`) to prevent approval replay across mismatched tool invocations or parameters
 - target deny rules override allow rules
 - `BLOCK` overrides `REVIEW`, which overrides `ALLOW`
 - Web Crypto generates receipt IDs and SHA-256 request hashes

@@ -32,6 +32,7 @@ export interface TransportOptions {
   readonly principalKeySource?: string;
   readonly upstreamFetch?: typeof fetch;
   readonly upstreamUrl?: string;
+  readonly allowedUpstreamOrigins?: readonly string[];
 }
 
 const EMPTY_PRINCIPAL_KEYS: PrincipalKeyRegistry = new Map();

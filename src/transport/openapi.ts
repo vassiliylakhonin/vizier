@@ -151,6 +151,30 @@ export function createOpenApiDocument(
         description:
           "Authenticated aggregate counts over metadata-only operational records.",
       },
+      {
+        name: "AI Proxy",
+        description: "OpenAI-compatible gateway with transparent edge guardrails.",
+      },
+      {
+        name: "Circuit Breaker",
+        description: "Session loop detection and budget reset controls.",
+      },
+      {
+        name: "Sanctions",
+        description: "Pre-action counterparty and entity sanctions screening.",
+      },
+      {
+        name: "DLP",
+        description: "Data loss prevention scanner for secrets and credentials.",
+      },
+      {
+        name: "Quorum",
+        description: "Dual-control (4-eyes principle) multi-party authorization.",
+      },
+      {
+        name: "Admin",
+        description: "Organization API key and monthly quota management.",
+      },
     ],
     security: [{ bearerAuth: [] }],
     paths: {
@@ -164,6 +188,18 @@ export function createOpenApiDocument(
           requestBody: requestBody("VerificationRequest"),
           responses: {
             "200": successResponse("Authorization decision.", "VerificationResponse"),
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/verify/evaluate": {
+        post: {
+          operationId: "evaluateAgentAction",
+          tags: ["Verification"],
+          summary: "Safely evaluate one proposed agent action without audit log persistence",
+          requestBody: requestBody("VerificationRequest"),
+          responses: {
+            "200": successResponse("Evaluation decision.", "VerificationResponse"),
             ...ERROR_RESPONSE_REFS,
           },
         },
@@ -228,6 +264,125 @@ export function createOpenApiDocument(
             "401": { $ref: "#/components/responses/Unauthorized" },
             "500": { $ref: "#/components/responses/InternalError" },
             "503": { $ref: "#/components/responses/ServiceUnavailable" },
+          },
+        },
+      },
+      "/v1/chat/completions": {
+        post: {
+          operationId: "createChatCompletion",
+          tags: ["AI Proxy"],
+          summary: "OpenAI-compatible chat completion proxy with DLP, Circuit Breaker, Sanctions and Quorum guardrails",
+          responses: {
+            "200": { description: "Chat completion response." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/models": {
+        get: {
+          operationId: "listModels",
+          tags: ["AI Proxy"],
+          summary: "List available models supported by the proxy",
+          responses: {
+            "200": { description: "Model list response." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/circuit-breaker/reset": {
+        post: {
+          operationId: "resetCircuitBreaker",
+          tags: ["Circuit Breaker"],
+          summary: "Reset tripped loop detection or action budget for a session",
+          responses: {
+            "200": { description: "Circuit breaker reset response." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/sanctions/screen": {
+        post: {
+          operationId: "screenSanctions",
+          tags: ["Sanctions"],
+          summary: "Screen a proposed action or entity against sanctions lists",
+          responses: {
+            "200": { description: "Sanctions screening result." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/sanctions/screen-entity": {
+        post: {
+          operationId: "screenSanctionsEntity",
+          tags: ["Sanctions"],
+          summary: "Screen an entity name and ownership graph against OFAC 50% rule",
+          responses: {
+            "200": { description: "Sanctions 50% rule screening result." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/sanctions/entries": {
+        post: {
+          operationId: "addSanctionsEntry",
+          tags: ["Sanctions"],
+          summary: "Add custom sanction entry to edge KV registry",
+          responses: {
+            "201": { description: "Sanctions entry created." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/dlp/scan": {
+        post: {
+          operationId: "scanDlp",
+          tags: ["DLP"],
+          summary: "Scan text or structured parameters for secrets and sensitive data",
+          responses: {
+            "200": { description: "DLP scan findings." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/quorum/propose": {
+        post: {
+          operationId: "proposeQuorum",
+          tags: ["Quorum"],
+          summary: "Propose a dual-control quorum action",
+          responses: {
+            "201": { description: "Quorum proposal created." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/quorum/approve": {
+        post: {
+          operationId: "approveQuorum",
+          tags: ["Quorum"],
+          summary: "Record approval or rejection for a quorum proposal",
+          responses: {
+            "200": { description: "Quorum approval recorded." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/admin/keys": {
+        get: {
+          operationId: "listAdminKeys",
+          tags: ["Admin"],
+          summary: "List multi-tenant API keys for an organization",
+          responses: {
+            "200": { description: "List of API key metadata." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+        post: {
+          operationId: "createAdminKey",
+          tags: ["Admin"],
+          summary: "Create a new multi-tenant API key",
+          responses: {
+            "201": { description: "API key created with secret." },
+            ...ERROR_RESPONSE_REFS,
           },
         },
       },

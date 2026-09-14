@@ -60,6 +60,12 @@ class WebhookHITLHandler(BaseHITLHandler):
                 body = resp.read().decode("utf-8")
                 try:
                     res_json = json.loads(body)
+                    if not isinstance(res_json, dict):
+                        return HITLApprovalResult(
+                            approved=False,
+                            reason="Webhook returned invalid non-object JSON payload",
+                            operator_id="webhook",
+                        )
                     approved = bool(res_json.get("approved", False))
                     reason = (
                         res_json.get("reason", "Approved via webhook")
@@ -72,10 +78,10 @@ class WebhookHITLHandler(BaseHITLHandler):
                         operator_id=res_json.get("operator_id", "webhook_operator"),
                         grant=res_json.get("grant"),
                     )
-                except Exception:
+                except Exception as parse_err:
                     return HITLApprovalResult(
-                        approved=True,
-                        reason=f"Webhook acknowledged with HTTP {resp.status}",
+                        approved=False,
+                        reason=f"Webhook returned non-JSON or invalid payload: {parse_err}",
                         operator_id="webhook",
                     )
         except Exception as err:

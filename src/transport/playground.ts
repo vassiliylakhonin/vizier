@@ -201,6 +201,10 @@ export function createPlaygroundHtml(origin: string): string {
         <button class="preset-btn" onclick="loadPreset('block_target')">🔴 Block: Target Denied</button>
         <button class="preset-btn" onclick="loadPreset('review_sensitive')">🟡 Review: Deploy Worker</button>
       </div>
+      <div style="display: flex; gap: 8px; align-items: center; background: #111827; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
+        <span style="font-size: 0.75rem; color: var(--muted); white-space: nowrap;">API Key:</span>
+        <input id="apiKeyInput" type="password" placeholder="Optional vz_live_... or master key (evaluates freely if empty)" style="flex: 1; background: transparent; border: none; color: #38bdf8; font-size: 0.75rem; font-family: monospace; outline: none;" oninput="localStorage.setItem('vizier_playground_key', this.value.trim())" />
+      </div>
       <textarea id="requestJson" spellcheck="false"></textarea>
       <button class="primary" id="verifyBtn" onclick="runVerification()">⚡ Verify Action via Kernel</button>
     </div>
@@ -327,10 +331,17 @@ export function createPlaygroundHtml(origin: string): string {
       btn.innerText = "Evaluating...";
       const t0 = performance.now();
 
+      const apiKey = (document.getElementById('apiKeyInput')?.value || '').trim();
+      const endpoint = apiKey ? '${origin}/v1/verify' : '${origin}/v1/verify/evaluate';
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) {
+        headers['Authorization'] = 'Bearer ' + apiKey;
+      }
+
       try {
-        const res = await fetch('${origin}/v1/verify', {
+        const res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify(parsed)
         });
         const elapsed = (performance.now() - t0).toFixed(1);
@@ -366,47 +377,39 @@ export function createPlaygroundHtml(origin: string): string {
     const snippets = {
       python: \`from vizier import VizierClient, vizier_guard
 
-client = VizierClient(base_url="${origin}", api_key="YOUR_KEY")
-
-@vizier_guard(
-    client=client,
-    action_type="purchase",
-    max_amount=1000.0,
-    currency="USD",
-    allowed_targets=["supplier.example"]
+client = VizierClient(
+    base_url="${origin}",
+    api_key="vz_live_your_key_here"  # Get from admin /v1/admin/keys
 )
-def book_purchase(amount: float, target: str):
-    # Executes ONLY if Vizier decision is ALLOW
-    return {"status": "success", "amount": amount}
 
-# Allowed:
-book_purchase(amount=820.0, target="supplier.example")
-
-# Blocked (raises ActionBlockedError):
-book_purchase(amount=12000.0, target="supplier.example")\`,
+@vizier_guard(client=client, action_type="purchase", target="supplier.example")
+def execute_order(amount: float, supplier: str):
+    return {"status": "success", "amount": amount}\`,
 
       langchain: \`from vizier import VizierClient
-from vizier.integrations.langchain import VizierLangChainToolGuard
-from langchain_community.tools import DuckDuckGoSearchRun
+from vizier.integrations.langchain import create_guarded_tool
+from langchain_core.tools import tool
 
-client = VizierClient(base_url="${origin}", api_key="YOUR_KEY")
+client = VizierClient(base_url="${origin}", api_key="vz_live_...")
 
-safe_tool = VizierLangChainToolGuard(
-    tool=DuckDuckGoSearchRun(),
+@tool
+def transfer_funds(amount: float, recipient: str) -> str:
+    """Transfer funds to recipient."""
+    return f"Transferred \${amount} to {recipient}"
+
+guarded_tool = create_guarded_tool(
+    tool=transfer_funds,
     client=client,
-    allowed_actions=["search"],
-    max_amount=0.0
-)
+    action_type="transfer_funds",
+    target="bank_api"
+)\`,
 
-# Use safe_tool in LangChain or LangGraph agents
-agent = create_react_agent(llm, tools=[safe_tool])\`,
-
-      mcp: \`# Protect any existing MCP server with 1 command:
+      mcp: \`# Run local MCP stdio enforcement proxy
 npx @vizier/mcp-proxy \\\\
-  --upstream http://localhost:3000/mcp \\\\
-  --tools "search,read_file,query_db" \\\\
-  --vizier ${origin} \\\\
-  --api-key YOUR_VIZIER_API_KEY\`,
+  --upstream-command "python" \\\\
+  --upstream-args "server.py" \\\\
+  --vizier-url "${origin}" \\\\
+  --vizier-key "vz_live_your_key"\`,
 
       curl: \`curl -X POST ${origin}/v1/verify \\\\
   -H "Content-Type: application/json" \\\\
@@ -434,6 +437,11 @@ npx @vizier/mcp-proxy \\\\
     }
 
     // Init
+    const savedKey = localStorage.getItem('vizier_playground_key');
+    if (savedKey) {
+      const keyInput = document.getElementById('apiKeyInput');
+      if (keyInput) keyInput.value = savedKey;
+    }
     loadPreset('allow');
     document.getElementById('snippetBox').innerText = snippets.python;
   </script>

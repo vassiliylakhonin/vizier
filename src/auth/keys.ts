@@ -11,8 +11,13 @@ export interface ApiKeyRecord {
   readonly tier: "developer" | "team" | "enterprise";
   readonly monthly_quota: number;
   readonly current_usage: number;
+  readonly period_month?: string;
   readonly created_at: number;
   readonly revoked_at: number | null;
+}
+
+export function getCurrentPeriodMonth(date: Date = new Date()): string {
+  return date.toISOString().slice(0, 7);
 }
 
 export interface GeneratedApiKey {
@@ -65,14 +70,15 @@ export async function generateApiKey(
   const keyPrefix = fullKey.slice(0, 16);
   const keyHash = await sha256(fullKey);
   const createdAt = Date.now();
+  const currentMonth = getCurrentPeriodMonth(new Date(createdAt));
 
   await db
     .prepare(
       `INSERT INTO vizier_api_keys (
-        id, org_id, name, key_hash, key_prefix, tier, monthly_quota, current_usage, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        id, org_id, name, key_hash, key_prefix, tier, monthly_quota, current_usage, period_month, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     )
-    .bind(id, params.org_id, params.name, keyHash, keyPrefix, tier, monthlyQuota, createdAt)
+    .bind(id, params.org_id, params.name, keyHash, keyPrefix, tier, monthlyQuota, currentMonth, createdAt)
     .run();
 
   return {
@@ -90,6 +96,7 @@ export async function generateApiKey(
 export async function authenticateKey(
   providedKey: string,
   options: TransportOptions,
+  now: Date = new Date(),
 ): Promise<KeyAuthResult> {
   const trimmed = providedKey.trim();
 
@@ -138,31 +145,41 @@ export async function authenticateKey(
     };
   }
 
-  if (row.monthly_quota > 0 && row.current_usage >= row.monthly_quota) {
+  const currentMonth = getCurrentPeriodMonth(now);
+  const effectiveUsage = (row.period_month === currentMonth) ? row.current_usage : 0;
+
+  if (row.monthly_quota > 0 && effectiveUsage >= row.monthly_quota) {
     return {
       authenticated: false,
       quota_exceeded: true,
-      key_record: row,
+      key_record: { ...row, current_usage: effectiveUsage },
       error_code: "QUOTA_EXCEEDED",
-      error_message: `Monthly API quota exceeded (${row.current_usage}/${row.monthly_quota} requests used).`,
+      error_message: `Monthly API quota exceeded (${effectiveUsage}/${row.monthly_quota} requests used).`,
     };
   }
 
   return {
     authenticated: true,
     is_master: false,
-    key_record: row,
+    key_record: { ...row, current_usage: effectiveUsage },
   };
 }
 
 export async function incrementKeyUsage(
   db: D1Database,
   keyId: string,
+  now: Date = new Date(),
 ): Promise<void> {
+  const currentMonth = getCurrentPeriodMonth(now);
   try {
     await db
-      .prepare("UPDATE vizier_api_keys SET current_usage = current_usage + 1 WHERE id = ?")
-      .bind(keyId)
+      .prepare(
+        `UPDATE vizier_api_keys
+         SET current_usage = CASE WHEN period_month = ? THEN current_usage + 1 ELSE 1 END,
+             period_month = ?
+         WHERE id = ?`,
+      )
+      .bind(currentMonth, currentMonth, keyId)
       .run();
   } catch (err) {
     console.error(

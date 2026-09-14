@@ -275,6 +275,74 @@ async function handleVerify(
   return jsonResponse(result);
 }
 
+async function handleVerifyEvaluate(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  const startedAt = performance.now();
+  const parsedJson = await readLimitedJson(request);
+  const parsed = verificationRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Verification request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+
+  const normalizedRequest = {
+    ...parsed.data,
+    context: { ...parsed.data.context, source: "rest" as const },
+  };
+  let circuitBreakerResult: EdgeCircuitBreakerResult | undefined;
+  if (options.circuitBreakerKv !== undefined) {
+    circuitBreakerResult = await evaluateEdgeCircuitBreaker(
+      options.circuitBreakerKv,
+      normalizedRequest,
+    );
+  }
+  let sanctionsResult: SanctionsEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.sanctions_screening !== false) {
+    sanctionsResult = await evaluateSanctions(
+      normalizedRequest,
+      options.circuitBreakerKv,
+    );
+  }
+  let dlpResult: DlpEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.dlp_screening !== false) {
+    dlpResult = evaluateDlp(normalizedRequest);
+  }
+  let quorumResult: QuorumEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.quorum !== undefined) {
+    quorumResult = await evaluateQuorum(
+      normalizedRequest,
+      options.circuitBreakerKv,
+    );
+  }
+  const result = await verifyAction(normalizedRequest, {
+    trustedAuthority: false,
+    principalKeys: resolvePrincipalKeys(options),
+    circuitBreaker: circuitBreakerResult,
+    sanctions: sanctionsResult,
+    dlp: dlpResult,
+    quorum: quorumResult,
+  });
+  const requestId =
+    normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
+  console.log(
+    JSON.stringify({
+      event: "vizier.verification.evaluated",
+      request_id: requestId,
+      receipt_id: result.receipt.id,
+      decision: result.decision,
+      reason_codes: result.reason_codes,
+      latency_ms: Number((performance.now() - startedAt).toFixed(2)),
+    }),
+  );
+  return jsonResponse(result);
+}
+
 const resetCircuitBreakerSchema = z.strictObject({
   session_id: identifierSchema,
 });
@@ -1183,6 +1251,31 @@ export async function handleHttpRequest(
         405,
         { Allow: "POST" },
       );
+    }
+    if (
+      request.method === "POST" &&
+      (url.pathname === "/v1/verify/evaluate" || url.pathname === "/playground/evaluate")
+    ) {
+      const limiter = options.anonymousRateLimiter;
+      if (
+        limiter !== undefined &&
+        !(
+          await limiter.limit({
+            key: request.headers.get("CF-Connecting-IP") ?? "unattributed",
+          })
+        ).success
+      ) {
+        return jsonResponse(
+          {
+            error: {
+              code: "RATE_LIMITED",
+              message: "Evaluation rate limit exceeded. Please retry in 60 seconds or provide an API key.",
+            },
+          },
+          429,
+        );
+      }
+      return await handleVerifyEvaluate(request, options);
     }
     if (request.method === "POST" && url.pathname === "/v1/verify") {
       return await handleVerify(request, options);

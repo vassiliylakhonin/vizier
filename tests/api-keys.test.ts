@@ -22,6 +22,7 @@ function createTestD1(): D1Database {
       tier TEXT NOT NULL DEFAULT 'developer',
       monthly_quota INTEGER NOT NULL DEFAULT 10000,
       current_usage INTEGER NOT NULL DEFAULT 0,
+      period_month TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       revoked_at INTEGER
     );
@@ -283,5 +284,37 @@ describe("Admin API Key Management HTTP Endpoints", () => {
     expect(res2.status).toBe(429);
     const err = (await res2.json()) as { error: { code: string } };
     expect(err.error.code).toBe("QUOTA_EXCEEDED");
+  });
+
+  it("resets usage counter when a new calendar month begins", async () => {
+    const db = createTestD1();
+    const key = await generateApiKey(db, {
+      org_id: "org_rollover",
+      name: "Rollover Key",
+      monthly_quota: 2,
+    });
+
+    const august = new Date("2026-08-15T12:00:00Z");
+    const september = new Date("2026-09-01T10:00:00Z");
+
+    // Exhaust quota in August
+    await incrementKeyUsage(db, key.id, august);
+    await incrementKeyUsage(db, key.id, august);
+
+    const authAugust = await authenticateKey(key.key, { db }, august);
+    expect(authAugust.authenticated).toBe(false);
+    expect(authAugust.quota_exceeded).toBe(true);
+
+    // Roll over to September: effective usage resets to 0
+    const authSeptember = await authenticateKey(key.key, { db }, september);
+    expect(authSeptember.authenticated).toBe(true);
+    expect(authSeptember.key_record?.current_usage).toBe(0);
+
+    // Increment in September resets current_usage to 1 and sets period_month to 2026-09
+    await incrementKeyUsage(db, key.id, september);
+    const authSeptember2 = await authenticateKey(key.key, { db }, september);
+    expect(authSeptember2.authenticated).toBe(true);
+    expect(authSeptember2.key_record?.current_usage).toBe(1);
+    expect(authSeptember2.key_record?.period_month).toBe("2026-09");
   });
 });

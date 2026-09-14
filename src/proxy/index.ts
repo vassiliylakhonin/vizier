@@ -6,6 +6,7 @@ import {
   scanDlpText,
 } from "../core/dlp";
 import {
+  computeActionHash,
   createQuorumProposal,
   getQuorumProposal,
 } from "../core/quorum";
@@ -133,34 +134,90 @@ async function checkProxyAuth(
   };
 }
 
+interface UpstreamResolution {
+  readonly upstreamUrl?: string;
+  readonly upstreamAuthHeader?: string | null;
+  readonly error?: string;
+}
+
 /**
- * Resolves the upstream authorization header and target URL.
+ * Resolves the upstream authorization header and target URL,
+ * strictly validating destination origins and isolating client credentials.
  */
 function resolveUpstream(
   request: Request,
   options: TransportOptions,
-): { upstreamUrl: string; upstreamAuthHeader: string | null } {
-  const upstreamUrl =
+): UpstreamResolution {
+  const defaultAllowedOrigins = ["https://api.openai.com"];
+  const allowedOrigins = new Set<string>([
+    ...defaultAllowedOrigins,
+    ...(options.allowedUpstreamOrigins ?? []),
+  ]);
+  if (options.upstreamUrl) {
+    try {
+      allowedOrigins.add(new URL(options.upstreamUrl).origin);
+    } catch {
+      // ignore invalid options.upstreamUrl for set population
+    }
+  }
+
+  const rawUpstreamUrl =
     request.headers.get("X-Upstream-Url") ||
     options.upstreamUrl ||
     "https://api.openai.com/v1/chat/completions";
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUpstreamUrl);
+  } catch {
+    return { error: "Invalid upstream URL specified in X-Upstream-Url or configuration." };
+  }
+
+  if (parsed.username || parsed.password) {
+    return { error: "Upstream URL must not contain credentials." };
+  }
+
+  const isLocalhost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  const isHttps = parsed.protocol === "https:";
+
+  if (!isHttps && !isLocalhost) {
+    return { error: "A non-loopback upstream URL must use HTTPS protocol." };
+  }
+
+  const isTestEnv =
+    (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env?.NODE_ENV === "test";
+
+  const originAllowed =
+    allowedOrigins.has(parsed.origin) ||
+    (isLocalhost && (isTestEnv || allowedOrigins.has(parsed.origin)));
+
+  if (!originAllowed) {
+    return {
+      error: `Untrusted upstream origin '${parsed.origin}'. Upstream must match authorized origins.`,
+    };
+  }
 
   let upstreamAuthHeader: string | null = null;
   const upstreamKey = request.headers.get("X-Upstream-Key");
   if (upstreamKey) {
     upstreamAuthHeader = `Bearer ${upstreamKey}`;
   } else {
+    // Only forward Authorization if the caller authenticated to Vizier via X-Vizier-Key
+    // and Authorization is not a Vizier API key.
+    const hasVizierKeyHeader = request.headers.has("X-Vizier-Key");
     const authHeader = request.headers.get("Authorization");
-    // If the Authorization header is NOT the Vizier API key, forward it to upstream
-    if (authHeader && authHeader.startsWith("Bearer ")) {
+    if (hasVizierKeyHeader && authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.slice("Bearer ".length).trim();
-      if (!options.apiKey || token !== options.apiKey) {
+      const isVizierKey =
+        (options.apiKey !== undefined && token === options.apiKey) ||
+        token.startsWith("vz_live_");
+      if (!isVizierKey) {
         upstreamAuthHeader = authHeader;
       }
     }
   }
 
-  return { upstreamUrl, upstreamAuthHeader };
+  return { upstreamUrl: parsed.toString(), upstreamAuthHeader };
 }
 
 /**
@@ -316,7 +373,26 @@ export async function handleChatCompletions(
   }
 
   // 5. Forward request to upstream
-  const { upstreamUrl, upstreamAuthHeader } = resolveUpstream(request, options);
+  const upstreamResolution = resolveUpstream(request, options);
+  if (upstreamResolution.error) {
+    return openAiError(upstreamResolution.error, "invalid_upstream_url", 400);
+  }
+  const upstreamUrl = upstreamResolution.upstreamUrl!;
+  const upstreamAuthHeader = upstreamResolution.upstreamAuthHeader;
+
+  // Fail-closed: do not allow streaming tool calls to bypass post-LLM guardrails
+  if (
+    payload.stream === true &&
+    ((Array.isArray(payload.tools) && payload.tools.length > 0) ||
+      (Array.isArray(payload.functions) && payload.functions.length > 0))
+  ) {
+    return openAiError(
+      "Streaming is not supported when tools or functions are configured. Vizier guardrails require complete post-LLM tool call inspection. Please set 'stream: false' to use tools with guardrails.",
+      "streaming_tools_unsupported",
+      400,
+    );
+  }
+
   const upstreamHeaders: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -362,7 +438,7 @@ export async function handleChatCompletions(
   }
 
   // 6. Inspect response (Post-LLM Tool Call Guardrails)
-  // If streaming is requested, return pass-through with security headers
+  // If streaming is requested for pure text/completion (no tools), return pass-through with security headers
   if (payload.stream === true) {
     return new Response(upstreamResponse.body, {
       status: 200,
@@ -371,7 +447,7 @@ export async function handleChatCompletions(
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "Access-Control-Allow-Origin": "*",
-        "X-Vizier-Status": "STREAMING_PASSED",
+        "X-Vizier-Status": "STREAMING_UNINSPECTED_OUTPUT",
         "X-Vizier-Guardrails": "DLP,CircuitBreaker",
       },
     });
@@ -571,12 +647,57 @@ interface ChatCompletionResponse {
             const suppliedProposalId = request.headers.get("X-Quorum-Proposal-Id");
             let quorumApproved = false;
 
+            const currentAction: VerificationRequest["action"] = {
+              type: fnName,
+              target: fnName,
+              parameters: parsedArgs as VerificationRequest["action"]["parameters"],
+            };
+            const currentActionHash = await computeActionHash(currentAction);
+
             if (suppliedProposalId && options.circuitBreakerKv !== undefined) {
               const prop = await getQuorumProposal(
                 suppliedProposalId,
                 options.circuitBreakerKv,
               );
-              if (prop !== null && prop.status === "APPROVED") {
+
+              if (prop === null) {
+                return openAiError(
+                  `Vizier Quorum Gate: proposal '${suppliedProposalId}' not found.`,
+                  "PROPOSAL_NOT_FOUND",
+                  403,
+                  "vizier_proposal_not_found",
+                  `tool_calls[${tIdx}]`,
+                  { proposal_id: suppliedProposalId },
+                );
+              }
+
+              if (prop.status === "EXPIRED" || Date.parse(prop.expires_at) < Date.now()) {
+                return openAiError(
+                  `Vizier Quorum Gate: proposal '${suppliedProposalId}' has expired.`,
+                  "PROPOSAL_EXPIRED",
+                  403,
+                  "vizier_proposal_expired",
+                  `tool_calls[${tIdx}]`,
+                  { proposal_id: suppliedProposalId, expires_at: prop.expires_at },
+                );
+              }
+
+              if (prop.action_hash !== currentActionHash) {
+                return openAiError(
+                  `Vizier Quorum Gate: proposal '${suppliedProposalId}' action hash does not match current tool call. Dual-control approval cannot be reused across different actions or parameters.`,
+                  "QUORUM_ACTION_MISMATCH",
+                  403,
+                  "vizier_quorum_action_mismatch",
+                  `tool_calls[${tIdx}]`,
+                  {
+                    proposal_id: suppliedProposalId,
+                    expected_action_hash: currentActionHash,
+                    proposal_action_hash: prop.action_hash,
+                  },
+                );
+              }
+
+              if (prop.status === "APPROVED") {
                 quorumApproved = true;
               }
             }

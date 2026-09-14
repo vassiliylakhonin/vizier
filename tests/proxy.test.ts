@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto";
 import type { KVNamespace } from "@cloudflare/workers-types";
 import { handleHttpRequest } from "../src/transport/http";
 import type { TransportOptions } from "../src/transport/shared";
+import { createQuorumProposal, recordQuorumApproval } from "../src/core/quorum";
 
 // In-memory KV Mock for testing
 class MemoryKv {
@@ -487,5 +488,261 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     expect(body.error.code).toBe("SANCTIONS_50_RULE_VIOLATION");
     expect(body.error.message).toContain("blocked under OFAC 50% Rule");
     expect(body.error.message).toContain("55.00%");
+  });
+
+  it("Streaming Gate: blocks stream: true when tools are defined with 400 streaming_tools_unsupported", async () => {
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        stream: true,
+        messages: [{ role: "user", content: "Transfer funds" }],
+        tools: [
+          {
+            type: "function",
+            function: { name: "transfer_funds", description: "Transfer funds" },
+          },
+        ],
+      }),
+    });
+    const res = await handleHttpRequest(req, options);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as OpenAIErrorPayload;
+    expect(body.error.code).toBe("streaming_tools_unsupported");
+    expect(body.error.message).toContain("Streaming is not supported when tools or functions are configured");
+  });
+
+  it("Text Streaming: allows stream: true without tools and returns STREAMING_UNINSPECTED_OUTPUT header", async () => {
+    const testOptions: TransportOptions = {
+      ...options,
+      upstreamFetch: async () =>
+        new Response("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n", {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+    };
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        stream: true,
+        messages: [{ role: "user", content: "Hello world" }],
+      }),
+    });
+    const res = await handleHttpRequest(req, testOptions);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Vizier-Status")).toBe("STREAMING_UNINSPECTED_OUTPUT");
+  });
+
+  it("SSRF Gate: blocks requests with untrusted X-Upstream-Url with 400 invalid_upstream_url", async () => {
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+        "X-Upstream-Url": "http://169.254.169.254/latest/meta-data",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Hello" }],
+      }),
+    });
+    const res = await handleHttpRequest(req, options);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as OpenAIErrorPayload;
+    expect(body.error.code).toBe("invalid_upstream_url");
+    expect(body.error.message).toContain("HTTPS");
+  });
+
+  it("Credential Isolation: never forwards Vizier Bearer token to upstream", async () => {
+    let capturedUpstreamAuth: string | null = null;
+    const testOptions: TransportOptions = {
+      ...options,
+      upstreamFetch: async (_url, init) => {
+        const headers = init?.headers as Record<string, string>;
+        capturedUpstreamAuth = headers?.["Authorization"] ?? null;
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl-test",
+            object: "chat.completion",
+            choices: [{ message: { role: "assistant", content: "ok" } }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    };
+
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer test-vizier-key",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Hello" }],
+      }),
+    });
+
+    const res = await handleHttpRequest(req, testOptions);
+    expect(res.status).toBe(200);
+    expect(capturedUpstreamAuth).toBeNull();
+  });
+
+  it("Quorum Gate: blocks reuse of approved proposal on mismatched action parameters with 403 QUORUM_ACTION_MISMATCH", async () => {
+    const testKv = new MemoryKv() as unknown as KVNamespace;
+    const prop = await createQuorumProposal({
+      kv: testKv,
+      proposer: { id: "sess-quorum-agent" },
+      action: {
+        type: "transfer_funds",
+        target: "transfer_funds",
+        parameters: { recipient: "0x123", amount: 100, currency: "USD" },
+      },
+      constraints: { min_approvals: 1 },
+    });
+    await recordQuorumApproval({
+      proposalId: prop.proposal_id,
+      approval: {
+        approver_id: "approver_alice",
+        action_hash: prop.action_hash,
+        decision: "APPROVE",
+        notes: "Approved $100",
+        timestamp: new Date().toISOString(),
+      },
+      kv: testKv,
+    });
+
+    const testOptions: TransportOptions = {
+      ...options,
+      circuitBreakerKv: testKv,
+      upstreamFetch: async () =>
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl-quorum-tamper",
+            object: "chat.completion",
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      id: "call_funds_tamper",
+                      type: "function",
+                      function: {
+                        name: "transfer_funds",
+                        arguments: JSON.stringify({ recipient: "0x123", amount: 50000, currency: "USD" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    };
+
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+        "X-Session-Id": "sess-quorum-agent",
+        "X-Quorum-Proposal-Id": prop.proposal_id,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Transfer $50,000" }],
+      }),
+    });
+
+    const res = await handleHttpRequest(req, testOptions);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as OpenAIErrorPayload;
+    expect(body.error.code).toBe("QUORUM_ACTION_MISMATCH");
+    expect(body.error.message).toContain("action hash does not match current tool call");
+  });
+
+  it("Quorum Gate: allows sensitive tool execution when proposal action hash matches and is approved", async () => {
+    const testKv = new MemoryKv() as unknown as KVNamespace;
+    const actionPayload = { recipient: "0x123", amount: 50000, currency: "USD" };
+    const prop = await createQuorumProposal({
+      kv: testKv,
+      proposer: { id: "sess-quorum-agent" },
+      action: {
+        type: "transfer_funds",
+        target: "transfer_funds",
+        parameters: actionPayload,
+      },
+      constraints: { min_approvals: 1 },
+    });
+    await recordQuorumApproval({
+      proposalId: prop.proposal_id,
+      approval: {
+        approver_id: "approver_alice",
+        action_hash: prop.action_hash,
+        decision: "APPROVE",
+        notes: "Approved $50k",
+        timestamp: new Date().toISOString(),
+      },
+      kv: testKv,
+    });
+
+    const testOptions: TransportOptions = {
+      ...options,
+      circuitBreakerKv: testKv,
+      upstreamFetch: async () =>
+        new Response(
+          JSON.stringify({
+            id: "chatcmpl-quorum-approved",
+            object: "chat.completion",
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      id: "call_funds_approved",
+                      type: "function",
+                      function: {
+                        name: "transfer_funds",
+                        arguments: JSON.stringify(actionPayload),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    };
+
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+        "X-Session-Id": "sess-quorum-agent",
+        "X-Quorum-Proposal-Id": prop.proposal_id,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Transfer $50,000" }],
+      }),
+    });
+
+    const res = await handleHttpRequest(req, testOptions);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Vizier-Status")).toBe("PASSED");
   });
 });

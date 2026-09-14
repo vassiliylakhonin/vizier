@@ -1,8 +1,12 @@
 import { handleHttpRequest } from "./transport/http";
 import { pruneAuditMetadata } from "./storage/audit";
 
+interface ExtendedEnv extends Env {
+  readonly VIZIER_PRINCIPAL_KEYS?: string;
+}
+
 export default {
-  fetch(request, env, ctx): Promise<Response> {
+  fetch(request, env: ExtendedEnv, ctx): Promise<Response> {
     return handleHttpRequest(request, {
       apiKey: env.VIZIER_API_KEY,
       anonymousRateLimiter: env.ANONYMOUS_RATE_LIMIT,
@@ -14,7 +18,7 @@ export default {
       ctx,
     });
   },
-  scheduled(controller, env, ctx): void {
+  scheduled(controller, env: ExtendedEnv, ctx): void {
     ctx.waitUntil(
       pruneAuditMetadata(env.DB, new Date(controller.scheduledTime))
         .then((result) => {
@@ -36,4 +40,4 @@ export default {
         }),
     );
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<ExtendedEnv>;

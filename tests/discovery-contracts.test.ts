@@ -75,11 +75,22 @@ describe("machine-readable discovery contracts", () => {
       servers: [{ url: ORIGIN }],
     });
     expect(Object.keys(document.paths as object).sort()).toEqual([
+      "/v1/admin/keys",
       "/v1/authorizations",
+      "/v1/chat/completions",
+      "/v1/circuit-breaker/reset",
       "/v1/covenants",
+      "/v1/dlp/scan",
       "/v1/insights",
+      "/v1/models",
       "/v1/outcomes",
+      "/v1/quorum/approve",
+      "/v1/quorum/propose",
+      "/v1/sanctions/entries",
+      "/v1/sanctions/screen",
+      "/v1/sanctions/screen-entity",
       "/v1/verify",
+      "/v1/verify/evaluate",
     ]);
 
     const serialized = JSON.stringify(document);

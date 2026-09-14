@@ -1,11 +1,14 @@
-# Vizier v0.2 architecture
+# Vizier v0.3 architecture
 
 ## Decision
 
-Vizier v0.2 remains a `build-to-learn` experiment. It keeps the v0.1
-deterministic before-action decision and adds an Action Covenant lifecycle that
-binds one accepted draft to authorization evidence and a reported outcome. It
-does not claim market validation, independent identity, or independent evidence.
+Vizier v0.3 expands the deterministic before-action policy engine with a
+transparent OpenAI-compatible AI proxy gateway, dual-control quorum mechanisms
+(4-eyes principle), edge circuit breakers, automated sanctions screening (including
+OFAC 50% Rule traversal), DLP scanners, and multi-tenant organization API key
+management with monthly quota enforcement. It preserves the core design principle:
+the critical authorization path never calls an LLM, and transport interfaces remain
+isolated from the domain evaluation core.
 
 ## Product gate
 

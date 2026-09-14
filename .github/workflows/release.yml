@@ -44,7 +44,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::warning::NPM_TOKEN secret is not configured; skipping npm publish."
+            echo "::error::NPM_TOKEN secret is not configured; refusing silent publish skip."
+            exit 1
           else
             npm publish --workspace @vizier/sdk --access public
             npm publish --workspace @vizier/mcp-proxy --access public
@@ -64,8 +65,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build tools
-        run: pip install build twine
+      - name: Install build and test tools
+        run: pip install build twine pytest
+
+      - name: Run Python test suite
+        run: python -m pytest packages/python-sdk -v
 
       - name: Build wheel and sdist
         run: python -m build packages/python-sdk
@@ -81,8 +85,8 @@ jobs:
           skip-existing: true
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-      - name: Warn if PyPI token missing
+      - name: Fail if PyPI token missing on release
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_PYPI_TOKEN != 'true' }}
-        run: echo "::warning::PYPI_API_TOKEN secret is not configured in this repo; skipping direct PyPI publish."
-
-
+        run: |
+          echo "::error::PYPI_API_TOKEN secret is not configured in this repo; refusing silent PyPI publish skip."
+          exit 1
