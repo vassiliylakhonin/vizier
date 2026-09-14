@@ -78,6 +78,17 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
         registryEntry: "io.github.vassiliylakhonin/vizier",
         updatedAt: "2026-09-02T00:00:00Z",
       },
+      {
+        identifier: "urn:air:vizier.vassiliy-lakhonin.workers.dev:auth:oauth-protected-resource",
+        displayName: "RFC 9728 OAuth 2.0 Protected Resource Metadata",
+        type: "application/json",
+        url: `${origin}/.well-known/oauth-protected-resource`,
+        description:
+          "RFC 9728 discovery metadata advertising OAuth 2.0 protected resource capabilities, authorization servers, and scopes.",
+        capabilities: ["oauth2", "rfc9728", "resource-metadata", "auth-discovery"],
+        tags: ["oauth", "rfc9728", "security", "authorization"],
+        updatedAt: "2026-09-14T00:00:00Z",
+      },
     ],
   });
 }
@@ -127,6 +138,7 @@ export function createVizierLlmsTxt(origin: string): string {
 - [A2A Agent Card](${origin}/.well-known/agent-card.json): Agent-to-Agent discovery card.
 - [MCP Server Manifest](${origin}/.well-known/mcp.json): Model Context Protocol manifest.
 - [Glama MCP Verification](${origin}/.well-known/glama.json): Glama MCP ownership verification manifest.
+- [OAuth Protected Resource Metadata (RFC 9728)](${origin}/.well-known/oauth-protected-resource): RFC 9728 OAuth 2.0 protected resource metadata and authorization discovery.
 - [OpenAPI 3.1 Contract](${origin}/openapi.json): Action Covenant REST API specification.
 - [Documentation](${origin}/docs): Interactive API documentation.
 
@@ -176,7 +188,9 @@ Agent-Card: ${origin}/.well-known/agent-card.json
 AI-Catalog: ${origin}/.well-known/ai-catalog.json
 ARD: ${origin}/.well-known/ard.json
 MCP: ${origin}/.well-known/mcp.json
+OAuth-Protected-Resource: ${origin}/.well-known/oauth-protected-resource
 OpenAPI: ${origin}/openapi.json
 `;
 }
+
 

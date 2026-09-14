@@ -153,7 +153,7 @@ describe("machine-readable discovery contracts", () => {
 
     expect(response.status).toBe(200);
     expect(body.specVersion).toBe("1.0");
-    expect(body.entries).toHaveLength(3);
+    expect(body.entries).toHaveLength(4);
     expect(body.entries.every((e) => e.identifier.startsWith("urn:air:"))).toBe(true);
     expect(body.entries).toEqual(
       expect.arrayContaining([
@@ -171,9 +171,15 @@ describe("machine-readable discovery contracts", () => {
           url: `${ORIGIN}/.well-known/mcp.json`,
           capabilities: expect.arrayContaining(["mcp-streamable-http"]),
         }),
+        expect.objectContaining({
+          type: "application/json",
+          url: `${ORIGIN}/.well-known/oauth-protected-resource`,
+          capabilities: expect.arrayContaining(["oauth2", "rfc9728"]),
+        }),
       ]),
     );
   });
+
 
   it("publishes the ARD manifest at /.well-known/ard.json", async () => {
     const response = await get("/.well-known/ard.json");
