@@ -137,7 +137,7 @@ Primary interface: Deterministic authorization for proposed AI agent actions, wi
 - verify-agent-action: deterministic allow/block verdicts before tool execution.
 - activate-action-covenant: bind delegated authority, evidence, and scope to action sessions.
 - record-action-outcome: post-execution receipt binding for audit trails.
-- signed-receipts: ECDSA/Ed25519 compact JWS receipts for cryptographic non-repudiation.
+- signed-receipts: ECDSA/Ed25519 compact JWS receipts for cryptographic integrity and verifiable action provenance.
 `;
 }
 

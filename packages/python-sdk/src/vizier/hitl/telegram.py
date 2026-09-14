@@ -21,18 +21,26 @@ class TelegramHITLHandler(BaseHITLHandler):
         self,
         bot_token: str,
         chat_id: Union[str, int],
-        allowed_operators: Optional[List[Union[str, int]]] = None,
+        allowed_operators: List[Union[int, str]],
         timeout: float = 60.0,
         poll_interval: float = 1.5,
         base_api_url: str = "https://api.telegram.org",
     ):
         self.bot_token = bot_token
         self.chat_id = str(chat_id)
-        self.allowed_operators = (
-            [str(op).lstrip("@").lower() for op in allowed_operators]
-            if allowed_operators is not None
-            else None
-        )
+        if not allowed_operators:
+            raise ValueError(
+                "allowed_operators must contain at least one numeric Telegram user ID to prevent approval spoofing."
+            )
+        parsed_operators: set[int] = set()
+        for op in allowed_operators:
+            try:
+                parsed_operators.add(int(op))
+            except (ValueError, TypeError):
+                raise ValueError(
+                    f"Invalid operator ID '{op}'. allowed_operators must contain stable numeric Telegram user IDs (not mutable @usernames)."
+                )
+        self.allowed_operators: set[int] = parsed_operators
         self.timeout = timeout
         self.poll_interval = poll_interval
         self.api_base = f"{base_api_url.rstrip('/')}/bot{self.bot_token}"
@@ -123,23 +131,25 @@ class TelegramHITLHandler(BaseHITLHandler):
 
                     data = cb.get("data")
                     from_user = cb.get("from") or {}
+                    raw_user_id = from_user.get("id")
+                    if raw_user_id is None:
+                        continue
+                    try:
+                        user_id = int(raw_user_id)
+                    except (ValueError, TypeError):
+                        continue
+
                     username = from_user.get("username")
-                    user_id = str(from_user.get("id", ""))
-                    user = username or user_id
+                    user = username or str(user_id)
                     cb_id = cb.get("id")
 
-                    # Verify operator against allowed_operators allowlist if configured
-                    if self.allowed_operators is not None:
-                        is_allowed = (
-                            user_id in self.allowed_operators
-                            or (username and username.lower() in self.allowed_operators)
+                    # Verify operator against mandatory stable numeric allowed_operators set
+                    if user_id not in self.allowed_operators:
+                        self._api_call(
+                            "answerCallbackQuery",
+                            {"callback_query_id": cb_id, "text": "Unauthorized operator.", "show_alert": True},
                         )
-                        if not is_allowed:
-                            self._api_call(
-                                "answerCallbackQuery",
-                                {"callback_query_id": cb_id, "text": "Unauthorized operator.", "show_alert": True},
-                            )
-                            continue
+                        continue
 
                     if data == cb_approve:
                         self._api_call("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Action approved!"})

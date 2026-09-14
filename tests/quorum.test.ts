@@ -333,6 +333,86 @@ describe("Multi-Agent Quorum & Dual-Control Gate", () => {
       expect(evalAfter.satisfied).toBe(false);
       expect(evalAfter.reasonCode).toBe("PROPOSAL_ALREADY_CONSUMED");
     });
+
+    it("prevents state resurrection: recordQuorumApproval throws on CONSUMED proposals", async () => {
+      const action = { type: "high_risk_ops", target: "db", parameters: {} };
+      const proposal = await createQuorumProposal({
+        proposer: { id: "agent-1" },
+        action,
+        constraints: { min_approvals: 1 },
+      });
+
+      await recordQuorumApproval({
+        proposalId: proposal.proposal_id,
+        approval: {
+          approver_id: "approver-1",
+          action_hash: proposal.action_hash,
+          timestamp: new Date().toISOString(),
+          decision: "APPROVE",
+        },
+      });
+
+      // Consume proposal
+      const consumed = await consumeQuorumProposal(proposal.proposal_id);
+      expect(consumed).toBe(true);
+
+      // Attempt to resurrect by recording another approval
+      await expect(
+        recordQuorumApproval({
+          proposalId: proposal.proposal_id,
+          approval: {
+            approver_id: "approver-2",
+            action_hash: proposal.action_hash,
+            timestamp: new Date().toISOString(),
+            decision: "APPROVE",
+          },
+        }),
+      ).rejects.toThrow(/already been consumed/);
+    });
+
+    it("refuses to consume proposals that are not APPROVED or have mismatched action_hash", async () => {
+      const action = { type: "sensitive_op", target: "server", parameters: {} };
+      const proposal = await createQuorumProposal({
+        proposer: { id: "agent-proposer" },
+        action,
+        constraints: { min_approvals: 1 },
+      });
+
+      // Status is PENDING -> consume should fail
+      const consumePending = await consumeQuorumProposal(proposal.proposal_id);
+      expect(consumePending).toBe(false);
+
+      // Approve it
+      await recordQuorumApproval({
+        proposalId: proposal.proposal_id,
+        approval: {
+          approver_id: "approver-peer",
+          action_hash: proposal.action_hash,
+          timestamp: new Date().toISOString(),
+          decision: "APPROVE",
+        },
+      });
+
+      // Status is APPROVED, but test with mismatched action_hash
+      const consumeMismatch = await consumeQuorumProposal(
+        proposal.proposal_id,
+        undefined,
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      );
+      expect(consumeMismatch).toBe(false);
+
+      // Successfully consume with correct action_hash
+      const consumeCorrect = await consumeQuorumProposal(
+        proposal.proposal_id,
+        undefined,
+        proposal.action_hash,
+      );
+      expect(consumeCorrect).toBe(true);
+
+      // Consuming again fails
+      const consumeAgain = await consumeQuorumProposal(proposal.proposal_id);
+      expect(consumeAgain).toBe(false);
+    });
   });
 
   describe("Core Kernel Quorum Policy Evaluation", () => {

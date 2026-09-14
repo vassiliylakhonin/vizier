@@ -1,7 +1,7 @@
 <!-- mcp-name: io.github.vassiliylakhonin/vizier-guard -->
 # Vizier
 
-**Deterministic Authorization & Non-Repudiation Audit Firewall for AI Agents.**
+**Deterministic Authorization & Signed Audit Firewall for AI Agents.**
 
 [![CI](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml)
 [![Deploy](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml)

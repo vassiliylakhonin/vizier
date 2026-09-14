@@ -202,8 +202,7 @@ export function createPlaygroundHtml(origin: string): string {
         <button class="preset-btn" onclick="loadPreset('review_sensitive')">🟡 Review: Deploy Worker</button>
       </div>
       <div style="display: flex; gap: 8px; align-items: center; background: #111827; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
-        <span style="font-size: 0.75rem; color: var(--muted); white-space: nowrap;">API Key:</span>
-        <input id="apiKeyInput" type="password" placeholder="Optional vz_live_... or master key (evaluates freely if empty)" style="flex: 1; background: transparent; border: none; color: #38bdf8; font-size: 0.75rem; font-family: monospace; outline: none;" oninput="sessionStorage.setItem('vizier_playground_key', this.value.trim())" />
+        <input id="apiKeyInput" type="password" placeholder="Optional vz_live_... or master key (in-memory only; evaluates freely if empty)" style="flex: 1; background: transparent; border: none; color: #38bdf8; font-size: 0.75rem; font-family: monospace; outline: none;" autocomplete="off" />
       </div>
       <textarea id="requestJson" spellcheck="false"></textarea>
       <button class="primary" id="verifyBtn" onclick="runVerification()">⚡ Verify Action via Kernel</button>
@@ -437,11 +436,6 @@ npx @vizier/mcp-proxy \\\\
     }
 
     // Init
-    const savedKey = sessionStorage.getItem('vizier_playground_key');
-    if (savedKey) {
-      const keyInput = document.getElementById('apiKeyInput');
-      if (keyInput) keyInput.value = savedKey;
-    }
     loadPreset('allow');
     document.getElementById('snippetBox').innerText = snippets.python;
   </script>

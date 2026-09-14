@@ -230,27 +230,23 @@ export async function incrementKeyUsage(
   db: D1Database,
   keyId: string,
   now: Date = new Date(),
-): Promise<void> {
+): Promise<boolean> {
   const currentMonth = getCurrentPeriodMonth(now);
-  try {
-    await db
-      .prepare(
-        `UPDATE vizier_api_keys
-         SET current_usage = CASE WHEN period_month = ? THEN current_usage + 1 ELSE 1 END,
-             period_month = ?
-         WHERE id = ?`,
-      )
-      .bind(currentMonth, currentMonth, keyId)
-      .run();
-  } catch (err) {
-    console.error(
-      JSON.stringify({
-        event: "vizier.api_keys.increment_failed",
-        key_id: keyId,
-        error: err instanceof Error ? err.message : "Unknown error",
-      }),
-    );
-  }
+  const result = await db
+    .prepare(
+      `UPDATE vizier_api_keys
+       SET current_usage = CASE WHEN period_month = ? THEN current_usage + 1 ELSE 1 END,
+           period_month = ?
+       WHERE id = ? AND revoked_at IS NULL
+         AND (
+           monthly_quota <= 0
+           OR (period_month = ? AND current_usage < monthly_quota)
+           OR (period_month != ? AND monthly_quota > 0)
+         )`,
+    )
+    .bind(currentMonth, currentMonth, keyId, currentMonth, currentMonth)
+    .run();
+  return (result.meta.changes ?? 0) === 1;
 }
 
 export async function listApiKeys(

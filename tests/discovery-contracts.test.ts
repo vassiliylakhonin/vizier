@@ -75,9 +75,16 @@ describe("machine-readable discovery contracts", () => {
       servers: [{ url: ORIGIN }],
     });
     expect(Object.keys(document.paths as object).sort()).toEqual([
+      "/.well-known/agent-card.json",
+      "/.well-known/agents.txt",
+      "/.well-known/ai-catalog.json",
       "/.well-known/ard.json",
       "/.well-known/jwks.json",
+      "/.well-known/llms.txt",
+      "/.well-known/mcp.json",
+      "/a2a",
       "/health",
+      "/mcp",
       "/playground/evaluate",
       "/v1/admin/keys",
       "/v1/admin/keys/{key_id}",
@@ -104,6 +111,13 @@ describe("machine-readable discovery contracts", () => {
     expect(paths["/playground/evaluate"]?.post?.security).toEqual([]);
     expect(paths["/v1/models"]?.get?.security).toEqual([]);
     expect(paths["/health"]?.get?.security).toEqual([]);
+    expect(paths["/a2a"]?.post?.security).toEqual([]);
+    expect(paths["/mcp"]?.post?.security).toEqual([]);
+    expect(paths["/.well-known/agent-card.json"]?.get?.security).toEqual([]);
+    expect(paths["/.well-known/mcp.json"]?.get?.security).toEqual([]);
+    expect(paths["/.well-known/ai-catalog.json"]?.get?.security).toEqual([]);
+    expect(paths["/.well-known/llms.txt"]?.get?.security).toEqual([]);
+    expect(paths["/.well-known/agents.txt"]?.get?.security).toEqual([]);
 
     const serialized = JSON.stringify(document);
     expect(serialized).not.toContain("#/$defs/");

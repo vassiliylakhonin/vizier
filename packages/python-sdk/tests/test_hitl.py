@@ -138,7 +138,12 @@ def test_webhook_hitl_handler_missing_approved_field_defaults_to_false():
         assert "strict boolean" in res.reason
 
 def test_telegram_hitl_handler():
-    handler = TelegramHITLHandler(bot_token="123456:ABC-DEF", chat_id="100200300", timeout=5.0)
+    handler = TelegramHITLHandler(
+        bot_token="123456:ABC-DEF",
+        chat_id="100200300",
+        allowed_operators=[9990001],
+        timeout=5.0,
+    )
     review = mock_review_response()
 
     with patch.object(handler, "_api_call") as mock_call:
@@ -153,7 +158,7 @@ def test_telegram_hitl_handler():
                             "id": "cb_1",
                             "data": "vz_app_nonces12",
                             "message": {"message_id": 999, "chat": {"id": 100200300}},
-                            "from": {"username": "alice"},
+                            "from": {"username": "alice", "id": 9990001},
                         },
                     }
                 ],
@@ -168,11 +173,11 @@ def test_telegram_hitl_handler():
             assert res.operator_id == "telegram:alice"
 
 def test_telegram_hitl_handler_operator_allowlist():
-    # Only bob is authorized; alice should be rejected
+    # Only operator with ID 222 is authorized; alice with ID 111 should be rejected
     handler = TelegramHITLHandler(
         bot_token="123456:ABC-DEF",
         chat_id="100200300",
-        allowed_operators=["bob"],
+        allowed_operators=[222],
         timeout=0.2,
         poll_interval=0.05,
     )
@@ -209,7 +214,16 @@ def test_telegram_hitl_handler_operator_allowlist():
             mock_uuid.return_value.hex = "nonces1234"
             res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
             assert not res.approved
-            assert "timed out" in res.reason
+            assert "timed out" in res.reason.lower()
+
+def test_telegram_hitl_handler_rejects_mutable_usernames():
+    import pytest
+    with pytest.raises(ValueError, match="must contain stable numeric"):
+        TelegramHITLHandler(
+            bot_token="123456:ABC-DEF",
+            chat_id="100200300",
+            allowed_operators=["@alice"],
+        )
 
 def test_vizier_guard_sync_with_hitl_approval():
     mock_client = MagicMock()

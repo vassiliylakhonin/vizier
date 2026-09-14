@@ -56,18 +56,20 @@ jobs:
       - name: Verify published npm packages install cleanly
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_NPM_TOKEN == 'true' }}
         run: |
-          echo "Verifying npm packages can be installed from npmjs.org..."
+          TARGET_VERSION=$(node -p "require('./package.json').version")
+          echo "Verifying npm packages can be installed from npmjs.org at exact version ${TARGET_VERSION}..."
           mkdir -p "$RUNNER_TEMP/npm-install-test"
           cd "$RUNNER_TEMP/npm-install-test"
           for attempt in {1..8}; do
-            if npm install --no-save --registry https://registry.npmjs.org @vizier/sdk @vizier/mcp-proxy; then
-              echo "npm packages installed successfully."
+            if npm install --no-save --registry https://registry.npmjs.org "@vizier/sdk@${TARGET_VERSION}" "@vizier/mcp-proxy@${TARGET_VERSION}"; then
+              echo "npm packages installed successfully at version ${TARGET_VERSION}."
               exit 0
             fi
-            echo "Waiting for npm registry to index newly published version (attempt $attempt/8)..."
+            echo "Waiting for npm registry to index version ${TARGET_VERSION} (attempt $attempt/8)..."
             sleep 15
           done
-          echo "::warning::Package installation check timed out waiting for npm registry indexing."
+          echo "::error::Package installation check timed out waiting for npm registry indexing of version ${TARGET_VERSION}."
+          exit 1
 
   pypi:
     name: Build & Publish Python SDK
@@ -106,16 +108,18 @@ jobs:
       - name: Verify published PyPI package installs cleanly
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_PYPI_TOKEN == 'true' }}
         run: |
-          echo "Verifying vizier-guard installs from PyPI..."
+          PYPI_VERSION=$(python -c "import tomllib; print(tomllib.load(open('packages/python-sdk/pyproject.toml', 'rb'))['project']['version'])")
+          echo "Verifying vizier-guard installs from PyPI at exact version ${PYPI_VERSION}..."
           for attempt in {1..8}; do
-            if pip install --no-cache-dir vizier-guard; then
-              echo "vizier-guard installed successfully from PyPI."
+            if pip install --no-cache-dir "vizier-guard==${PYPI_VERSION}"; then
+              echo "vizier-guard==${PYPI_VERSION} installed successfully from PyPI."
               exit 0
             fi
-            echo "Waiting for PyPI index to make version available (attempt $attempt/8)..."
+            echo "Waiting for PyPI index to make version ${PYPI_VERSION} available (attempt $attempt/8)..."
             sleep 15
           done
-          echo "::warning::PyPI package installation check timed out."
+          echo "::error::PyPI package installation check timed out for version ${PYPI_VERSION}."
+          exit 1
 
       - name: Fail if PyPI token missing on release
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_PYPI_TOKEN != 'true' }}

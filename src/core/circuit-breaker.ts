@@ -143,15 +143,24 @@ export async function evaluateEdgeCircuitBreaker(
 
     return { tripped: false };
   } catch (error) {
-    // If KV encounters a transient error, log and fail open to prevent edge outages
+    const errorMsg = error instanceof Error ? error.message : "Unknown KV error";
     console.error(
       JSON.stringify({
         event: "vizier.circuit_breaker.error",
         session_id: sessionId,
-        error: error instanceof Error ? error.message : "Unknown KV error",
+        error: errorMsg,
       }),
     );
-    return { tripped: false };
+    // Fail-closed to preserve SECURITY.md invariant 1: if security evaluation errors, block execution
+    return {
+      tripped: true,
+      reasonCode: "CIRCUIT_TRIPPED:LOOP_DETECTED",
+      message: `Circuit breaker storage error: ${errorMsg}. Action blocked.`,
+      details: {
+        session_id: sessionId,
+        error: errorMsg,
+      },
+    };
   }
 }
 

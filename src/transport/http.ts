@@ -3,6 +3,7 @@ import {
   actionSchema,
   addCustomSanctionsEntry,
   agentSchema,
+  computeActionHash,
   consumeQuorumProposal,
   createQuorumProposal,
   evaluateDlp,
@@ -291,8 +292,24 @@ async function handleVerify(
     trustedAuthority: authorization === "authenticated",
   });
 
-  if (result.decision === "ALLOW" && normalizedRequest.context.proposal_id) {
-    await consumeQuorumProposal(normalizedRequest.context.proposal_id, options.circuitBreakerKv);
+  if (
+    result.decision === "ALLOW" &&
+    normalizedRequest.authority.constraints.quorum !== undefined &&
+    normalizedRequest.context.proposal_id
+  ) {
+    const actionHash = await computeActionHash(normalizedRequest.action);
+    const consumed = await consumeQuorumProposal(
+      normalizedRequest.context.proposal_id,
+      options.circuitBreakerKv,
+      actionHash,
+    );
+    if (!consumed) {
+      throw new TransportRequestError(
+        403,
+        "PROPOSAL_ALREADY_CONSUMED",
+        "Quorum proposal has already been consumed, expired, or action hash does not match.",
+      );
+    }
   }
 
   const requestId =

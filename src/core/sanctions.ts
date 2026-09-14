@@ -262,13 +262,26 @@ export async function evaluateSanctions(
           };
         }
       } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "Unknown error";
         console.error(
           JSON.stringify({
             event: "vizier.sanctions.kv_error",
             candidate: candidate.value,
-            error: err instanceof Error ? err.message : "Unknown error",
+            error: errorMsg,
           })
         );
+        // Fail-closed to preserve SECURITY.md invariant 1: if security rule check fails, block action
+        return {
+          clean: false,
+          match: {
+            matched_value: candidate.raw,
+            candidate_type: candidate.type,
+            list: "SANCTIONS_LOOKUP_ERROR",
+            entity_name: candidate.raw,
+            source: "kv",
+            details: { error: errorMsg },
+          },
+        };
       }
     }
   }

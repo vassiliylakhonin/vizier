@@ -142,11 +142,17 @@ interface UpstreamResolution {
 }
 
 function isPrivateOrMetadataHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
+  let host = hostname.toLowerCase().trim();
+  // Strip surrounding brackets for IPv6 literals (e.g. [::1] -> ::1)
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1);
+  }
+
   if (
     host === "localhost" ||
     host === "127.0.0.1" ||
     host === "::1" ||
+    host === "::" ||
     host === "0.0.0.0" ||
     host === "169.254.169.254" ||
     host === "metadata.google.internal" ||
@@ -155,6 +161,34 @@ function isPrivateOrMetadataHost(hostname: string): boolean {
     host.endsWith(".internal") ||
     host.endsWith(".arpa")
   ) {
+    return true;
+  }
+
+  // Handle IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 or ::ffff:7f00:1)
+  if (host.startsWith("::ffff:")) {
+    const mapped = host.slice("::ffff:".length);
+    if (isPrivateOrMetadataHost(mapped)) {
+      return true;
+    }
+    const parts = mapped.split(":");
+    if (parts.length === 2) {
+      const high = parseInt(parts[0]!, 16);
+      const low = parseInt(parts[1]!, 16);
+      if (!Number.isNaN(high) && !Number.isNaN(low)) {
+        const o1 = (high >> 8) & 0xff;
+        const o2 = high & 0xff;
+        const o3 = (low >> 8) & 0xff;
+        const o4 = low & 0xff;
+        const ipv4 = `${o1}.${o2}.${o3}.${o4}`;
+        if (isPrivateOrMetadataHost(ipv4)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // Pure integer / numeric hostname (e.g., 2130706433 for 127.0.0.1 or 0x7f000001)
+  if (/^(0x[0-9a-f]+|\d+)$/i.test(host)) {
     return true;
   }
 
@@ -171,7 +205,15 @@ function isPrivateOrMetadataHost(hostname: string): boolean {
     if (o1 === 0) return true;
   }
 
-  if (host.startsWith("fe80:") || host.startsWith("fc00:") || host.startsWith("fd")) {
+  // IPv6 Link-Local (fe80::/10) and Unique Local Addresses (fc00::/7 -> fc00:: to fdff::)
+  if (
+    host.startsWith("fe8") ||
+    host.startsWith("fe9") ||
+    host.startsWith("fea") ||
+    host.startsWith("feb") ||
+    host.startsWith("fc") ||
+    host.startsWith("fd")
+  ) {
     return true;
   }
 
@@ -218,16 +260,11 @@ function resolveUpstream(
     return { error: "A non-loopback upstream URL must use HTTPS protocol." };
   }
 
-  const isTestEnv =
-    (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env?.NODE_ENV === "test";
-
-  if (isPrivateOrMetadataHost(parsed.hostname) && !(isLocalhost && isTestEnv)) {
+  if (isPrivateOrMetadataHost(parsed.hostname)) {
     return { error: `Access to private or metadata network host '${parsed.hostname}' is prohibited.` };
   }
 
-  const originAllowed =
-    allowedOrigins.has(parsed.origin) ||
-    (isLocalhost && (isTestEnv || allowedOrigins.has(parsed.origin)));
+  const originAllowed = allowedOrigins.has(parsed.origin);
 
   if (!originAllowed) {
     return {
@@ -743,8 +780,23 @@ interface ChatCompletionResponse {
               }
 
               if (prop.status === "APPROVED") {
-                quorumApproved = true;
-                await consumeQuorumProposal(suppliedProposalId, options.circuitBreakerKv);
+                const consumed = await consumeQuorumProposal(
+                  suppliedProposalId,
+                  options.circuitBreakerKv,
+                  currentActionHash,
+                );
+                if (consumed) {
+                  quorumApproved = true;
+                } else {
+                  return openAiError(
+                    `Vizier Quorum Gate: proposal '${suppliedProposalId}' has already been executed. Dual-control proposals are single-use and cannot be replayed.`,
+                    "PROPOSAL_ALREADY_CONSUMED",
+                    403,
+                    "vizier_proposal_already_consumed",
+                    `tool_calls[${tIdx}]`,
+                    { proposal_id: suppliedProposalId },
+                  );
+                }
               }
             }
 

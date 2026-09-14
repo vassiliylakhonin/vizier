@@ -767,7 +767,21 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
 
   it("SSRF guard: blocks private IP and cloud metadata destinations", async () => {
     let idx = 0;
-    for (const host of ["169.254.169.254", "10.0.0.1", "192.168.1.1", "metadata.google.internal"]) {
+    for (const host of [
+      "169.254.169.254",
+      "10.0.0.1",
+      "192.168.1.1",
+      "metadata.google.internal",
+      "[::1]",
+      "[fe80::1]",
+      "[fc00::1]",
+      "[::ffff:127.0.0.1]",
+      "[::ffff:169.254.169.254]",
+      "127.0.0.1",
+      "localhost",
+      "0x7f000001",
+      "2130706433",
+    ]) {
       idx += 1;
       const req = new Request("https://vizier.ai/v1/chat/completions", {
         method: "POST",

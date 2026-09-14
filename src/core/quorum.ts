@@ -169,6 +169,14 @@ export async function recordQuorumApproval(
     throw new Error(`Proposal '${options.proposalId}' has expired.`);
   }
 
+  if (proposal.status === "CONSUMED") {
+    throw new Error(`Proposal '${options.proposalId}' has already been consumed and cannot be modified.`);
+  }
+
+  if (proposal.status === "EXPIRED") {
+    throw new Error(`Proposal '${options.proposalId}' has expired.`);
+  }
+
   if (proposal.status === "REJECTED") {
     throw new Error(`Proposal '${options.proposalId}' is already rejected.`);
   }
@@ -244,30 +252,45 @@ export async function recordQuorumApproval(
 
 /**
  * Marks an approved quorum proposal as CONSUMED so it cannot be re-executed or replayed.
+ * Requires proposal to be in APPROVED status and optionally verifies expectedActionHash.
  */
 export async function consumeQuorumProposal(
   proposalId: string,
   kv?: KVNamespace,
+  expectedActionHash?: string,
 ): Promise<boolean> {
   const proposal = await getQuorumProposal(proposalId, kv);
-  if (!proposal || proposal.status === "CONSUMED") {
+  if (!proposal || proposal.status !== "APPROVED") {
     return false;
   }
-  const consumedProposal: QuorumProposal = Object.freeze({
-    ...proposal,
-    status: "CONSUMED" as const,
-  });
+  if (expectedActionHash !== undefined && proposal.action_hash !== expectedActionHash) {
+    return false;
+  }
   if (kv) {
+    const lockKey = `quorum:consumed:${proposalId}`;
+    const alreadyConsumed = await kv.get(lockKey);
+    if (alreadyConsumed !== null) {
+      return false;
+    }
     const remainingSeconds = Math.max(
       Math.floor((Date.parse(proposal.expires_at) - Date.now()) / 1000),
       60,
     );
-    await kv.put(
-      `quorum:proposal:${proposalId}`,
-      JSON.stringify(consumedProposal),
-      { expirationTtl: remainingSeconds },
-    );
+    const consumedProposal: QuorumProposal = Object.freeze({
+      ...proposal,
+      status: "CONSUMED" as const,
+    });
+    await Promise.all([
+      kv.put(lockKey, "1", { expirationTtl: remainingSeconds }),
+      kv.put(`quorum:proposal:${proposalId}`, JSON.stringify(consumedProposal), {
+        expirationTtl: remainingSeconds,
+      }),
+    ]);
   } else {
+    const consumedProposal: QuorumProposal = Object.freeze({
+      ...proposal,
+      status: "CONSUMED" as const,
+    });
     memoryProposalStore.set(proposalId, consumedProposal);
   }
   return true;

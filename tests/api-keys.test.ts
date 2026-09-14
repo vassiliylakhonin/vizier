@@ -342,4 +342,55 @@ describe("Admin API Key Management HTTP Endpoints", () => {
     expect(authSeptember2.key_record?.current_usage).toBe(1);
     expect(authSeptember2.key_record?.period_month).toBe("2026-09");
   });
+
+  it("atomically handles high-concurrency requests without exceeding quota", async () => {
+    const db = createTestD1();
+    const quota = 5;
+    const totalRequests = 20;
+    const key = await generateApiKey(db, {
+      org_id: "org_race_condition",
+      name: "Race Test Key",
+      monthly_quota: quota,
+    });
+
+    // Fire 20 concurrent requests simultaneously to /v1/verify
+    const responses = await Promise.all(
+      Array.from({ length: totalRequests }, (_, i) =>
+        handleHttpRequest(
+          new Request("https://vizier.local/v1/verify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Vizier-Key": key.key,
+            },
+            body: JSON.stringify({
+              agent: { id: `agent-${i}`, owner: null },
+              principal: null,
+              action: { type: "test", target: "test", parameters: {} },
+              authority: { allowed_actions: ["test"], constraints: {} },
+              context: {
+                request_id: `req_race_${i}`,
+                timestamp: "2026-09-14T12:00:00Z",
+                source: "rest",
+              },
+            }),
+          }),
+          { apiKey: MASTER_KEY, db },
+        ),
+      ),
+    );
+
+    const statuses = responses.map((r) => r.status);
+    const successCount = statuses.filter((s) => s === 200).length;
+    const quotaExceededCount = statuses.filter((s) => s === 429).length;
+
+    expect(successCount).toBe(quota);
+    expect(quotaExceededCount).toBe(totalRequests - quota);
+
+    const row = await db
+      .prepare("SELECT current_usage FROM vizier_api_keys WHERE id = ?")
+      .bind(key.id)
+      .first<{ current_usage: number }>();
+    expect(row?.current_usage).toBe(quota);
+  });
 });

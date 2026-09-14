@@ -176,6 +176,14 @@ export function createOpenApiDocument(
         description: "Organization API key and monthly quota management.",
       },
       {
+        name: "A2A",
+        description: "Agent-to-Agent communication and cross-agent verification protocol.",
+      },
+      {
+        name: "MCP",
+        description: "Model Context Protocol JSON-RPC gateway and tool policy enforcement.",
+      },
+      {
         name: "Discovery",
         description: "Public metadata, capability descriptors, and cryptographic keysets.",
       },
@@ -440,6 +448,93 @@ export function createOpenApiDocument(
           responses: {
             "200": { description: "API key revoked." },
             ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/a2a": {
+        post: {
+          operationId: "handleA2aMessage",
+          tags: ["A2A"],
+          summary: "Agent-to-Agent (A2A) protocol endpoint for cross-agent verification",
+          description: "Handles A2A SendMessage JSON-RPC requests for inter-agent delegation and verification.",
+          security: [],
+          responses: {
+            "200": { description: "A2A JSON-RPC response." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/mcp": {
+        post: {
+          operationId: "handleMcpJsonRpc",
+          tags: ["MCP"],
+          summary: "Model Context Protocol (MCP) JSON-RPC 2.0 gateway and proxy",
+          description: "Inspects and verifies MCP tool call requests before dispatching to upstream tool servers.",
+          security: [],
+          responses: {
+            "200": { description: "MCP JSON-RPC response." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/.well-known/agent-card.json": {
+        get: {
+          operationId: "getAgentCard",
+          tags: ["Discovery"],
+          summary: "A2A Agent Card describing identity, capabilities, and verification skills",
+          security: [],
+          responses: {
+            "200": { description: "A2A Agent Card JSON metadata." },
+          },
+        },
+      },
+      "/.well-known/mcp.json": {
+        get: {
+          operationId: "getMcpServerManifest",
+          tags: ["Discovery"],
+          summary: "MCP server manifest and tool registry descriptor",
+          security: [],
+          responses: {
+            "200": { description: "MCP server manifest JSON." },
+          },
+        },
+      },
+      "/.well-known/ai-catalog.json": {
+        get: {
+          operationId: "getAiCatalog",
+          tags: ["Discovery"],
+          summary: "Machine discovery catalog for AI agents and services",
+          security: [],
+          responses: {
+            "200": { description: "AI catalog JSON metadata." },
+          },
+        },
+      },
+      "/.well-known/llms.txt": {
+        get: {
+          operationId: "getLlmsTxt",
+          tags: ["Discovery"],
+          summary: "Curated text summary of Vizier policy enforcement engine for LLMs",
+          security: [],
+          responses: {
+            "200": {
+              description: "LLMs context plain text.",
+              content: { "text/plain": { schema: { type: "string" } } },
+            },
+          },
+        },
+      },
+      "/.well-known/agents.txt": {
+        get: {
+          operationId: "getAgentsTxt",
+          tags: ["Discovery"],
+          summary: "Agent discovery index and system directives",
+          security: [],
+          responses: {
+            "200": {
+              description: "Agents discovery plain text.",
+              content: { "text/plain": { schema: { type: "string" } } },
+            },
           },
         },
       },

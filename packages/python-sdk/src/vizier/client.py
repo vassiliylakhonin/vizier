@@ -106,7 +106,7 @@ class VizierClient:
         raw_response = self._request("/v1/verify", payload)
         resp = VerificationResponse.from_dict(raw_response)
 
-        # Non-repudiation integrity check
+        # Cryptographic digest and receipt integrity check
         if verify_receipt_hash:
             expected_hash = sha256_canonical_json(payload)
             if resp.receipt.request_hash != expected_hash:
