@@ -119,27 +119,36 @@ export function createMcpServerManifest(
 export function createVizierLlmsTxt(origin: string): string {
   return `# Vizier
 
-Primary interface: Deterministic authorization for proposed AI agent actions, with an authenticated Action Covenant lifecycle and signed authorization and reported-outcome receipts.
+> Deterministic authorization for proposed AI agent actions, with an authenticated Action Covenant lifecycle and signed authorization and reported-outcome receipts.
 
 ## Discovery & Standards
-- ARD (Agent Resource Discovery): ${origin}/.well-known/ard.json
-- AI Catalog: ${origin}/.well-known/ai-catalog.json
-- A2A Agent Card: ${origin}/.well-known/agent-card.json
-- MCP Server Manifest: ${origin}/.well-known/mcp.json
-- OpenAPI 3.1: ${origin}/openapi.json
-- Documentation: ${origin}/docs
+- [ARD (Agent Resource Discovery)](${origin}/.well-known/ard.json): Machine-readable resource catalog.
+- [AI Catalog](${origin}/.well-known/ai-catalog.json): Canonical AI catalog.
+- [A2A Agent Card](${origin}/.well-known/agent-card.json): Agent-to-Agent discovery card.
+- [MCP Server Manifest](${origin}/.well-known/mcp.json): Model Context Protocol manifest.
+- [Glama MCP Verification](${origin}/.well-known/glama.json): Glama MCP ownership verification manifest.
+- [OpenAPI 3.1 Contract](${origin}/openapi.json): Action Covenant REST API specification.
+- [Documentation](${origin}/docs): Interactive API documentation.
 
 ## Protocols
-- MCP (Model Context Protocol): Streamable HTTP endpoint at ${origin}/mcp exposing vizier_verify_action.
-- A2A (Agent-to-Agent): JSON-RPC endpoint at ${origin}/message/send.
+- [MCP Endpoint](${origin}/mcp): Streamable HTTP endpoint exposing vizier_verify_action.
+- [A2A Endpoint](${origin}/message/send): JSON-RPC 2.0 endpoint for agent covenants.
 
 ## Core Capabilities
-- verify-agent-action: deterministic allow/block verdicts before tool execution.
-- activate-action-covenant: bind delegated authority, evidence, and scope to action sessions.
-- record-action-outcome: post-execution receipt binding for audit trails.
-- signed-receipts: ECDSA/Ed25519 compact JWS receipts for cryptographic integrity and verifiable action provenance.
+- [verify-agent-action](${origin}/docs): deterministic allow/block verdicts before tool execution.
+- [activate-action-covenant](${origin}/docs): bind delegated authority, evidence, and scope to action sessions.
+- [record-action-outcome](${origin}/docs): post-execution receipt binding for audit trails.
+- [signed-receipts](${origin}/docs): ECDSA/Ed25519 compact JWS receipts for cryptographic integrity and verifiable action provenance.
 `;
 }
+
+export function createVizierGlamaJson(): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    $schema: "https://glama.ai/mcp/schemas/server.json",
+    maintainers: ["vassiliylakhonin"],
+  });
+}
+
 
 export function createVizierAgentsTxt(origin: string): string {
   return `# agents.txt - Agent Discovery & Policy Declaration

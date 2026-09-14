@@ -549,6 +549,17 @@ export function createOpenApiDocument(
           },
         },
       },
+      "/.well-known/glama.json": {
+        get: {
+          operationId: "getGlamaManifest",
+          tags: ["Discovery"],
+          summary: "Glama MCP server ownership verification manifest",
+          security: [],
+          responses: {
+            "200": { description: "Glama MCP server ownership metadata." },
+          },
+        },
+      },
       "/.well-known/jwks.json": {
         get: {
           operationId: "getJwks",

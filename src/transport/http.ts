@@ -52,6 +52,7 @@ import {
   createAiCatalog,
   createMcpServerManifest,
   createVizierAgentsTxt,
+  createVizierGlamaJson,
   createVizierLlmsTxt,
 } from "./catalog";
 import { handleMcpRequest } from "./mcp";
@@ -1205,6 +1206,15 @@ export async function handleHttpRequest(
       url.pathname === "/.well-known/mcp.json"
     ) {
       return jsonResponse(createMcpServerManifest(url.origin), 200, {
+        "Cache-Control": "public, max-age=300",
+      });
+    }
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/.well-known/glama.json" ||
+        url.pathname === "/glama.json")
+    ) {
+      return jsonResponse(createVizierGlamaJson(), 200, {
         "Cache-Control": "public, max-age=300",
       });
     }

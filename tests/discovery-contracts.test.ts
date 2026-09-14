@@ -79,6 +79,7 @@ describe("machine-readable discovery contracts", () => {
       "/.well-known/agents.txt",
       "/.well-known/ai-catalog.json",
       "/.well-known/ard.json",
+      "/.well-known/glama.json",
       "/.well-known/jwks.json",
       "/.well-known/llms.txt",
       "/.well-known/mcp.json",
@@ -116,6 +117,7 @@ describe("machine-readable discovery contracts", () => {
     expect(paths["/.well-known/agent-card.json"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/mcp.json"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/ai-catalog.json"]?.get?.security).toEqual([]);
+    expect(paths["/.well-known/glama.json"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/llms.txt"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/agents.txt"]?.get?.security).toEqual([]);
 
@@ -186,6 +188,9 @@ describe("machine-readable discovery contracts", () => {
     expect(llmsRes.headers.get("content-type")).toContain("text/plain");
     const llmsText = await llmsRes.text();
     expect(llmsText).toContain("# Vizier");
+    expect(llmsText).toContain("## Discovery & Standards");
+    expect(llmsText).toContain("[ARD (Agent Resource Discovery)](");
+    expect(llmsText).toContain("[Glama MCP Verification](");
     expect(llmsText).toContain("/.well-known/ard.json");
 
     const agentsRes = await get("/agents.txt");
@@ -194,6 +199,24 @@ describe("machine-readable discovery contracts", () => {
     const agentsText = await agentsRes.text();
     expect(agentsText).toContain("User-agent: *");
     expect(agentsText).toContain("LLMs-txt:");
+  });
+
+  it("serves the Glama MCP verification manifest at /.well-known/glama.json and /glama.json", async () => {
+    const [wellKnown, root] = await Promise.all([
+      get("/.well-known/glama.json"),
+      get("/glama.json"),
+    ]);
+
+    expect(wellKnown.status).toBe(200);
+    expect(wellKnown.headers.get("Cache-Control")).toBe("public, max-age=300");
+    const wellKnownJson = await wellKnown.json();
+    expect(wellKnownJson).toEqual({
+      $schema: "https://glama.ai/mcp/schemas/server.json",
+      maintainers: ["vassiliylakhonin"],
+    });
+
+    expect(root.status).toBe(200);
+    expect(await root.json()).toEqual(wellKnownJson);
   });
 
   // A registry listing is only useful while it points at the endpoint this
