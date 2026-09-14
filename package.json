@@ -29,7 +29,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260831.1",
     "@eslint/js": "10.0.1",
-    "@types/node": "26.2.0",
+    "@types/node": "26.5.1",
     "eslint": "10.8.1",
     "typescript": "6.0.3",
     "typescript-eslint": "8.66.0",
