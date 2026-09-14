@@ -175,6 +175,10 @@ export function createOpenApiDocument(
         name: "Admin",
         description: "Organization API key and monthly quota management.",
       },
+      {
+        name: "Discovery",
+        description: "Public metadata, capability descriptors, and cryptographic keysets.",
+      },
     ],
     security: [{ bearerAuth: [] }],
     paths: {
@@ -197,6 +201,20 @@ export function createOpenApiDocument(
           operationId: "evaluateAgentAction",
           tags: ["Verification"],
           summary: "Safely evaluate one proposed agent action without audit log persistence",
+          security: [],
+          requestBody: requestBody("VerificationRequest"),
+          responses: {
+            "200": successResponse("Evaluation decision.", "VerificationResponse"),
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/playground/evaluate": {
+        post: {
+          operationId: "playgroundEvaluate",
+          tags: ["Verification"],
+          summary: "Safe anonymous action evaluation for browser playground",
+          security: [],
           requestBody: requestBody("VerificationRequest"),
           responses: {
             "200": successResponse("Evaluation decision.", "VerificationResponse"),
@@ -283,6 +301,7 @@ export function createOpenApiDocument(
           operationId: "listModels",
           tags: ["AI Proxy"],
           summary: "List available models supported by the proxy",
+          security: [],
           responses: {
             "200": { description: "Model list response." },
             ...ERROR_RESPONSE_REFS,
@@ -366,6 +385,25 @@ export function createOpenApiDocument(
           },
         },
       },
+      "/v1/quorum/proposals/{proposal_id}": {
+        get: {
+          operationId: "getQuorumProposal",
+          tags: ["Quorum"],
+          summary: "Retrieve the current state and approval progress of a quorum proposal",
+          parameters: [
+            {
+              name: "proposal_id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "Quorum proposal state." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
       "/v1/admin/keys": {
         get: {
           operationId: "listAdminKeys",
@@ -383,6 +421,58 @@ export function createOpenApiDocument(
           responses: {
             "201": { description: "API key created with secret." },
             ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/v1/admin/keys/{key_id}": {
+        delete: {
+          operationId: "revokeAdminKey",
+          tags: ["Admin"],
+          summary: "Revoke a tenant API key",
+          parameters: [
+            {
+              name: "key_id",
+              in: "path",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "API key revoked." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
+      "/.well-known/ard.json": {
+        get: {
+          operationId: "getAgentResourceDescriptor",
+          tags: ["Discovery"],
+          summary: "Agent Resource Descriptor and capability discovery",
+          security: [],
+          responses: {
+            "200": { description: "ARD JSON metadata." },
+          },
+        },
+      },
+      "/.well-known/jwks.json": {
+        get: {
+          operationId: "getJwks",
+          tags: ["Discovery"],
+          summary: "Public JWKS keyset for receipt and card verification",
+          security: [],
+          responses: {
+            "200": { description: "JWKS key set." },
+          },
+        },
+      },
+      "/health": {
+        get: {
+          operationId: "getHealth",
+          tags: ["Discovery"],
+          summary: "Service health status",
+          security: [],
+          responses: {
+            "200": { description: "Health status OK." },
           },
         },
       },

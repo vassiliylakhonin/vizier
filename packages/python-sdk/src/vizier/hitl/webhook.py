@@ -7,6 +7,10 @@ from typing import Any, Dict, Optional
 from .base import BaseHITLHandler, HITLApprovalResult
 from ..models import VerificationResponse
 
+class _DisallowRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, f"HTTP redirect to '{newurl}' is disallowed", headers, fp)
+
 class WebhookHITLHandler(BaseHITLHandler):
     """
     Generic HTTP Webhook Human-in-the-Loop handler.
@@ -23,6 +27,7 @@ class WebhookHITLHandler(BaseHITLHandler):
         self.webhook_url = webhook_url
         self.auth_header = auth_header
         self.timeout = timeout
+        self._opener = urllib.request.build_opener(_DisallowRedirects())
 
     def request_approval(
         self,
@@ -56,7 +61,14 @@ class WebhookHITLHandler(BaseHITLHandler):
         req = urllib.request.Request(self.webhook_url, data=data, headers=headers, method="POST")
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with self._opener.open(req, timeout=self.timeout) as resp:
+                content_type = resp.headers.get_content_type()
+                if content_type != "application/json":
+                    return HITLApprovalResult(
+                        approved=False,
+                        reason=f"Webhook returned invalid Content-Type '{content_type}'; expected 'application/json'",
+                        operator_id="webhook",
+                    )
                 body = resp.read().decode("utf-8")
                 try:
                     res_json = json.loads(body)
@@ -66,7 +78,14 @@ class WebhookHITLHandler(BaseHITLHandler):
                             reason="Webhook returned invalid non-object JSON payload",
                             operator_id="webhook",
                         )
-                    approved = bool(res_json.get("approved", False))
+                    approved_val = res_json.get("approved")
+                    if type(approved_val) is not bool:
+                        return HITLApprovalResult(
+                            approved=False,
+                            reason=f"Webhook 'approved' field must be a strict boolean (true/false), got {type(approved_val).__name__}",
+                            operator_id="webhook",
+                        )
+                    approved = approved_val
                     reason = (
                         res_json.get("reason", "Approved via webhook")
                         if approved

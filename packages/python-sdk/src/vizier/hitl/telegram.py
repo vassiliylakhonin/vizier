@@ -4,7 +4,7 @@ import time
 import urllib.request
 import urllib.error
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from .base import BaseHITLHandler, HITLApprovalResult
 from ..models import VerificationResponse
@@ -21,12 +21,18 @@ class TelegramHITLHandler(BaseHITLHandler):
         self,
         bot_token: str,
         chat_id: Union[str, int],
+        allowed_operators: Optional[List[Union[str, int]]] = None,
         timeout: float = 60.0,
         poll_interval: float = 1.5,
         base_api_url: str = "https://api.telegram.org",
     ):
         self.bot_token = bot_token
         self.chat_id = str(chat_id)
+        self.allowed_operators = (
+            [str(op).lstrip("@").lower() for op in allowed_operators]
+            if allowed_operators is not None
+            else None
+        )
         self.timeout = timeout
         self.poll_interval = poll_interval
         self.api_base = f"{base_api_url.rstrip('/')}/bot{self.bot_token}"
@@ -108,9 +114,32 @@ class TelegramHITLHandler(BaseHITLHandler):
                     if not cb:
                         continue
 
+                    # Validate that callback belongs to this exact message and chat
+                    cb_msg = cb.get("message") or {}
+                    cb_chat_id = str(cb_msg.get("chat", {}).get("id", ""))
+                    cb_msg_id = cb_msg.get("message_id")
+                    if str(self.chat_id) != cb_chat_id or (message_id and cb_msg_id != message_id):
+                        continue
+
                     data = cb.get("data")
-                    user = cb.get("from", {}).get("username") or str(cb.get("from", {}).get("id"))
+                    from_user = cb.get("from") or {}
+                    username = from_user.get("username")
+                    user_id = str(from_user.get("id", ""))
+                    user = username or user_id
                     cb_id = cb.get("id")
+
+                    # Verify operator against allowed_operators allowlist if configured
+                    if self.allowed_operators is not None:
+                        is_allowed = (
+                            user_id in self.allowed_operators
+                            or (username and username.lower() in self.allowed_operators)
+                        )
+                        if not is_allowed:
+                            self._api_call(
+                                "answerCallbackQuery",
+                                {"callback_query_id": cb_id, "text": "Unauthorized operator.", "show_alert": True},
+                            )
+                            continue
 
                     if data == cb_approve:
                         self._api_call("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Action approved!"})

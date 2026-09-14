@@ -3,7 +3,9 @@ import type { KVNamespace } from "@cloudflare/workers-types";
 import {
   clearMemoryProposalStore,
   computeActionHash,
+  consumeQuorumProposal,
   createQuorumProposal,
+  evaluateQuorum,
   getQuorumProposal,
   recordQuorumApproval,
   verifyAction,
@@ -280,6 +282,56 @@ describe("Multi-Agent Quorum & Dual-Control Gate", () => {
         },
       });
       expect(rejected.status).toBe("REJECTED");
+    });
+
+    it("transitions to CONSUMED via consumeQuorumProposal and rejects re-use with PROPOSAL_ALREADY_CONSUMED", async () => {
+      const proposal = await createQuorumProposal({
+        proposer,
+        action,
+        constraints: { min_approvals: 1 },
+      });
+
+      await recordQuorumApproval({
+        proposalId: proposal.proposal_id,
+        approval: {
+          approver_id: "auditor-1",
+          action_hash: proposal.action_hash,
+          timestamp: new Date().toISOString(),
+          decision: "APPROVE",
+        },
+      });
+
+      const verificationReq: VerificationRequest = {
+        agent: { id: "agent-caller", owner: "corp" },
+        principal: { id: "corp" },
+        action,
+        authority: {
+          allowed_actions: [action.type],
+          constraints: { quorum: { min_approvals: 1 } },
+        },
+        context: {
+          request_id: "req-consume-test",
+          timestamp: new Date().toISOString(),
+          source: "rest",
+          proposal_id: proposal.proposal_id,
+        },
+      };
+
+      // First evaluation before consumption -> satisfied!
+      const evalBefore = await evaluateQuorum(verificationReq);
+      expect(evalBefore.satisfied).toBe(true);
+
+      // Consume the proposal
+      const consumed = await consumeQuorumProposal(proposal.proposal_id);
+      expect(consumed).toBe(true);
+
+      const stored = await getQuorumProposal(proposal.proposal_id);
+      expect(stored?.status).toBe("CONSUMED");
+
+      // Second evaluation after consumption -> rejected with PROPOSAL_ALREADY_CONSUMED!
+      const evalAfter = await evaluateQuorum(verificationReq);
+      expect(evalAfter.satisfied).toBe(false);
+      expect(evalAfter.reasonCode).toBe("PROPOSAL_ALREADY_CONSUMED");
     });
   });
 

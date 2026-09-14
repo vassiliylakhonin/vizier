@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, KVNamespace } from "@cloudflare/workers-types";
 
 import { handleHttpRequest } from "../src/transport/http";
 
@@ -145,6 +145,37 @@ describe("REST transport", () => {
     const body = (await response.json()) as { decision: string; receipt: { id: string } };
     expect(body.decision).toBe("REVIEW");
     expect(body.receipt.id).toBeDefined();
+  });
+
+  it("does not mutate or trip circuit breaker KV when evaluating via /v1/verify/evaluate", async () => {
+    const putCalls: Array<{ key: string; value: string }> = [];
+    const mockKv = {
+      get: vi.fn(async () => null),
+      put: vi.fn(async (key: string, value: string) => {
+        putCalls.push({ key, value });
+      }),
+      delete: vi.fn(async () => {}),
+    } as unknown as KVNamespace;
+
+    // Call evaluate multiple times with identical payload
+    for (let i = 0; i < 5; i++) {
+      const response = await handleHttpRequest(
+        new Request("https://vizier.example/v1/verify/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody()),
+        }),
+        { apiKey: TEST_API_KEY, circuitBreakerKv: mockKv },
+      );
+      expect(response.status).toBe(200);
+    }
+
+    // Must never write to KV in evaluation mode, and never query circuit breaker keys
+    expect(putCalls.length).toBe(0);
+    const cbCalls = (mockKv.get as ReturnType<typeof vi.fn>).mock.calls.filter((args: unknown[]) =>
+      typeof args[0] === "string" && (args[0] as string).startsWith("cb:"),
+    );
+    expect(cbCalls.length).toBe(0);
   });
 
   it("returns a structured validation error", async () => {

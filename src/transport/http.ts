@@ -3,6 +3,7 @@ import {
   actionSchema,
   addCustomSanctionsEntry,
   agentSchema,
+  consumeQuorumProposal,
   createQuorumProposal,
   evaluateDlp,
   evaluateEdgeCircuitBreaker,
@@ -25,6 +26,7 @@ import {
   type QuorumEvaluationResult,
   type SanctionsEvaluationResult,
   type Shareholder,
+  type VerificationRequest,
 } from "../core/index";
 import { publicJwkFromPrivate, signCompactJws } from "../crypto/jws";
 import {
@@ -186,11 +188,86 @@ async function requireCovenantEnforcement(
   return options.receiptSigningKey;
 }
 
+interface PipelineExecutionParams {
+  readonly request: Request;
+  readonly options: TransportOptions;
+  readonly isEvaluation: boolean;
+  readonly trustedAuthority: boolean;
+}
+
+interface PipelineExecutionResult {
+  readonly normalizedRequest: VerificationRequest;
+  readonly result: Awaited<ReturnType<typeof verifyAction>>;
+  readonly startedAt: number;
+}
+
+async function executeVerificationPipeline(
+  params: PipelineExecutionParams,
+): Promise<PipelineExecutionResult> {
+  const startedAt = performance.now();
+  const parsedJson = await readLimitedJson(params.request);
+  const parsed = verificationRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Verification request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+
+  const normalizedRequest = {
+    ...parsed.data,
+    context: { ...parsed.data.context, source: "rest" as const },
+  };
+
+  let circuitBreakerResult: EdgeCircuitBreakerResult | undefined;
+  // In evaluation mode, DO NOT pass circuitBreakerKv to prevent unauthenticated clients
+  // from mutating, budgeting, or tripping production session state.
+  if (!params.isEvaluation && params.options.circuitBreakerKv !== undefined) {
+    circuitBreakerResult = await evaluateEdgeCircuitBreaker(
+      params.options.circuitBreakerKv,
+      normalizedRequest,
+    );
+  }
+
+  let sanctionsResult: SanctionsEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.sanctions_screening !== false) {
+    sanctionsResult = await evaluateSanctions(
+      normalizedRequest,
+      params.options.circuitBreakerKv,
+    );
+  }
+
+  let dlpResult: DlpEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.dlp_screening !== false) {
+    dlpResult = evaluateDlp(normalizedRequest);
+  }
+
+  let quorumResult: QuorumEvaluationResult | undefined;
+  if (normalizedRequest.authority.constraints.quorum !== undefined) {
+    quorumResult = await evaluateQuorum(
+      normalizedRequest,
+      params.options.circuitBreakerKv,
+    );
+  }
+
+  const result = await verifyAction(normalizedRequest, {
+    trustedAuthority: params.trustedAuthority,
+    principalKeys: resolvePrincipalKeys(params.options),
+    circuitBreaker: circuitBreakerResult,
+    sanctions: sanctionsResult,
+    dlp: dlpResult,
+    quorum: quorumResult,
+  });
+
+  return { normalizedRequest, result, startedAt };
+}
+
 async function handleVerify(
   request: Request,
   options: TransportOptions,
 ): Promise<Response> {
-  const startedAt = performance.now();
   const authorization = await authorizeEnforcement(request, options.apiKey, { db: options.db });
   if (authorization === "quota_exceeded") {
     throw new TransportRequestError(
@@ -206,54 +283,18 @@ async function handleVerify(
       "A valid Bearer token or X-Vizier-Key is required for enforcement mode.",
     );
   }
-  const parsedJson = await readLimitedJson(request);
-  const parsed = verificationRequestSchema.safeParse(parsedJson);
-  if (!parsed.success) {
-    throw new TransportRequestError(
-      422,
-      "VALIDATION_ERROR",
-      "Verification request failed schema validation.",
-      validationDetails(parsed.error),
-    );
+
+  const { normalizedRequest, result, startedAt } = await executeVerificationPipeline({
+    request,
+    options,
+    isEvaluation: false,
+    trustedAuthority: authorization === "authenticated",
+  });
+
+  if (result.decision === "ALLOW" && normalizedRequest.context.proposal_id) {
+    await consumeQuorumProposal(normalizedRequest.context.proposal_id, options.circuitBreakerKv);
   }
 
-  const normalizedRequest = {
-    ...parsed.data,
-    context: { ...parsed.data.context, source: "rest" as const },
-  };
-  let circuitBreakerResult: EdgeCircuitBreakerResult | undefined;
-  if (options.circuitBreakerKv !== undefined) {
-    circuitBreakerResult = await evaluateEdgeCircuitBreaker(
-      options.circuitBreakerKv,
-      normalizedRequest,
-    );
-  }
-  let sanctionsResult: SanctionsEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.sanctions_screening !== false) {
-    sanctionsResult = await evaluateSanctions(
-      normalizedRequest,
-      options.circuitBreakerKv,
-    );
-  }
-  let dlpResult: DlpEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.dlp_screening !== false) {
-    dlpResult = evaluateDlp(normalizedRequest);
-  }
-  let quorumResult: QuorumEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.quorum !== undefined) {
-    quorumResult = await evaluateQuorum(
-      normalizedRequest,
-      options.circuitBreakerKv,
-    );
-  }
-  const result = await verifyAction(normalizedRequest, {
-    trustedAuthority: authorization === "authenticated",
-    principalKeys: resolvePrincipalKeys(options),
-    circuitBreaker: circuitBreakerResult,
-    sanctions: sanctionsResult,
-    dlp: dlpResult,
-    quorum: quorumResult,
-  });
   const requestId =
     normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
   console.log(
@@ -279,55 +320,13 @@ async function handleVerifyEvaluate(
   request: Request,
   options: TransportOptions,
 ): Promise<Response> {
-  const startedAt = performance.now();
-  const parsedJson = await readLimitedJson(request);
-  const parsed = verificationRequestSchema.safeParse(parsedJson);
-  if (!parsed.success) {
-    throw new TransportRequestError(
-      422,
-      "VALIDATION_ERROR",
-      "Verification request failed schema validation.",
-      validationDetails(parsed.error),
-    );
-  }
-
-  const normalizedRequest = {
-    ...parsed.data,
-    context: { ...parsed.data.context, source: "rest" as const },
-  };
-  let circuitBreakerResult: EdgeCircuitBreakerResult | undefined;
-  if (options.circuitBreakerKv !== undefined) {
-    circuitBreakerResult = await evaluateEdgeCircuitBreaker(
-      options.circuitBreakerKv,
-      normalizedRequest,
-    );
-  }
-  let sanctionsResult: SanctionsEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.sanctions_screening !== false) {
-    sanctionsResult = await evaluateSanctions(
-      normalizedRequest,
-      options.circuitBreakerKv,
-    );
-  }
-  let dlpResult: DlpEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.dlp_screening !== false) {
-    dlpResult = evaluateDlp(normalizedRequest);
-  }
-  let quorumResult: QuorumEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.quorum !== undefined) {
-    quorumResult = await evaluateQuorum(
-      normalizedRequest,
-      options.circuitBreakerKv,
-    );
-  }
-  const result = await verifyAction(normalizedRequest, {
+  const { normalizedRequest, result, startedAt } = await executeVerificationPipeline({
+    request,
+    options,
+    isEvaluation: true,
     trustedAuthority: false,
-    principalKeys: resolvePrincipalKeys(options),
-    circuitBreaker: circuitBreakerResult,
-    sanctions: sanctionsResult,
-    dlp: dlpResult,
-    quorum: quorumResult,
   });
+
   const requestId =
     normalizedRequest.context.request_id ?? `req_${crypto.randomUUID()}`;
   console.log(

@@ -51,6 +51,22 @@ jobs:
             npm publish --workspace @vizier/mcp-proxy --access public
           fi
 
+      - name: Verify published npm packages install cleanly
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && secrets.NPM_TOKEN != '' }}
+        run: |
+          echo "Verifying npm packages can be installed from npmjs.org..."
+          mkdir -p "$RUNNER_TEMP/npm-install-test"
+          cd "$RUNNER_TEMP/npm-install-test"
+          for attempt in {1..8}; do
+            if npm install --no-save --registry https://registry.npmjs.org @vizier/sdk @vizier/mcp-proxy; then
+              echo "npm packages installed successfully."
+              exit 0
+            fi
+            echo "Waiting for npm registry to index newly published version (attempt $attempt/8)..."
+            sleep 15
+          done
+          echo "::warning::Package installation check timed out waiting for npm registry indexing."
+
   pypi:
     name: Build & Publish Python SDK
     runs-on: ubuntu-latest
@@ -84,6 +100,20 @@ jobs:
           packages-dir: packages/python-sdk/dist/
           skip-existing: true
           password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Verify published PyPI package installs cleanly
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_PYPI_TOKEN == 'true' }}
+        run: |
+          echo "Verifying vizier-guard installs from PyPI..."
+          for attempt in {1..8}; do
+            if pip install --no-cache-dir vizier-guard; then
+              echo "vizier-guard installed successfully from PyPI."
+              exit 0
+            fi
+            echo "Waiting for PyPI index to make version available (attempt $attempt/8)..."
+            sleep 15
+          done
+          echo "::warning::PyPI package installation check timed out."
 
       - name: Fail if PyPI token missing on release
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_PYPI_TOKEN != 'true' }}

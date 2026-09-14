@@ -14,7 +14,7 @@
 Vizier is an ultra-fast, edge-native deterministic authorization and audit firewall for action-taking AI agents. Before an agent executes an external side effect (making a payment, executing code, modifying a database, dispatching messages, or deploying infrastructure), it submits the proposed action to Vizier.
 
 > ⚡ **Try the Live Interactive Playground**: [https://vizier.vassiliy-lakhonin.workers.dev/playground](https://vizier.vassiliy-lakhonin.workers.dev/playground)  
-> Test policy presets (`ALLOW`, `BLOCK_AMOUNT`, `BLOCK_TARGET`, `SENSITIVE`), inspect sub-25ms edge latency, and verify SHA-256 non-repudiation audit receipts in real time directly from your browser.
+> Test policy presets (`ALLOW`, `BLOCK_AMOUNT`, `BLOCK_TARGET`, `SENSITIVE`), inspect sub-25ms edge latency, and verify SHA-256 canonical integrity and signed audit receipts in real time directly from your browser.
 
 ---
 

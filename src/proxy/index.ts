@@ -7,6 +7,7 @@ import {
 } from "../core/dlp";
 import {
   computeActionHash,
+  consumeQuorumProposal,
   createQuorumProposal,
   getQuorumProposal,
 } from "../core/quorum";
@@ -140,10 +141,43 @@ interface UpstreamResolution {
   readonly error?: string;
 }
 
-/**
- * Resolves the upstream authorization header and target URL,
- * strictly validating destination origins and isolating client credentials.
- */
+function isPrivateOrMetadataHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "0.0.0.0" ||
+    host === "169.254.169.254" ||
+    host === "metadata.google.internal" ||
+    host === "instance-data" ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".arpa")
+  ) {
+    return true;
+  }
+
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = host.match(ipv4Regex);
+  if (match) {
+    const o1 = parseInt(match[1]!, 10);
+    const o2 = parseInt(match[2]!, 10);
+    if (o1 === 10) return true;
+    if (o1 === 127) return true;
+    if (o1 === 169 && o2 === 254) return true;
+    if (o1 === 172 && o2 >= 16 && o2 <= 31) return true;
+    if (o1 === 192 && o2 === 168) return true;
+    if (o1 === 0) return true;
+  }
+
+  if (host.startsWith("fe80:") || host.startsWith("fc00:") || host.startsWith("fd")) {
+    return true;
+  }
+
+  return false;
+}
+
 function resolveUpstream(
   request: Request,
   options: TransportOptions,
@@ -187,6 +221,10 @@ function resolveUpstream(
   const isTestEnv =
     (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env?.NODE_ENV === "test";
 
+  if (isPrivateOrMetadataHost(parsed.hostname) && !(isLocalhost && isTestEnv)) {
+    return { error: `Access to private or metadata network host '${parsed.hostname}' is prohibited.` };
+  }
+
   const originAllowed =
     allowedOrigins.has(parsed.origin) ||
     (isLocalhost && (isTestEnv || allowedOrigins.has(parsed.origin)));
@@ -201,20 +239,6 @@ function resolveUpstream(
   const upstreamKey = request.headers.get("X-Upstream-Key");
   if (upstreamKey) {
     upstreamAuthHeader = `Bearer ${upstreamKey}`;
-  } else {
-    // Only forward Authorization if the caller authenticated to Vizier via X-Vizier-Key
-    // and Authorization is not a Vizier API key.
-    const hasVizierKeyHeader = request.headers.has("X-Vizier-Key");
-    const authHeader = request.headers.get("Authorization");
-    if (hasVizierKeyHeader && authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.slice("Bearer ".length).trim();
-      const isVizierKey =
-        (options.apiKey !== undefined && token === options.apiKey) ||
-        token.startsWith("vz_live_");
-      if (!isVizierKey) {
-        upstreamAuthHeader = authHeader;
-      }
-    }
   }
 
   return { upstreamUrl: parsed.toString(), upstreamAuthHeader };
@@ -407,6 +431,7 @@ export async function handleChatCompletions(
       method: "POST",
       headers: upstreamHeaders,
       body: JSON.stringify(payload),
+      redirect: "manual",
     });
   } catch (fetchErr: unknown) {
     console.error(
@@ -419,6 +444,15 @@ export async function handleChatCompletions(
     return openAiError(
       `Vizier Proxy failed to connect to upstream LLM: ${fetchErr instanceof Error ? fetchErr.message : "Connection failed"}`,
       "upstream_connection_failed",
+      502,
+      "api_connection_error",
+    );
+  }
+
+  if (upstreamResponse.status >= 300 && upstreamResponse.status < 400) {
+    return openAiError(
+      "Upstream returned an HTTP redirect, which is disallowed for security reasons.",
+      "upstream_redirect_disallowed",
       502,
       "api_connection_error",
     );
@@ -671,6 +705,17 @@ interface ChatCompletionResponse {
                 );
               }
 
+              if (prop.status === "CONSUMED") {
+                return openAiError(
+                  `Vizier Quorum Gate: proposal '${suppliedProposalId}' has already been executed. Dual-control proposals are single-use and cannot be replayed.`,
+                  "PROPOSAL_ALREADY_CONSUMED",
+                  403,
+                  "vizier_proposal_already_consumed",
+                  `tool_calls[${tIdx}]`,
+                  { proposal_id: suppliedProposalId },
+                );
+              }
+
               if (prop.status === "EXPIRED" || Date.parse(prop.expires_at) < Date.now()) {
                 return openAiError(
                   `Vizier Quorum Gate: proposal '${suppliedProposalId}' has expired.`,
@@ -699,6 +744,7 @@ interface ChatCompletionResponse {
 
               if (prop.status === "APPROVED") {
                 quorumApproved = true;
+                await consumeQuorumProposal(suppliedProposalId, options.circuitBreakerKv);
               }
             }
 

@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { authenticateKey, incrementKeyUsage } from "../auth/keys";
+import { authenticateKey } from "../auth/keys";
 
 export type EnforcementAuthorization =
   | "authenticated"
@@ -65,11 +65,8 @@ export async function authorizeEnforcement(
   // If server has no master API key configured:
   if (apiKey === undefined || apiKey.length === 0) {
     if (token?.startsWith("vz_live_") && options.db) {
-      const authRes = await authenticateKey(token, { apiKey, db: options.db });
+      const authRes = await authenticateKey(token, { apiKey, db: options.db, consumeQuota: true });
       if (authRes.authenticated) {
-        if (authRes.key_record && options.db) {
-          await incrementKeyUsage(options.db, authRes.key_record.id);
-        }
         return "authenticated";
       }
       if (authRes.quota_exceeded) return "quota_exceeded";
@@ -92,11 +89,8 @@ export async function authorizeEnforcement(
 
   // 2. Tenant API key
   if (token.startsWith("vz_live_") && options.db) {
-    const authRes = await authenticateKey(token, { apiKey, db: options.db });
+    const authRes = await authenticateKey(token, { apiKey, db: options.db, consumeQuota: true });
     if (authRes.authenticated) {
-      if (authRes.key_record && options.db) {
-        await incrementKeyUsage(options.db, authRes.key_record.id);
-      }
       return "authenticated";
     }
     if (authRes.quota_exceeded) {

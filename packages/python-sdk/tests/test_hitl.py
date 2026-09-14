@@ -51,9 +51,10 @@ def test_webhook_hitl_handler():
 
     mock_resp = MagicMock()
     mock_resp.__enter__.return_value = mock_resp
+    mock_resp.headers.get_content_type.return_value = "application/json"
     mock_resp.read.return_value = b'{"approved": true, "operator_id": "manager_bob"}'
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch.object(handler._opener, "open", return_value=mock_resp):
         res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
         assert res.approved
         assert res.operator_id == "manager_bob"
@@ -64,10 +65,11 @@ def test_webhook_hitl_handler_non_json_fails_closed():
 
     mock_resp = MagicMock()
     mock_resp.__enter__.return_value = mock_resp
+    mock_resp.headers.get_content_type.return_value = "application/json"
     mock_resp.read.return_value = b"<html><body>502 Bad Gateway</body></html>"
     mock_resp.status = 200
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch.object(handler._opener, "open", return_value=mock_resp):
         res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
         assert not res.approved
         assert "non-JSON" in res.reason
@@ -78,13 +80,48 @@ def test_webhook_hitl_handler_invalid_structure_fails_closed():
 
     mock_resp = MagicMock()
     mock_resp.__enter__.return_value = mock_resp
+    mock_resp.headers.get_content_type.return_value = "application/json"
     mock_resp.read.return_value = b'["not", "an", "object"]'
     mock_resp.status = 200
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch.object(handler._opener, "open", return_value=mock_resp):
         res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
         assert not res.approved
         assert "non-object" in res.reason
+
+def test_webhook_hitl_handler_string_or_number_approved_fails_closed():
+    handler = WebhookHITLHandler(webhook_url="https://hooks.example/approval")
+    review = mock_review_response()
+
+    for invalid_payload in [
+        b'{"approved": "false"}',
+        b'{"approved": "true"}',
+        b'{"approved": 1}',
+        b'{"approved": null}',
+    ]:
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.headers.get_content_type.return_value = "application/json"
+        mock_resp.read.return_value = invalid_payload
+
+        with patch.object(handler._opener, "open", return_value=mock_resp):
+            res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
+            assert not res.approved
+            assert "strict boolean" in res.reason
+
+def test_webhook_hitl_handler_content_type_mismatch_fails_closed():
+    handler = WebhookHITLHandler(webhook_url="https://hooks.example/approval")
+    review = mock_review_response()
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.headers.get_content_type.return_value = "text/html"
+    mock_resp.read.return_value = b'{"approved": true}'
+
+    with patch.object(handler._opener, "open", return_value=mock_resp):
+        res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
+        assert not res.approved
+        assert "invalid Content-Type" in res.reason
 
 def test_webhook_hitl_handler_missing_approved_field_defaults_to_false():
     handler = WebhookHITLHandler(webhook_url="https://hooks.example/approval")
@@ -92,12 +129,13 @@ def test_webhook_hitl_handler_missing_approved_field_defaults_to_false():
 
     mock_resp = MagicMock()
     mock_resp.__enter__.return_value = mock_resp
+    mock_resp.headers.get_content_type.return_value = "application/json"
     mock_resp.read.return_value = b'{"status": "ok", "message": "acknowledged"}'
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch.object(handler._opener, "open", return_value=mock_resp):
         res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
         assert not res.approved
-        assert "Rejected" in res.reason
+        assert "strict boolean" in res.reason
 
 def test_telegram_hitl_handler():
     handler = TelegramHITLHandler(bot_token="123456:ABC-DEF", chat_id="100200300", timeout=5.0)
@@ -114,6 +152,7 @@ def test_telegram_hitl_handler():
                         "callback_query": {
                             "id": "cb_1",
                             "data": "vz_app_nonces12",
+                            "message": {"message_id": 999, "chat": {"id": 100200300}},
                             "from": {"username": "alice"},
                         },
                     }
@@ -127,6 +166,50 @@ def test_telegram_hitl_handler():
             res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
             assert res.approved
             assert res.operator_id == "telegram:alice"
+
+def test_telegram_hitl_handler_operator_allowlist():
+    # Only bob is authorized; alice should be rejected
+    handler = TelegramHITLHandler(
+        bot_token="123456:ABC-DEF",
+        chat_id="100200300",
+        allowed_operators=["bob"],
+        timeout=0.2,
+        poll_interval=0.05,
+    )
+    review = mock_review_response()
+
+    call_count = 0
+
+    def mock_api_call(method, data):
+        nonlocal call_count
+        if method == "sendMessage":
+            return {"ok": True, "result": {"message_id": 999}}
+        if method == "getUpdates":
+            if call_count == 0:
+                call_count += 1
+                return {
+                    "ok": True,
+                    "result": [
+                        {
+                            "update_id": 1,
+                            "callback_query": {
+                                "id": "cb_unauth",
+                                "data": "vz_app_nonces12",
+                                "message": {"message_id": 999, "chat": {"id": 100200300}},
+                                "from": {"username": "alice", "id": 111},
+                            },
+                        }
+                    ],
+                }
+            return {"ok": True, "result": []}
+        return {"ok": True}
+
+    with patch.object(handler, "_api_call", side_effect=mock_api_call):
+        with patch("uuid.uuid4") as mock_uuid:
+            mock_uuid.return_value.hex = "nonces1234"
+            res = handler.request_approval("transfer", "bank.corp", {"amount": 500}, review)
+            assert not res.approved
+            assert "timed out" in res.reason
 
 def test_vizier_guard_sync_with_hitl_approval():
     mock_client = MagicMock()

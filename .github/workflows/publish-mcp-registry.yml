@@ -55,10 +55,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           tar -xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" -C "$RUNNER_TEMP/bin" mcp-publisher
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-          mcp-publisher --version
+          "$RUNNER_TEMP/bin/mcp-publisher" --version
 
       - name: Authenticate to MCP Registry (GitHub OIDC)
-        run: ./mcp-publisher login github-oidc
+        run: "$RUNNER_TEMP/bin/mcp-publisher" login github-oidc
 
       - name: Wait for package version on PyPI (if vizier-guard)
         if: inputs.target == 'vizier-guard'
@@ -80,4 +80,4 @@ jobs:
           exit 1
 
       - name: Publish server to MCP Registry
-        run: ./mcp-publisher publish
+        run: "$RUNNER_TEMP/bin/mcp-publisher" publish

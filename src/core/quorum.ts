@@ -21,7 +21,7 @@ export interface QuorumProposal {
   readonly constraints: QuorumConstraints;
   readonly created_at: string;
   readonly expires_at: string;
-  readonly status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  readonly status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "CONSUMED";
   readonly approvals: readonly QuorumApproval[];
 }
 
@@ -32,6 +32,7 @@ export type QuorumFailureReason =
   | "QUORUM_ACTION_MISMATCH"
   | "PROPOSAL_EXPIRED"
   | "PROPOSAL_NOT_FOUND"
+  | "PROPOSAL_ALREADY_CONSUMED"
   | "UNAUTHORIZED_APPROVER";
 
 export interface QuorumEvaluationResult {
@@ -242,6 +243,37 @@ export async function recordQuorumApproval(
 }
 
 /**
+ * Marks an approved quorum proposal as CONSUMED so it cannot be re-executed or replayed.
+ */
+export async function consumeQuorumProposal(
+  proposalId: string,
+  kv?: KVNamespace,
+): Promise<boolean> {
+  const proposal = await getQuorumProposal(proposalId, kv);
+  if (!proposal || proposal.status === "CONSUMED") {
+    return false;
+  }
+  const consumedProposal: QuorumProposal = Object.freeze({
+    ...proposal,
+    status: "CONSUMED" as const,
+  });
+  if (kv) {
+    const remainingSeconds = Math.max(
+      Math.floor((Date.parse(proposal.expires_at) - Date.now()) / 1000),
+      60,
+    );
+    await kv.put(
+      `quorum:proposal:${proposalId}`,
+      JSON.stringify(consumedProposal),
+      { expirationTtl: remainingSeconds },
+    );
+  } else {
+    memoryProposalStore.set(proposalId, consumedProposal);
+  }
+  return true;
+}
+
+/**
  * Evaluates whether quorum requirements are satisfied for a VerificationRequest.
  */
 export async function evaluateQuorum(
@@ -271,6 +303,15 @@ export async function evaluateQuorum(
         required: true,
         satisfied: false,
         reasonCode: "PROPOSAL_NOT_FOUND",
+        details: { proposal_id: proposalId },
+      };
+    }
+
+    if (proposal.status === "CONSUMED") {
+      return {
+        required: true,
+        satisfied: false,
+        reasonCode: "PROPOSAL_ALREADY_CONSUMED",
         details: { proposal_id: proposalId },
       };
     }

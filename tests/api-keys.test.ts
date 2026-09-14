@@ -141,6 +141,31 @@ describe("Multi-Tenant B2B API Key Manager & Quota Engine", () => {
     expect(auth.error_code).toBe("QUOTA_EXCEEDED");
   });
 
+  it("atomically consumes quota in a single step with consumeQuota: true", async () => {
+    const db = createTestD1();
+    const created = await generateApiKey(db, {
+      org_id: "org_atomic",
+      name: "Atomic Test Key",
+      monthly_quota: 2,
+    });
+
+    // 1st consumption
+    const auth1 = await authenticateKey(created.key, { db, consumeQuota: true });
+    expect(auth1.authenticated).toBe(true);
+    expect(auth1.key_record?.current_usage).toBe(1);
+
+    // 2nd consumption
+    const auth2 = await authenticateKey(created.key, { db, consumeQuota: true });
+    expect(auth2.authenticated).toBe(true);
+    expect(auth2.key_record?.current_usage).toBe(2);
+
+    // 3rd consumption -> atomically blocked!
+    const auth3 = await authenticateKey(created.key, { db, consumeQuota: true });
+    expect(auth3.authenticated).toBe(false);
+    expect(auth3.quota_exceeded).toBe(true);
+    expect(auth3.error_code).toBe("QUOTA_EXCEEDED");
+  });
+
   it("lists and revokes keys for an organization", async () => {
     const db = createTestD1();
     const k1 = await generateApiKey(db, { org_id: "org_multi", name: "Key 1" });

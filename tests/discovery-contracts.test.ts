@@ -75,7 +75,12 @@ describe("machine-readable discovery contracts", () => {
       servers: [{ url: ORIGIN }],
     });
     expect(Object.keys(document.paths as object).sort()).toEqual([
+      "/.well-known/ard.json",
+      "/.well-known/jwks.json",
+      "/health",
+      "/playground/evaluate",
       "/v1/admin/keys",
+      "/v1/admin/keys/{key_id}",
       "/v1/authorizations",
       "/v1/chat/completions",
       "/v1/circuit-breaker/reset",
@@ -85,6 +90,7 @@ describe("machine-readable discovery contracts", () => {
       "/v1/models",
       "/v1/outcomes",
       "/v1/quorum/approve",
+      "/v1/quorum/proposals/{proposal_id}",
       "/v1/quorum/propose",
       "/v1/sanctions/entries",
       "/v1/sanctions/screen",
@@ -92,6 +98,12 @@ describe("machine-readable discovery contracts", () => {
       "/v1/verify",
       "/v1/verify/evaluate",
     ]);
+
+    const paths = document.paths as Record<string, Record<string, { security?: unknown[] }>>;
+    expect(paths["/v1/verify/evaluate"]?.post?.security).toEqual([]);
+    expect(paths["/playground/evaluate"]?.post?.security).toEqual([]);
+    expect(paths["/v1/models"]?.get?.security).toEqual([]);
+    expect(paths["/health"]?.get?.security).toEqual([]);
 
     const serialized = JSON.stringify(document);
     expect(serialized).not.toContain("#/$defs/");

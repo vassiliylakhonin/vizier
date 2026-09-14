@@ -82,6 +82,7 @@ export type {
 export {
   clearMemoryProposalStore,
   computeActionHash,
+  consumeQuorumProposal,
   createQuorumProposal,
   evaluateQuorum,
   generateProposalId,

@@ -59,7 +59,7 @@ if (decision.decision === "ALLOW") {
 ## 🔑 Features
 
 * **Deterministic Policies**: No probabilistic LLM-in-the-loop decisions. Strict mathematical rule enforcement.
-* **Cryptographic Receipts**: SHA-256 canonical JSON hash (`receipt.request_hash`) on every response for non-repudiation audit trails.
+* **Cryptographic Receipts**: SHA-256 canonical JSON hash (`receipt.request_hash`) on every response for tamper-evident audit trails.
 * **Delegation Grants**: Support for principal-signed JWS delegation grants (`grant` field).
 * **Action Covenants**: Full lifecycle support (`activateCovenant`, `authorizeCovenant`, `recordOutcome`).
 * **Sub-25ms Latency**: Designed to run against Cloudflare Workers globally distributed on the edge.

@@ -93,9 +93,13 @@ export async function generateApiKey(
   };
 }
 
+export interface AuthenticateKeyOptions extends TransportOptions {
+  readonly consumeQuota?: boolean;
+}
+
 export async function authenticateKey(
   providedKey: string,
-  options: TransportOptions,
+  options: AuthenticateKeyOptions,
   now: Date = new Date(),
 ): Promise<KeyAuthResult> {
   const trimmed = providedKey.trim();
@@ -146,8 +150,65 @@ export async function authenticateKey(
   }
 
   const currentMonth = getCurrentPeriodMonth(now);
-  const effectiveUsage = (row.period_month === currentMonth) ? row.current_usage : 0;
 
+  // If quota consumption is requested (used by enforcement):
+  if (options.consumeQuota === true) {
+    // Single atomic conditional consume query preventing race conditions
+    const updateResult = await options.db
+      .prepare(
+        `UPDATE vizier_api_keys
+         SET current_usage = CASE WHEN period_month = ? THEN current_usage + 1 ELSE 1 END,
+             period_month = ?
+         WHERE id = ?
+           AND revoked_at IS NULL
+           AND (
+             monthly_quota <= 0
+             OR (period_month = ? AND current_usage < monthly_quota)
+             OR (period_month != ? AND monthly_quota > 0)
+           )`,
+      )
+      .bind(currentMonth, currentMonth, row.id, currentMonth, currentMonth)
+      .run();
+
+    const changes = (updateResult.meta as { changes?: number })?.changes ?? 0;
+    if (changes === 0) {
+      // Re-read row to see if revoked or quota exceeded
+      const refreshed = (await options.db
+        .prepare("SELECT current_usage, monthly_quota, revoked_at, period_month FROM vizier_api_keys WHERE id = ?")
+        .bind(row.id)
+        .first()) as Pick<ApiKeyRecord, "current_usage" | "monthly_quota" | "revoked_at" | "period_month"> | null;
+
+      if (refreshed?.revoked_at !== null) {
+        return {
+          authenticated: false,
+          error_code: "KEY_REVOKED",
+          error_message: "API key has been revoked.",
+        };
+      }
+
+      const effectiveUsage = (refreshed?.period_month === currentMonth)
+        ? (refreshed?.current_usage ?? row.current_usage)
+        : 0;
+
+      return {
+        authenticated: false,
+        quota_exceeded: true,
+        key_record: { ...row, current_usage: effectiveUsage },
+        error_code: "QUOTA_EXCEEDED",
+        error_message: `Monthly API quota exceeded (${effectiveUsage}/${row.monthly_quota} requests used).`,
+      };
+    }
+
+    const newUsage = row.period_month === currentMonth ? row.current_usage + 1 : 1;
+    return {
+      authenticated: true,
+      is_master: false,
+      key_record: { ...row, current_usage: newUsage, period_month: currentMonth },
+    };
+  }
+
+  // Read-only quota check when consumeQuota === false
+  const effectiveUsage = (row.period_month === currentMonth) ? row.current_usage : 0;
   if (row.monthly_quota > 0 && effectiveUsage >= row.monthly_quota) {
     return {
       authenticated: false,

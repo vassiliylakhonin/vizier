@@ -744,5 +744,118 @@ describe("Transparent AI Proxy (/v1/chat/completions & /v1/models)", () => {
     const res = await handleHttpRequest(req, testOptions);
     expect(res.status).toBe(200);
     expect(res.headers.get("X-Vizier-Status")).toBe("PASSED");
+
+    // Replay attempt with the same proposal ID must fail with PROPOSAL_ALREADY_CONSUMED
+    const replayReq = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+        "X-Session-Id": "sess-quorum-agent",
+        "X-Quorum-Proposal-Id": prop.proposal_id,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Transfer $50,000" }],
+      }),
+    });
+    const replayRes = await handleHttpRequest(replayReq, testOptions);
+    expect(replayRes.status).toBe(403);
+    const replayErr = await replayRes.json() as { error?: { code?: string } };
+    expect(replayErr.error?.code).toBe("PROPOSAL_ALREADY_CONSUMED");
+  });
+
+  it("SSRF guard: blocks private IP and cloud metadata destinations", async () => {
+    let idx = 0;
+    for (const host of ["169.254.169.254", "10.0.0.1", "192.168.1.1", "metadata.google.internal"]) {
+      idx += 1;
+      const req = new Request("https://vizier.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Vizier-Key": "test-vizier-key",
+          "X-Session-Id": `sess-ssrf-priv-${idx}`,
+          "X-Upstream-Url": `https://${host}/v1/chat/completions`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: `Hello ${host}` }],
+        }),
+      });
+
+      const res = await handleHttpRequest(req, options);
+      expect(res.status).toBe(400);
+      const data = (await res.json()) as { error: { message: string } };
+      expect(data.error.message).toContain("prohibited");
+    }
+  });
+
+  it("SSRF guard: rejects upstream HTTP redirects with 502 upstream_redirect_disallowed", async () => {
+    const testOptions: TransportOptions = {
+      ...options,
+      upstreamFetch: async () =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: "https://attacker.evil/v1/chat/completions" },
+        }),
+    };
+
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Vizier-Key": "test-vizier-key",
+        "X-Session-Id": "sess-redirect-guard",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Test redirect" }],
+      }),
+    });
+
+    const res = await handleHttpRequest(req, testOptions);
+    expect(res.status).toBe(502);
+    const err = await res.json() as { error: { code: string; message: string } };
+    expect(err.error.code).toBe("upstream_redirect_disallowed");
+  });
+
+  it("Credential isolation: never forwards caller's Authorization header to upstream", async () => {
+    let capturedAuth: string | null = null;
+    const testOptions: TransportOptions = {
+      ...options,
+      upstreamFetch: async (_url, init) => {
+        const headers = init?.headers as Record<string, string>;
+        capturedAuth = headers?.["Authorization"] ?? null;
+        return new Response(
+          JSON.stringify({
+            id: "chatcmpl-auth-isolation",
+            object: "chat.completion",
+            created: 1715367049,
+            model: "gpt-4o",
+            choices: [{ index: 0, message: { role: "assistant", content: "Safe" } }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    };
+
+    // Caller authenticates with Vizier key in Authorization
+    const req = new Request("https://vizier.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer test-vizier-key",
+        "X-Session-Id": "sess-cred-iso-test",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Testing credential isolation" }],
+      }),
+    });
+
+    const res = await handleHttpRequest(req, testOptions);
+    expect(res.status).toBe(200);
+    // Upstream should NOT have received caller's Authorization header
+    expect(capturedAuth).toBeNull();
   });
 });
