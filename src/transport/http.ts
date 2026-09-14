@@ -54,6 +54,7 @@ import {
   createVizierAgentsTxt,
   createVizierGlamaJson,
   createVizierLlmsTxt,
+  createVizierOAuthProtectedResource,
 } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
@@ -1220,13 +1221,23 @@ export async function handleHttpRequest(
     }
     if (
       request.method === "GET" &&
-      url.pathname === "/.well-known/agent-card.json"
+      (url.pathname === "/.well-known/agent-card.json" ||
+        url.pathname === "/.well-known/agent.json")
     ) {
       const card = await maybeSignAgentCard(
         createAgentCard(url.origin),
         options.agentCardSigningKey,
       );
       return jsonResponse(card, 200, {
+        "Cache-Control": "public, max-age=300",
+      });
+    }
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/.well-known/oauth-protected-resource" ||
+        url.pathname === "/.well-known/oauth-protected-resource/mcp")
+    ) {
+      return jsonResponse(createVizierOAuthProtectedResource(url.origin), 200, {
         "Cache-Control": "public, max-age=300",
       });
     }

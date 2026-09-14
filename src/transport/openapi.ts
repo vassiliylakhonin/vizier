@@ -488,6 +488,17 @@ export function createOpenApiDocument(
           },
         },
       },
+      "/.well-known/agent.json": {
+        get: {
+          operationId: "getLegacyAgentCard",
+          tags: ["Discovery"],
+          summary: "Legacy A2A Agent Card alias",
+          security: [],
+          responses: {
+            "200": { description: "A2A Agent Card JSON metadata." },
+          },
+        },
+      },
       "/.well-known/mcp.json": {
         get: {
           operationId: "getMcpServerManifest",
@@ -568,6 +579,17 @@ export function createOpenApiDocument(
           security: [],
           responses: {
             "200": { description: "JWKS key set." },
+          },
+        },
+      },
+      "/.well-known/oauth-protected-resource": {
+        get: {
+          operationId: "getOAuthProtectedResourceMetadata",
+          tags: ["Discovery"],
+          summary: "RFC 9728 OAuth 2.0 Protected Resource Metadata for MCP",
+          security: [],
+          responses: {
+            "200": { description: "OAuth Protected Resource JSON metadata." },
           },
         },
       },

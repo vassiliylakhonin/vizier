@@ -76,6 +76,7 @@ describe("machine-readable discovery contracts", () => {
     });
     expect(Object.keys(document.paths as object).sort()).toEqual([
       "/.well-known/agent-card.json",
+      "/.well-known/agent.json",
       "/.well-known/agents.txt",
       "/.well-known/ai-catalog.json",
       "/.well-known/ard.json",
@@ -83,6 +84,7 @@ describe("machine-readable discovery contracts", () => {
       "/.well-known/jwks.json",
       "/.well-known/llms.txt",
       "/.well-known/mcp.json",
+      "/.well-known/oauth-protected-resource",
       "/a2a",
       "/health",
       "/mcp",
@@ -115,11 +117,13 @@ describe("machine-readable discovery contracts", () => {
     expect(paths["/a2a"]?.post?.security).toEqual([]);
     expect(paths["/mcp"]?.post?.security).toEqual([]);
     expect(paths["/.well-known/agent-card.json"]?.get?.security).toEqual([]);
+    expect(paths["/.well-known/agent.json"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/mcp.json"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/ai-catalog.json"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/glama.json"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/llms.txt"]?.get?.security).toEqual([]);
     expect(paths["/.well-known/agents.txt"]?.get?.security).toEqual([]);
+    expect(paths["/.well-known/oauth-protected-resource"]?.get?.security).toEqual([]);
 
     const serialized = JSON.stringify(document);
     expect(serialized).not.toContain("#/$defs/");
@@ -217,6 +221,37 @@ describe("machine-readable discovery contracts", () => {
 
     expect(root.status).toBe(200);
     expect(await root.json()).toEqual(wellKnownJson);
+  });
+
+  it("serves /.well-known/agent.json as an identical alias to agent-card.json", async () => {
+    const [card, alias] = await Promise.all([
+      get("/.well-known/agent-card.json"),
+      get("/.well-known/agent.json"),
+    ]);
+
+    expect(alias.status).toBe(200);
+    expect(await alias.json()).toEqual(await card.json());
+  });
+
+  it("serves RFC 9728 OAuth Protected Resource Metadata for MCP", async () => {
+    const [standard, mcpScoped] = await Promise.all([
+      get("/.well-known/oauth-protected-resource"),
+      get("/.well-known/oauth-protected-resource/mcp"),
+    ]);
+
+    expect(standard.status).toBe(200);
+    expect(standard.headers.get("Cache-Control")).toBe("public, max-age=300");
+    const body = (await standard.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      resource: `${ORIGIN}/mcp`,
+      authorization_servers: [ORIGIN],
+      scopes_supported: ["vizier:verify", "vizier:covenants", "vizier:audit"],
+      bearer_methods_supported: ["header"],
+      resource_documentation: `${ORIGIN}/docs`,
+    });
+
+    expect(mcpScoped.status).toBe(200);
+    expect(await mcpScoped.json()).toEqual(body);
   });
 
   // A registry listing is only useful while it points at the endpoint this

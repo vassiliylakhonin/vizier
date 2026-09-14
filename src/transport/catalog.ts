@@ -149,6 +149,19 @@ export function createVizierGlamaJson(): Readonly<Record<string, unknown>> {
   });
 }
 
+export function createVizierOAuthProtectedResource(
+  origin: string,
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    resource: `${origin}/mcp`,
+    authorization_servers: [origin],
+    scopes_supported: ["vizier:verify", "vizier:covenants", "vizier:audit"],
+    bearer_methods_supported: ["header"],
+    resource_documentation: `${origin}/docs`,
+  });
+}
+
+
 
 export function createVizierAgentsTxt(origin: string): string {
   return `# agents.txt - Agent Discovery & Policy Declaration
