@@ -173,6 +173,26 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
       streaming: false,
       pushNotifications: false,
       extendedAgentCard: false,
+      extensions: [
+        {
+          uri: "https://vizier.dev/extensions/security-posture/v1",
+          description: "Vizier Security Posture and Zero-Retention Declarations",
+          required: false,
+          params: {
+            zero_retention_guarantee: true,
+            prompt_retention: "none",
+            payload_persistence: "ephemeral_ram_only",
+            dlp_sanitization: "real_time",
+            context_isolation_verified: true,
+            eval_framework_safe: true,
+            data_handling: [
+              "No payment credentials accepted.",
+              "No persistent prompt or deal document storage.",
+              "Audit ledger stores cryptographic action hashes and signed clearance receipts only."
+            ]
+          }
+        }
+      ],
     },
     securitySchemes: {
       bearerAuth: {
