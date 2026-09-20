@@ -635,6 +635,20 @@ async function parseVerificationResponse(
   return response.receipt.request_hash === expectedHash ? response : null;
 }
 
+export interface HumanReviewRequest {
+  audience: string;
+  action: Record<string, JsonValue>;
+  evidence: Record<string, JsonValue>;
+  escalation_reason: string;
+  expires_in_seconds?: number;
+}
+const humanReviewClaimsSchema = z.strictObject({
+  iss: z.string(), aud: z.string(), jti: z.string().regex(/^rev_[a-f0-9-]{36}$/),
+  request_hash: z.string().regex(/^[a-f0-9]{64}$/), decision: z.literal("APPROVED"),
+  reviewer: z.literal("reviewer"), reason: z.string().min(1),
+  iat: z.number().int(), exp: z.number().int(), purpose: z.literal("manual-action-review"),
+});
+
 export class Vizier {
   readonly #baseUrl: string;
   readonly #apiKey: string | undefined;
@@ -728,6 +742,42 @@ export class Vizier {
         "INVALID_CONFIGURATION",
       );
     }
+  }
+
+  /** Explicit opt-in persistence: the review service retains this payload for seven days. */
+  async submitHumanReview(request: HumanReviewRequest, options: VerifyOptions = {}): Promise<{ id: string; request_hash: string }> {
+    const normalized = { ...request, expires_in_seconds: request.expires_in_seconds ?? 1800 };
+    const expectedHash = await hashCanonicalJson(normalized);
+    const { body, status } = await this.#postJson("/v1/reviews", normalized, options);
+    if (!isRecord(body) || typeof body.id !== "string" || !/^rev_[a-f0-9-]{36}$/.test(body.id) || body.request_hash !== expectedHash || body.status !== "PENDING") {
+      throw new VizierError("Review response does not bind the submitted request.", status, "INVALID_RESPONSE");
+    }
+    return { id: body.id, request_hash: expectedHash };
+  }
+
+  /** Verify against the locally intended request, then claim once. Does not execute an action. */
+  async claimHumanReview(request: HumanReviewRequest, id: string, token: string, options: VerifyOptions = {}): Promise<{ id: string; request_hash: string; status: "CONSUMED"; execution: "not_performed" }> {
+    let untrusted: unknown;
+    try {
+      if (token.length > 12000 || token.split(".").length !== 3) throw new Error("Invalid token");
+      untrusted = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(base64urlDecode(token.split(".")[1]!))) as unknown;
+    } catch {
+      throw new VizierError("Malformed human review attestation.", 0, "INVALID_ATTESTATION");
+    }
+    const parsed = humanReviewClaimsSchema.safeParse(untrusted);
+    const expectedHash = await hashCanonicalJson({ ...request, expires_in_seconds: request.expires_in_seconds ?? 1800 });
+    const now = Math.floor(Date.now() / 1000);
+    if (!parsed.success || parsed.data.iss !== this.#issuer() || parsed.data.aud !== request.audience || parsed.data.jti !== id ||
+        parsed.data.request_hash !== expectedHash || parsed.data.exp <= now || parsed.data.iat > now ||
+        parsed.data.exp <= parsed.data.iat || parsed.data.exp - parsed.data.iat > 300 ||
+        !await verifyCompactJws(token, parsed.data, "VIZIER-HUMAN-REVIEW+JWS", await this.#fetchJwks(options))) {
+      throw new VizierError("Human review is expired, invalid or not bound to the intended request.", 0, "INVALID_ATTESTATION");
+    }
+    const { body, status } = await this.#postJson(`/v1/reviews/${id}/consume`, { token, request_hash: expectedHash, audience: request.audience }, options);
+    if (!isRecord(body) || body.id !== id || body.request_hash !== expectedHash || body.audience !== request.audience || body.status !== "CONSUMED" || body.execution !== "not_performed") {
+      throw new VizierError("Invalid claim response; reconcile state before any execution.", status, "INVALID_RESPONSE");
+    }
+    return { id, request_hash: expectedHash, status: "CONSUMED", execution: "not_performed" };
   }
 
   async verify(

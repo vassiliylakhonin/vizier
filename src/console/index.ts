@@ -178,6 +178,7 @@ export function createConsoleHtml(origin: string): string {
     </div>
   </div>
 
+  <p><a href="/reviews" style="color:inherit">Human review queue →</a></p>
   <div class="nav-tabs">
     <button class="tab-btn active" onclick="showTab('guardrails')">Guardrails Simulator</button>
     <button class="tab-btn" onclick="showTab('quorum')">HITL Quorum Gate (4-Eyes)</button>

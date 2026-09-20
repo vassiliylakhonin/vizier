@@ -1,3 +1,5 @@
+import { createReviewConsole } from "../reviews/console";
+import { handleReviews } from "../reviews/api";
 import { z } from "zod";
 import {
   actionSchema,
@@ -1125,6 +1127,10 @@ export async function handleHttpRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
   try {
+    if (request.method === "GET" && url.pathname === "/reviews") return createReviewConsole();
+    if (url.pathname === "/v1/reviews" || url.pathname.startsWith("/v1/reviews/")) {
+      return await handleReviews(request, options);
+    }
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,

@@ -176,18 +176,18 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
       extensions: [
         {
           uri: "https://vizier.dev/extensions/security-posture/v1",
-          description: "Vizier Security Posture and Zero-Retention Declarations",
+          description: "Vizier Security Posture and Data Retention",
           required: false,
           params: {
-            zero_retention_guarantee: true,
+            zero_retention_guarantee: false,
             prompt_retention: "none",
-            payload_persistence: "ephemeral_ram_only",
+            payload_persistence: "ephemeral_verification; explicit_human_reviews_7_days",
             dlp_sanitization: "real_time",
             context_isolation_verified: true,
             eval_framework_safe: true,
             data_handling: [
               "No payment credentials accepted.",
-              "No persistent prompt or deal document storage.",
+              "Verification payloads remain ephemeral. Explicit /v1/reviews submissions persist for seven days; do not submit secrets or confidential documents.",
               "Audit ledger stores cryptographic action hashes and signed clearance receipts only."
             ]
           }

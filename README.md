@@ -783,3 +783,68 @@ principal-signed delegation and acceptance, billing, dashboards, reputation
 models, payment settlement, and LLM policy evaluation inside the privileged kernel
 remain outside v0.3.0. See
 [FUTURE.md](FUTURE.md).
+
+
+## Human review queue
+
+`/reviews` is the operator UI. The administrative API is `/v1/reviews`.
+This is an explicit, single-operator workflow; tenant keys cannot access it.
+Set a separate optional Worker secret `VIZIER_REVIEWER_KEY` for the human
+reviewer. Never give it to the submitting agent. `VIZIER_API_KEY` can submit,
+read and claim requests, but cannot approve them. The reviewer credential can
+read and decide, but cannot submit or claim. Both secrets must be distinct.
+Review endpoints fail closed unless D1 and `RECEIPT_SIGNING_KEY` are configured.
+
+Apply migration `0006_human_reviews.sql` before deploying. Queue payloads and
+audit events are retained for **seven days**, then deleted by the daily cron;
+reads exclude expired retention immediately. This is an explicit exception to
+the metadata-only verification audit. Submit only necessary public evidence:
+never credentials, private keys, seed phrases, prompts or confidential documents.
+The UI uses memory only for credentials and renders submitted data as text.
+
+1. `POST /v1/reviews` with the integration credential and
+   `{audience, action, evidence, escalation_reason, expires_in_seconds}`.
+   `action` and `evidence` are JSON objects; expiration is 60–3600 seconds,
+   default 1800. Canonical payload size is limited to 32 KiB. The response binds
+   the whole normalized submission to SHA-256 `request_hash`.
+2. `GET /v1/reviews` lists the latest 100 requests; `GET /v1/reviews/{id}`
+   returns the exact request and atomic audit trail. Evidence is **submitter
+   supplied**, not independently authenticated merely by inclusion here.
+3. The human reads the exact request and calls `POST /v1/reviews/{id}/decision`
+   using the separate reviewer credential and
+   `{request_hash, decision: "APPROVED" | "REJECTED", reason}`.
+   One pending decision wins. Expired requests cannot be decided.
+4. The decision includes an ES256 compact JWS with protected type
+   `VIZIER-HUMAN-REVIEW+JWS`, issuer (service origin), audience, request hash,
+   review ID (`jti`), decision, reviewer role, reason, issue and expiry timestamps
+   (Unix seconds). Maximum lifetime is five minutes and never beyond the request
+   deadline. The existing `/.well-known/jwks.json` publishes the verification key.
+5. Immediately before manual execution, the integration calls
+   `POST /v1/reviews/{id}/consume` with `{token, request_hash, audience}`.
+   The service verifies the signature and bindings and atomically claims the
+   approval. Exactly one caller succeeds, including concurrent calls. A lost
+   response must be reconciled via GET; never interpret a retry conflict as a
+   new permission. Rejections cannot be consumed. Signing key rotation invalidates
+   unclaimed attestations signed with an earlier key.
+
+Always compute the expected hash from the **actual intended action**, compare
+the audience, issuer and expiry, and claim through the server. Offline signature
+verification alone does not prevent replay. Tokens are proofs of an operator
+credential's decision, not proof of a particular person's physical interaction.
+Use a trusted HTTPS service origin; do not follow untrusted receipt URLs.
+
+For Base transfers include the chain ID, sender, recipient, token contract,
+amount as an exact base-unit **string**, and full calldata in `action`.
+A review does not supply missing ledger/sanctions evidence, change a Financial
+Guard verdict, reserve funds, enforce a wallet, broadcast a transaction or sign
+with Brave Wallet. Those checks and the final wallet confirmation remain separate.
+Legacy KV quorum routes are unchanged; use this D1 queue for atomic claims.
+
+
+The TypeScript SDK exposes `submitHumanReview(request)` and
+`claimHumanReview(request, id, token)`. Pass the original locally intended request
+to the claim method: it recomputes the normalized hash, verifies the JWS using
+JWKS from the configured service, checks issuer/audience/expiry and then performs
+the atomic server claim. Neither method automatically approves or signs.
+These methods are source additions; installing an older published SDK will not
+provide them until its next package release.

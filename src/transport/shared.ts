@@ -17,6 +17,7 @@ export interface BackgroundContext {
 }
 
 export interface TransportOptions {
+  readonly reviewerApiKey?: string;
   readonly apiKey?: string;
   readonly anonymousRateLimiter?: RateLimit;
   readonly circuitBreakerKv?: KVNamespace;
