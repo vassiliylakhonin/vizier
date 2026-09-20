@@ -1,3 +1,4 @@
+import { reviewSubmissionSchema, reviewDecisionSchema, reviewConsumeSchema } from "../reviews/api";
 import { z, type ZodType } from "zod";
 
 import {
@@ -33,6 +34,9 @@ import { SERVICE_VERSION } from "../version";
 
 const registry = z.registry<{ id: string }>();
 const schemas: ReadonlyArray<readonly [string, ZodType]> = [
+  ["HumanReviewSubmission", reviewSubmissionSchema],
+  ["HumanReviewDecision", reviewDecisionSchema],
+  ["HumanReviewConsume", reviewConsumeSchema],
   ["JsonValue", jsonValueSchema],
   ["Agent", agentSchema],
   ["Principal", principalSchema],
@@ -190,6 +194,22 @@ export function createOpenApiDocument(
     ],
     security: [{ bearerAuth: [] }],
     paths: {
+      "/v1/reviews": {
+        get: { operationId: "listHumanReviews", summary: "List the latest 100 administrative reviews", responses: { "200": { description: "Review queue, integration or reviewer credential required." }, ...ERROR_RESPONSE_REFS } },
+        post: { operationId: "submitHumanReview", summary: "Explicitly store a review for seven days", description: "Integration credential only. No tenant keys. Evidence remains submitter-supplied.", requestBody: requestBody("HumanReviewSubmission"), responses: { "201": { description: "Pending exact request and SHA-256 binding." }, ...ERROR_RESPONSE_REFS } },
+      },
+      "/v1/reviews/{id}": {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        get: { operationId: "getHumanReview", summary: "Read the exact request and audit trail", responses: { "200": { description: "Review and mandatory audit events." }, ...ERROR_RESPONSE_REFS } },
+      },
+      "/v1/reviews/{id}/decision": {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        post: { operationId: "decideHumanReview", summary: "Approve or reject a pending exact request", description: "Separate VIZIER_REVIEWER_KEY required. Integration keys cannot decide. Returns a domain-separated ES256 JWS; it is not a payment signature.", requestBody: requestBody("HumanReviewDecision"), responses: { "200": { description: "Decided review and signed attestation." }, "403": errorResponse("Separate reviewer credential required."), "409": errorResponse("Request mismatch, already decided, or expired."), ...ERROR_RESPONSE_REFS } },
+      },
+      "/v1/reviews/{id}/consume": {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        post: { operationId: "claimHumanReview", summary: "Atomically claim an approval once", description: "Integration credential required. Checks signature, issuer, audience, exact request hash and expiry. Does not execute or sign the action.", requestBody: requestBody("HumanReviewConsume"), responses: { "200": { description: "One successful claim; execution remains manual." }, "409": errorResponse("Approval expired, mismatched, rejected or already consumed."), ...ERROR_RESPONSE_REFS } },
+      },
       "/v1/verify": {
         post: {
           operationId: "verifyAgentAction",
