@@ -190,7 +190,8 @@ Equip Claude Desktop or Cursor with deterministic guardrails (`vizier_screen_act
 Wrap any local or remote MCP server with deterministic authorization:
 
 ```bash
-npx @vizier/mcp-proxy \
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-mcp-proxy-0.3.1.tgz
+npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \
   --vizier https://vizier.vassiliy-lakhonin.workers.dev \
@@ -202,7 +203,7 @@ npx @vizier/mcp-proxy \
 ### 3. TypeScript SDK (`@vizier/sdk`)
 
 ```bash
-npm install @vizier/sdk
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz
 ```
 
 ```ts
@@ -459,7 +460,7 @@ guarded_tool = VizierLangChainToolGuard(
 Protect any existing local or remote MCP server with deterministic policy checks:
 
 ```bash
-npx @vizier/mcp-proxy \
+npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,transfer_funds,send_message" \
   --vizier https://vizier.vassiliy-lakhonin.workers.dev \
@@ -538,7 +539,7 @@ additive and shares one verification path.
 Run directly via `npx`:
 
 ```bash
-npx @vizier/mcp-proxy \
+npx --no-install vizier-mcp-proxy \
   --upstream http://127.0.0.1:8791/mcp \
   --tools "write_file,query_db" \
   --vizier https://vizier.vassiliy-lakhonin.workers.dev \

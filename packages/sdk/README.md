@@ -2,7 +2,6 @@
 
 Official TypeScript client for **Vizier** — deterministic authorization & audit firewall for AI agents.
 
-[![npm version](https://img.shields.io/npm/v/@vizier/sdk.svg)](https://www.npmjs.com/package/@vizier/sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 Vizier verifies proposed agent actions (purchases, database queries, deployments, money transfers, external messages) against strictly delegated constraints before execution.
@@ -12,7 +11,7 @@ Vizier verifies proposed agent actions (purchases, database queries, deployments
 ## 📦 Installation
 
 ```bash
-npm install @vizier/sdk
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz
 ```
 
 ---
@@ -71,3 +70,14 @@ if (decision.decision === "ALLOW") {
 * **Live Interactive Playground**: [https://vizier.vassiliy-lakhonin.workers.dev/playground](https://vizier.vassiliy-lakhonin.workers.dev/playground)
 * **GitHub Repository**: [https://github.com/vassiliylakhonin/vizier](https://github.com/vassiliylakhonin/vizier)
 * **OpenAPI 3.1 Contract**: [https://vizier.vassiliy-lakhonin.workers.dev/openapi.json](https://vizier.vassiliy-lakhonin.workers.dev/openapi.json)
+
+
+## Explicit human reviews
+
+`submitHumanReview(request)` explicitly stores the exact action and supplied
+evidence in the administrative queue for seven days. `claimHumanReview(request,
+id, token)` verifies ES256, issuer, audience, expiry and the hash of the original
+locally retained request, then atomically consumes the operator's approval once.
+The client does not approve, sign, broadcast or change Financial Guard verdicts.
+Keep the separate reviewer key out of the integration. See the repository's
+human-review documentation and `/reviews` on your trusted Vizier origin.
