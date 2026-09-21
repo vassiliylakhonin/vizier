@@ -69,7 +69,7 @@ flowchart TD
 
 The decision path is strictly deterministic — no non-deterministic LLMs in the critical decision loop. It checks delegated actions, principal identity, amount limits, targets, sensitive operations, and authenticated integration boundaries. Every response includes policy results and a tamper-proof SHA-256 canonical receipt hash.
 
-Status: experimental v0.3.0, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
+Status: experimental v0.3.1, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
 
 ---
 
@@ -848,3 +848,24 @@ JWKS from the configured service, checks issuer/audience/expiry and then perform
 the atomic server claim. Neither method automatically approves or signs.
 These methods are source additions; installing an older published SDK will not
 provide them until its next package release.
+
+
+### Installing the review SDK release archives
+
+Version 0.3.1 is distributed as GitHub Release archives. The `@vizier` npm scope
+is not currently published; do not assume `npm install @vizier/sdk` succeeds.
+
+```sh
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz
+```
+
+For the proxy, install both archives together so its SDK dependency is satisfied:
+
+```sh
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-mcp-proxy-0.3.1.tgz
+```
+
+Release assets include `SHA256SUMS`. Imports remain `@vizier/sdk`. Release CI
+builds/tests both archives and publishes them to GitHub. npm and PyPI publication
+require separately configured registry credentials; missing credentials produce
+explicit warnings and summary entries, not a claim of successful registry publication.

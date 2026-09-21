@@ -12,7 +12,7 @@ import { createMcpEnforcementProxy } from "./index.js";
 const MAX_BODY_BYTES = 64 * 1024;
 
 const helpText = `
-Vizier MCP Enforcement Proxy (v0.3.0)
+Vizier MCP Enforcement Proxy (v0.3.1)
 Deterministic authorization firewall for MCP servers and AI agents.
 
 Usage:
