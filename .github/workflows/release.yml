@@ -32,6 +32,11 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           cache: npm
+      - name: Verify release tag matches package version
+        if: github.event_name == 'push'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e 'if (process.env.RELEASE_TAG !== "v" + require("./package.json").version) throw new Error("Release tag/package version mismatch");'
       - run: npm ci
       - run: npm run check
 

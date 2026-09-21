@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.3.1 — 2026-09-21
+## 0.4.0 — 2026-09-21
 
 - Add an explicit administrative human-review queue, separate reviewer credential, signed five-minute attestations and atomic one-time D1 claims.
 - Add `/reviews`, REST discovery and SDK submission/verified-claim helpers.
