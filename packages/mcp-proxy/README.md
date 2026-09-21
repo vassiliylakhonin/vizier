@@ -4,17 +4,17 @@ Deterministic authorization proxy for [Model Context Protocol (MCP)](https://mod
 
 Place any existing local or remote MCP server behind Vizier to enforce strict deterministic authority limits, tool allowlists, target restrictions, and tamper-proof SHA-256 audit receipts before actions execute.
 
-[![npm version](https://img.shields.io/npm/v/@vizier/mcp-proxy.svg)](https://www.npmjs.com/package/@vizier/mcp-proxy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
 ## ⚡ Quickstart
 
-Run with `npx` (no installation required):
+Install both GitHub Release archives, then run the installed proxy:
 
 ```bash
-npx @vizier/mcp-proxy \
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-mcp-proxy-0.3.1.tgz
+npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \
   --vizier https://vizier.vassiliy-lakhonin.workers.dev \

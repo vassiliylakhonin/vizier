@@ -21,7 +21,7 @@ jobs:
     name: Build & Publish npm Packages
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
     env:
       HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
@@ -40,8 +40,37 @@ jobs:
           npm pack --dry-run --workspace @vizier/sdk
           npm pack --dry-run --workspace @vizier/mcp-proxy
 
+      - name: Build installable release archives
+        run: |
+          mkdir -p release-archives
+          npm pack --workspace @vizier/sdk --pack-destination release-archives
+          npm pack --workspace @vizier/mcp-proxy --pack-destination release-archives
+          cd release-archives
+          sha256sum *.tgz > SHA256SUMS
+
+      - name: Verify archives install without a published Vizier scope
+        run: |
+          npm install --prefix "$RUNNER_TEMP/vizier-archive-smoke" --ignore-scripts "$GITHUB_WORKSPACE"/release-archives/*.tgz
+          cd "$RUNNER_TEMP/vizier-archive-smoke"
+          node --input-type=module -e 'import {Vizier} from "@vizier/sdk"; if(typeof Vizier.prototype.submitHumanReview !== "function" || typeof Vizier.prototype.claimHumanReview !== "function") process.exit(1);'
+
+      - name: Publish archives to GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$RELEASE_TAG" || gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Installable SDK archives; see SHA256SUMS. Registry publication is reported separately."
+          gh release upload "$RELEASE_TAG" release-archives/* --clobber
+
+      - name: Report archive-only distribution
+        if: env.HAS_NPM_TOKEN != 'true'
+        run: |
+          echo "::warning::NPM_TOKEN is not configured. SDK archives are built; no npm registry publication occurred."
+          echo "npm registry: NOT PUBLISHED (missing NPM_TOKEN). Use GitHub Release archives." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish to npm
-        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+        if: ${{ env.HAS_NPM_TOKEN == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -121,8 +150,8 @@ jobs:
           echo "::error::PyPI package installation check timed out for version ${PYPI_VERSION}."
           exit 1
 
-      - name: Fail if PyPI token missing on release
+      - name: Report unchanged Python SDK publication status
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_PYPI_TOKEN != 'true' }}
         run: |
-          echo "::error::PYPI_API_TOKEN secret is not configured in this repo; refusing silent PyPI publish skip."
-          exit 1
+          echo "::warning::PYPI_API_TOKEN is not configured; Python SDK was built and tested but not published."
+          echo "Vizier Python registry: NOT PUBLISHED (missing PYPI_API_TOKEN)." >> "$GITHUB_STEP_SUMMARY"

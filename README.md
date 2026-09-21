@@ -69,7 +69,7 @@ flowchart TD
 
 The decision path is strictly deterministic — no non-deterministic LLMs in the critical decision loop. It checks delegated actions, principal identity, amount limits, targets, sensitive operations, and authenticated integration boundaries. Every response includes policy results and a tamper-proof SHA-256 canonical receipt hash.
 
-Status: experimental v0.3.0, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
+Status: experimental v0.3.1, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
 
 ---
 
@@ -190,7 +190,8 @@ Equip Claude Desktop or Cursor with deterministic guardrails (`vizier_screen_act
 Wrap any local or remote MCP server with deterministic authorization:
 
 ```bash
-npx @vizier/mcp-proxy \
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-mcp-proxy-0.3.1.tgz
+npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \
   --vizier https://vizier.vassiliy-lakhonin.workers.dev \
@@ -202,7 +203,7 @@ npx @vizier/mcp-proxy \
 ### 3. TypeScript SDK (`@vizier/sdk`)
 
 ```bash
-npm install @vizier/sdk
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz
 ```
 
 ```ts
@@ -459,7 +460,7 @@ guarded_tool = VizierLangChainToolGuard(
 Protect any existing local or remote MCP server with deterministic policy checks:
 
 ```bash
-npx @vizier/mcp-proxy \
+npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,transfer_funds,send_message" \
   --vizier https://vizier.vassiliy-lakhonin.workers.dev \
@@ -538,7 +539,7 @@ additive and shares one verification path.
 Run directly via `npx`:
 
 ```bash
-npx @vizier/mcp-proxy \
+npx --no-install vizier-mcp-proxy \
   --upstream http://127.0.0.1:8791/mcp \
   --tools "write_file,query_db" \
   --vizier https://vizier.vassiliy-lakhonin.workers.dev \
@@ -848,3 +849,24 @@ JWKS from the configured service, checks issuer/audience/expiry and then perform
 the atomic server claim. Neither method automatically approves or signs.
 These methods are source additions; installing an older published SDK will not
 provide them until its next package release.
+
+
+### Installing the review SDK release archives
+
+Version 0.3.1 is distributed as GitHub Release archives. The `@vizier` npm scope
+is not currently published; do not assume `npm install @vizier/sdk` succeeds.
+
+```sh
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz
+```
+
+For the proxy, install both archives together so its SDK dependency is satisfied:
+
+```sh
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-sdk-0.3.1.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.3.1/vizier-mcp-proxy-0.3.1.tgz
+```
+
+Release assets include `SHA256SUMS`. Imports remain `@vizier/sdk`. Release CI
+builds/tests both archives and publishes them to GitHub. npm and PyPI publication
+require separately configured registry credentials; missing credentials produce
+explicit warnings and summary entries, not a claim of successful registry publication.
