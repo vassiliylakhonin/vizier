@@ -13,7 +13,7 @@ Place any existing local or remote MCP server behind Vizier to enforce strict de
 Install both GitHub Release archives, then run the installed proxy:
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.1/vizier-sdk-0.5.1.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.1/vizier-mcp-proxy-0.5.1.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.2/vizier-sdk-0.5.2.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.2/vizier-mcp-proxy-0.5.2.tgz
 npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \

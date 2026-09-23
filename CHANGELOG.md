@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.5.2 — 2026-09-23
+
+- Require a fresh official OFAC SDN exact-address snapshot on Base native-USDC review submission, approval and claim. A scheduled sync writes the validated XML-derived snapshot to KV; absent, stale or matching data blocks. This is not comprehensive sanctions clearance or wallet-wide spend accounting.
+
 ## 0.5.1 — 2026-09-23
 
 - Parenthesize `CASE` expressions in financial D1 triggers so remote Cloudflare migration parsing succeeds. No policy defaults or runtime contract changes.

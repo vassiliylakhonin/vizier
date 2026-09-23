@@ -1,4 +1,5 @@
 import { financialAction, budgetError, handleFinancialPolicy, reconcileFinancial } from "./financial";
+import { checkOfacAddresses } from "./ofac";
 import { z } from "zod";
 import { sha256 } from "../core/receipts";
 import { canonicalizeJson, signCompactJws, verifyCompactJws } from "../crypto/jws";
@@ -76,6 +77,7 @@ export async function handleReviews(request: Request, options: TransportOptions)
       status: "PENDING", created_at: now, expires_at: now + payload.expires_in_seconds,
       decided_at: null, reason: null, token: null, token_expires_at: null, consumed_at: null };
     const action = financialAction(payload);
+    if (action) await checkOfacAddresses(options.circuitBreakerKv, [action.from, action.recipient]);
     const insertion = db.prepare("INSERT INTO human_reviews(id,request_hash,payload_json,status,created_at,expires_at) VALUES(?,?,?,'PENDING',?,?)")
       .bind(row.id, row.request_hash, canonical, now, row.expires_at);
     try {
@@ -116,6 +118,8 @@ export async function handleReviews(request: Request, options: TransportOptions)
     const input = parse(reviewDecisionSchema, await readLimitedJson(request));
     if (input.request_hash !== row.request_hash) failure(409, "REQUEST_MISMATCH", "The displayed request hash must match.");
     if (row.status !== "PENDING" || row.expires_at <= now) failure(409, "REVIEW_NOT_PENDING", "Review was decided or expired.");
+    const action = financialAction(parse(reviewSubmissionSchema, JSON.parse(row.payload_json) as unknown));
+    if (action && input.decision === "APPROVED") await checkOfacAddresses(options.circuitBreakerKv, [action.from, action.recipient]);
     const decided: ReviewRow = { ...row, status: input.decision, reason: input.reason, decided_at: now, token_expires_at: Math.min(now + 300, row.expires_at) };
     const token = await signCompactJws(claims(decided, url.origin), options.receiptSigningKey, REVIEW_TYPE);
     // The conditional update and audit trigger are one SQLite transaction.
@@ -133,6 +137,8 @@ export async function handleReviews(request: Request, options: TransportOptions)
   if (!await verifyCompactJws(input.token, claims(row, url.origin), options.receiptSigningKey, REVIEW_TYPE)) {
     failure(409, "INVALID_ATTESTATION", "Attestation signature or bindings are invalid.");
   }
+  const action = financialAction(payload);
+  if (action) await checkOfacAddresses(options.circuitBreakerKv, [action.from, action.recipient]);
   const consumedAt = Math.floor(Date.now() / 1000);
   const changed = await db.prepare("UPDATE human_reviews SET status='CONSUMED',consumed_at=? WHERE id=? AND status='APPROVED' AND token=? AND token_expires_at > ? AND expires_at > ? RETURNING id")
     .bind(consumedAt, row.id, input.token, consumedAt, consumedAt).first<{ id: string }>().catch(budgetError);
