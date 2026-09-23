@@ -1,6 +1,6 @@
 {
   "name": "@vizier/mcp-proxy",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Deterministic authorization proxy for MCP (Model Context Protocol) servers and AI agents.",
   "license": "MIT",
   "author": "Vassiliy Lakhonin",
@@ -33,7 +33,7 @@
     "dist"
   ],
   "dependencies": {
-    "@vizier/sdk": "0.5.3",
+    "@vizier/sdk": "0.5.4",
     "zod": "4.4.3"
   },
   "scripts": {

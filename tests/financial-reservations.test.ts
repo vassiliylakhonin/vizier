@@ -8,6 +8,7 @@ import { handleHttpRequest } from "../src/transport/http";
 import type { TransportOptions } from "../src/transport/shared";
 import { FINANCIAL_AUDIENCE, USDC, verifyFinancialOutcome, type FinancialAction } from "../src/reviews/financial";
 import { OFAC_SOURCE } from "../src/reviews/ofac";
+import { collectWalletHistory } from "../src/reviews/wallet-history";
 
 let mem: DatabaseSync;
 let options: TransportOptions;
@@ -19,7 +20,7 @@ function action(amount = "60000000"): FinancialAction {
 function submission(amount?: string) { return { audience: FINANCIAL_AUDIENCE, action: action(amount), evidence: {}, escalation_reason: "Local synthetic test", expires_in_seconds: 1800 }; }
 function fakeD1(): D1Database {
   mem = new DatabaseSync(":memory:"); mem.exec("PRAGMA foreign_keys=ON");
-  for (const name of ["0006_human_reviews.sql", "0007_financial_reservations.sql", "0008_ofac_snapshot.sql"]) mem.exec(readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"));
+  for (const name of ["0006_human_reviews.sql", "0007_financial_reservations.sql", "0008_ofac_snapshot.sql", "0009_wallet_history_evidence.sql"]) mem.exec(readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"));
   function prepare(query: string, values: SQLInputValue[] = []) {
     return { bind(...args: SQLInputValue[]) { return prepare(query, args); },
       execute() { return mem.prepare(query).all(...values); },
@@ -60,12 +61,34 @@ function snapshot(addresses: string[] = Array.from({ length: 100 }, (_, i) => "0
   return { schema_version: 1, source: OFAC_SOURCE, checked_at: checkedAt, publish_date: "2026-09-18",
     source_sha256: "a".repeat(64), record_count: 19000, addresses };
 }
+function mockHistory(outgoing = 0, overrides: Record<string, unknown> = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const end = 50000;
+  const transfer = { address: USDC, topics: ["0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+    "0x" + wallet.slice(2).padStart(64, "0"), "0x" + recipient.slice(2).padStart(64, "0")],
+    data: "0x" + outgoing.toString(16).padStart(64, "0"), removed: false, blockNumber: "0x" + (end - 10).toString(16),
+    logIndex: "0x0", transactionHash: "0x" + "a".repeat(64), blockHash: "0x" + "b".repeat(64) };
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+    const { method, params } = JSON.parse(init.body as string) as { method: string; params: unknown[] };
+    if (overrides[method] instanceof Error) throw overrides[method];
+    let result: unknown;
+    if (method === "eth_chainId") result = "0x2105";
+    else if (method === "eth_getBlockByNumber") {
+      const tag = params[0]; result = tag === "0x1388" ? { number: "0x1388", hash: "0x" + "c".repeat(64), timestamp: "0x" + (now - 88000).toString(16) }
+        : { number: "0xc350", hash: "0x" + "d".repeat(64), timestamp: "0x" + (now - 1000).toString(16) };
+    } else if (method === "eth_getLogs") result = outgoing > 0 && BigInt((params[0] as { fromBlock: string }).fromBlock) <= BigInt(transfer.blockNumber)
+      && BigInt(transfer.blockNumber) <= BigInt((params[0] as { toBlock: string }).toBlock) ? [transfer] : [];
+    else throw new Error("Unexpected RPC method");
+    return Response.json({ jsonrpc: "2.0", id: 1, result: overrides[method] ?? result });
+  }));
+}
 
 beforeEach(async () => {
   const pair = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
   options = { apiKey: "integration", reviewerApiKey: "reviewer", db: fakeD1(),
     receiptSigningKey: JSON.stringify({ ...await webcrypto.subtle.exportKey("jwk", pair.privateKey), alg: "ES256", kid: "test", use: "sig" }) };
   setSnapshot(snapshot());
+  mockHistory();
 });
 afterEach(() => { vi.unstubAllGlobals(); mem.close(); });
 
@@ -108,6 +131,38 @@ describe("financial reservations", () => {
     expect(results.filter(r => r.status === 409)).toHaveLength(11);
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(1);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_events").get()!.n).toBe(1);
+  });
+  it("combines independently observed spending with concurrent reservations inside the D1 write", async () => {
+    await policy({ single_limit: "50000000", daily_limit: "100000000" });
+    mockHistory(30000000);
+    const results = await Promise.all(Array.from({ length: 2 }, () => call("/v1/reviews", submission("40000000"))));
+    expect(results.map(r => r.status).sort()).toEqual([201, 409]);
+    expect(mem.prepare("SELECT observed_outgoing FROM financial_reservations").get()!.observed_outgoing).toBe(30000000);
+  });
+  it("fails closed on RPC errors and insufficient finalized coverage without writing a review", async () => {
+    await policy();
+    mockHistory(0, { eth_getLogs: new Error("RPC unavailable") });
+    expect((await call("/v1/reviews", submission())).status).toBe(409);
+    mockHistory(0, { eth_getBlockByNumber: { number: "0xc350", hash: "0x" + "d".repeat(64), timestamp: "0x" + (Math.floor(Date.now()/1000)-1000).toString(16) } });
+    expect((await call("/v1/reviews", submission())).status).toBe(409);
+    expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
+  });
+  it("bounds the full history scan to 50 external requests and 1,000-block log ranges", async () => {
+    const history = await collectWalletHistory(wallet);
+    const requests = vi.mocked(fetch).mock.calls.map(([, init]) => JSON.parse(init?.body as string) as { method: string; params: [{ fromBlock: string; toBlock: string }] });
+    expect(requests).toHaveLength(50);
+    expect(history.outgoing).toBe(0);
+    expect(history.endBlock - history.startBlock).toBe(45000);
+    for (const request of requests.filter(r => r.method === "eth_getLogs")) {
+      expect(BigInt(request.params[0].toBlock) - BigInt(request.params[0].fromBlock)).toBeLessThan(1000n);
+    }
+  });
+  it("keeps an owner-disabled policy closed without consulting the RPC", async () => {
+    await policy({ enabled: false });
+    mockHistory();
+    expect((await call("/v1/reviews", submission())).status).toBe(409);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
   });
   it("enforces per-transfer limits, exact calldata, asset, audience and bounded integers", async () => {
     await policy();
@@ -225,7 +280,7 @@ describe("finalized Base reconciliation", () => {
     await expect(verifyFinancialOutcome(action(), txHash, 1)).rejects.toThrow("Stale");
     mockRpc({ eth_getTransactionReceipt: { ...(answers.eth_getTransactionReceipt as object), blockHash: "0x"+"c".repeat(64) } });
     await expect(verifyFinancialOutcome(action(), txHash, 1)).rejects.toThrow("match");
-    await policy({ daily_limit: "200000000" }); const a = await approve(await create()), b = await approve(await create()); await claim(a); await claim(b);
+    mockHistory(); await policy({ daily_limit: "200000000" }); const a = await approve(await create()), b = await approve(await create()); await claim(a); await claim(b);
     mockRpc({ eth_getTransactionReceipt: null });
     expect((await call(`/v1/reviews/${a.id}/transaction`, { transaction_hash: txHash })).status).toBe(200);
     expect((await call(`/v1/reviews/${b.id}/transaction`, { transaction_hash: txHash })).status).toBe(409);
@@ -236,6 +291,6 @@ describe("finalized Base reconciliation", () => {
     mem.prepare("UPDATE human_reviews SET consumed_at=consumed_at-20 WHERE id=?").run(row.id);
     const answers = mockRpc(); mockRpc({ eth_getTransactionReceipt: { ...(answers.eth_getTransactionReceipt as object), status: "0x0", logs: [] } });
     expect((await call(`/v1/reviews/${row.id}/transaction`, { transaction_hash: txHash })).status).toBe(200);
-    expect(reservation(row).state).toBe("REVERTED"); await create();
+    expect(reservation(row).state).toBe("REVERTED"); mockHistory(); await create();
   });
 });
