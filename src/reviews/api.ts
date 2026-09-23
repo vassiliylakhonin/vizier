@@ -1,5 +1,6 @@
 import { financialAction, budgetError, handleFinancialPolicy, reconcileFinancial } from "./financial";
 import { checkOfacAddresses } from "./ofac";
+import { collectWalletHistory } from "./wallet-history";
 import { z } from "zod";
 import { sha256 } from "../core/receipts";
 import { canonicalizeJson, signCompactJws, verifyCompactJws } from "../crypto/jws";
@@ -78,12 +79,20 @@ export async function handleReviews(request: Request, options: TransportOptions)
       decided_at: null, reason: null, token: null, token_expires_at: null, consumed_at: null };
     const action = financialAction(payload);
     if (action) await checkOfacAddresses(db, [action.from, action.recipient]);
+    let history;
+    if (action) {
+      const policy = await db.prepare("SELECT enabled FROM financial_policies WHERE wallet=?").bind(action.from).first<{ enabled: number }>();
+      if (policy?.enabled !== 1) failure(409, "FINANCIAL_BUDGET_UNAVAILABLE", "No enabled owner policy for this wallet.");
+      try { history = await collectWalletHistory(action.from); }
+      catch { failure(409, "WALLET_HISTORY_UNAVAILABLE", "Independent finalized Base USDC history could not be verified; no review was reserved."); }
+    }
     const insertion = db.prepare("INSERT INTO human_reviews(id,request_hash,payload_json,status,created_at,expires_at) VALUES(?,?,?,'PENDING',?,?)")
       .bind(row.id, row.request_hash, canonical, now, row.expires_at);
     try {
       if (action) {
-        await db.batch([insertion, db.prepare("INSERT INTO financial_reservations(review_id,wallet,amount,state) VALUES(?,?,?,'RESERVED')")
-          .bind(row.id, action.from, Number(action.amount_base_units))]);
+        await db.batch([insertion, db.prepare("INSERT INTO financial_reservations(review_id,wallet,amount,state,observed_outgoing,observed_at,observed_start_block,observed_end_block,observed_end_hash) VALUES(?,?,?,'RESERVED',?,?,?,?,?)")
+          .bind(row.id, action.from, Number(action.amount_base_units), history!.outgoing, history!.observedAt,
+            history!.startBlock, history!.endBlock, history!.endBlockHash)]);
       } else { await insertion.run(); }
     } catch (error) { budgetError(error); }
     return jsonResponse(view(row, now), 201);
@@ -94,7 +103,7 @@ export async function handleReviews(request: Request, options: TransportOptions)
   if (!row) failure(404, "REVIEW_NOT_FOUND", "Review not found or retention period elapsed.");
   if (!match[2] && request.method === "GET") {
     const events = await db.prepare("SELECT state,occurred_at,actor,reason FROM human_review_events WHERE review_id = ? ORDER BY id").bind(row.id).all();
-    const reservation = await db.prepare("SELECT review_id,wallet,CAST(amount AS TEXT) AS amount,state,tx_hash,settled_at,block_number,block_hash FROM financial_reservations WHERE review_id=?").bind(row.id).first();
+    const reservation = await db.prepare("SELECT review_id,wallet,CAST(amount AS TEXT) AS amount,state,tx_hash,settled_at,block_number,block_hash,CAST(observed_outgoing AS TEXT) AS observed_outgoing,observed_at,observed_start_block,observed_end_block,observed_end_hash FROM financial_reservations WHERE review_id=?").bind(row.id).first();
     const financialEvents = await db.prepare("SELECT state,occurred_at,tx_hash FROM financial_events WHERE review_id=? ORDER BY id").bind(row.id).all();
     return jsonResponse({ ...view(row, now), events: events.results, reservation, financial_events: financialEvents.results });
   }

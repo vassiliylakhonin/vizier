@@ -4,4 +4,4 @@
 // runs `mcp-publisher publish`. A release that updates some copies and not the
 // rest is silent, so `tests/discovery-contracts.test.ts` compares every copy
 // against this one.
-export const SERVICE_VERSION = "0.5.3";
+export const SERVICE_VERSION = "0.5.4";

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.4 — 2026-09-23
+
+- Collect conservative finalized native-USDC history directly from the fixed public Base RPC before financial review submission. A 50-subrequest bound, 1,000-block log ranges, anchor verification and D1 trigger combine observed spending with concurrent review holds; unavailable or incomplete evidence blocks without a reservation.
+- Persist the observation and anchor alongside the reservation. This remains review-queue accounting, not pending-transfer detection or wallet-wide authorization; the owner policy stays disabled.
+
 ## 0.5.3 — 2026-09-23
 
 - Store the official address snapshot in D1 through the existing deployment credential, replacing the CI KV write that lacked permission. Retry the live check during edge propagation.

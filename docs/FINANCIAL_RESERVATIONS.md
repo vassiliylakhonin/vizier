@@ -4,9 +4,9 @@ Experimental single-operator workflow accounting. This is a limit on requests
 through this review queue, **not a complete wallet spending limit**: manual
 transfers elsewhere, other assets, gas, approvals and external pending
 transactions are excluded. No automatic ALLOW, signature or broadcast is added.
-Keep a financial policy disabled until independent wallet-wide history and
-pending-transaction evidence are available. The public Base RPC can refuse
-historical `eth_getLogs` queries; an unavailable history is not zero spending.
+Keep a financial policy disabled until pending-transaction evidence and
+wallet-wide enforcement are available. Independent finalized native-USDC
+history is collected at submission, but it is not wallet authorization.
 
 ## Owner policy
 
@@ -63,6 +63,15 @@ A SQLite trigger rejects absent/disabled policies, per-transfer overflow and
 rolling-budget overflow, rolling back both rows and their audit events. The
 budget includes:
 
+- The server's independent, conservatively overinclusive finalized native-USDC
+  history from the fixed official Base RPC at submission. It scans up to 45,001
+  blocks in chunks of at most 1,000. If the first block is not at least 24 hours
+  older than the finalized anchor, the anchor is stale, a response is malformed,
+  the RPC fails, or the 50-request free Worker budget cannot cover the window,
+  submission fails without a reservation. The observation, blocks and anchor
+  hash are stored with each reservation; submitter-supplied evidence is ignored
+  for this calculation. Extra blocks and settled reservations may be counted
+  twice, which reduces available budget rather than enlarging it.
 - Live pending or approved reservations.
 - All CLAIMED reservations, regardless of age or approval-token expiry.
 - SETTLED amounts with verified block timestamp in the past 24 hours.
@@ -71,6 +80,9 @@ All concurrency-sensitive checks run inside writes, not as a read-then-write
 application check. Approval and consumption recheck policy and reservation;
 consumption transitions the hold to CLAIMED in the same transaction. Legacy
 financial reviews without reservations cannot be approved or consumed.
+The independent history does not include unfinalized or pending transfers,
+other assets, token approvals or transfers made after the anchor. It is not an
+atomic wallet-wide cap, so do not enable an owner policy on this basis alone.
 
 Before consumption, reviewer-only POST `/v1/reviews/{id}/cancel` accepts
 `{request_hash, reason}` and changes PENDING/APPROVED to REJECTED. Existing tokens
