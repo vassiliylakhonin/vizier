@@ -15,6 +15,7 @@ function fakeD1(): D1Database {
   mem = new DatabaseSync(":memory:");
   mem.exec("PRAGMA foreign_keys=ON");
   mem.exec(readFileSync(new URL("../migrations/0006_human_reviews.sql", import.meta.url), "utf8"));
+  mem.exec(readFileSync(new URL("../migrations/0007_financial_reservations.sql", import.meta.url), "utf8"));
   function prepare(query: string, values: SQLInputValue[] = []) {
     return { bind(...args: SQLInputValue[]) { return prepare(query, args); },
       async first() { return mem.prepare(query).get(...values) ?? null; },

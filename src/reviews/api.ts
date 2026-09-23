@@ -1,3 +1,4 @@
+import { financialAction, budgetError, handleFinancialPolicy, reconcileFinancial } from "./financial";
 import { z } from "zod";
 import { sha256 } from "../core/receipts";
 import { canonicalizeJson, signCompactJws, verifyCompactJws } from "../crypto/jws";
@@ -52,9 +53,10 @@ export async function handleReviews(request: Request, options: TransportOptions)
   if (!integration && !reviewer) failure(401, "UNAUTHORIZED", "An integration or reviewer credential is required.");
   const db = options.db;
   const now = Math.floor(Date.now() / 1000);
+  if (url.pathname === "/v1/reviews/policies") return handleFinancialPolicy(request, db, reviewer);
   if (url.pathname === "/v1/reviews") {
     if (request.method === "GET") {
-      const rows = await db.prepare("SELECT * FROM human_reviews WHERE created_at > ? ORDER BY created_at DESC LIMIT 100").bind(now - 7 * 86400).all<ReviewRow>();
+      const rows = await db.prepare("SELECT * FROM human_reviews WHERE (created_at > ? OR id IN (SELECT review_id FROM financial_reservations WHERE state='CLAIMED' OR settled_at > unixepoch()-604800)) ORDER BY created_at DESC LIMIT 100").bind(now - 7 * 86400).all<ReviewRow>();
       return jsonResponse({ reviews: rows.results.map(row => view(row, now)), limit: 100 });
     }
     if (request.method !== "POST") failure(405, "METHOD_NOT_ALLOWED", "Use GET or POST.");
@@ -73,19 +75,42 @@ export async function handleReviews(request: Request, options: TransportOptions)
     const row: ReviewRow = { id: `rev_${crypto.randomUUID()}`, request_hash: await sha256(canonical), payload_json: canonical,
       status: "PENDING", created_at: now, expires_at: now + payload.expires_in_seconds,
       decided_at: null, reason: null, token: null, token_expires_at: null, consumed_at: null };
-    await db.prepare("INSERT INTO human_reviews(id,request_hash,payload_json,status,created_at,expires_at) VALUES(?,?,?,'PENDING',?,?)")
-      .bind(row.id, row.request_hash, canonical, now, row.expires_at).run();
+    const action = financialAction(payload);
+    const insertion = db.prepare("INSERT INTO human_reviews(id,request_hash,payload_json,status,created_at,expires_at) VALUES(?,?,?,'PENDING',?,?)")
+      .bind(row.id, row.request_hash, canonical, now, row.expires_at);
+    try {
+      if (action) {
+        await db.batch([insertion, db.prepare("INSERT INTO financial_reservations(review_id,wallet,amount,state) VALUES(?,?,?,'RESERVED')")
+          .bind(row.id, action.from, Number(action.amount_base_units))]);
+      } else { await insertion.run(); }
+    } catch (error) { budgetError(error); }
     return jsonResponse(view(row, now), 201);
   }
-  const match = /^\/v1\/reviews\/(rev_[a-f0-9-]{36})(?:\/(decision|consume))?$/.exec(url.pathname);
+  const match = /^\/v1\/reviews\/(rev_[a-f0-9-]{36})(?:\/(decision|consume|cancel|transaction))?$/.exec(url.pathname);
   if (!match) failure(404, "REVIEW_NOT_FOUND", "Unknown review route.");
-  const row = await db.prepare("SELECT * FROM human_reviews WHERE id = ? AND created_at > ?").bind(match[1]!, now - 7 * 86400).first<ReviewRow>();
+  const row = await db.prepare("SELECT * FROM human_reviews WHERE id = ? AND (created_at > ? OR id IN (SELECT review_id FROM financial_reservations WHERE state='CLAIMED' OR settled_at > unixepoch()-604800))").bind(match[1]!, now - 7 * 86400).first<ReviewRow>();
   if (!row) failure(404, "REVIEW_NOT_FOUND", "Review not found or retention period elapsed.");
   if (!match[2] && request.method === "GET") {
     const events = await db.prepare("SELECT state,occurred_at,actor,reason FROM human_review_events WHERE review_id = ? ORDER BY id").bind(row.id).all();
-    return jsonResponse({ ...view(row, now), events: events.results });
+    const reservation = await db.prepare("SELECT review_id,wallet,CAST(amount AS TEXT) AS amount,state,tx_hash,settled_at,block_number,block_hash FROM financial_reservations WHERE review_id=?").bind(row.id).first();
+    const financialEvents = await db.prepare("SELECT state,occurred_at,tx_hash FROM financial_events WHERE review_id=? ORDER BY id").bind(row.id).all();
+    return jsonResponse({ ...view(row, now), events: events.results, reservation, financial_events: financialEvents.results });
   }
   if (request.method !== "POST" || !match[2]) failure(405, "METHOD_NOT_ALLOWED", "Use the documented review method.");
+  if (match[2] === "cancel") {
+    if (!reviewer) failure(403, "REVIEWER_REQUIRED", "Only the reviewer may cancel an unclaimed approval.");
+    const input = parse(z.strictObject({ request_hash: hashSchema, reason: z.string().trim().min(1).max(2000) }), await readLimitedJson(request));
+    const changed = await db.prepare("UPDATE human_reviews SET status='REJECTED',reason=?,decided_at=?,token=NULL,token_expires_at=NULL WHERE id=? AND request_hash=? AND status IN ('PENDING','APPROVED') RETURNING id")
+      .bind(input.reason, now, row.id, input.request_hash).first();
+    if (!changed) failure(409, "REVIEW_NOT_CANCELLABLE", "Consumed or resolved requests cannot be cancelled.");
+    return jsonResponse({ id: row.id, status: "REJECTED", execution: "not_performed" });
+  }
+  if (match[2] === "transaction") {
+    if (!integration) failure(403, "INTEGRATION_REQUIRED", "Only the integration may attach transaction evidence.");
+    const action = financialAction(parse(reviewSubmissionSchema, JSON.parse(row.payload_json) as unknown));
+    if (!action || row.status !== "CONSUMED" || row.consumed_at === null) failure(409, "NO_CLAIMED_FINANCIAL_ACTION", "A consumed financial review is required.");
+    return reconcileFinancial(request, db, row.id, action, row.consumed_at);
+  }
   if (match[2] === "decision") {
     if (!reviewer) failure(403, "REVIEWER_REQUIRED", "Only the separate reviewer credential can decide.");
     const input = parse(reviewDecisionSchema, await readLimitedJson(request));
@@ -95,7 +120,7 @@ export async function handleReviews(request: Request, options: TransportOptions)
     const token = await signCompactJws(claims(decided, url.origin), options.receiptSigningKey, REVIEW_TYPE);
     // The conditional update and audit trigger are one SQLite transaction.
     const changed = await db.prepare("UPDATE human_reviews SET status=?,reason=?,decided_at=?,token=?,token_expires_at=? WHERE id=? AND status='PENDING' AND expires_at > ? RETURNING id")
-      .bind(decided.status, decided.reason, now, token, decided.token_expires_at, row.id, Math.floor(Date.now() / 1000)).first<{ id: string }>();
+      .bind(decided.status, decided.reason, now, token, decided.token_expires_at, row.id, Math.floor(Date.now() / 1000)).first<{ id: string }>().catch(budgetError);
     if (!changed) failure(409, "REVIEW_NOT_PENDING", "Another decision won or the review expired.");
     return jsonResponse(view({ ...decided, token }, now));
   }
@@ -110,7 +135,7 @@ export async function handleReviews(request: Request, options: TransportOptions)
   }
   const consumedAt = Math.floor(Date.now() / 1000);
   const changed = await db.prepare("UPDATE human_reviews SET status='CONSUMED',consumed_at=? WHERE id=? AND status='APPROVED' AND token=? AND token_expires_at > ? AND expires_at > ? RETURNING id")
-    .bind(consumedAt, row.id, input.token, consumedAt, consumedAt).first<{ id: string }>();
+    .bind(consumedAt, row.id, input.token, consumedAt, consumedAt).first<{ id: string }>().catch(budgetError);
   if (!changed) failure(409, "APPROVAL_UNAVAILABLE", "Approval was claimed concurrently or expired.");
   return jsonResponse({ id: row.id, request_hash: row.request_hash, audience: payload.audience, status: "CONSUMED", consumed_at: consumedAt,
     execution: "not_performed", next_step: "Manually verify the exact action in the wallet. This response is not a payment signature." });

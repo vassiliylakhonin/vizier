@@ -1,3 +1,4 @@
+import { financialPolicySchema, transactionSchema } from "../reviews/financial";
 import { reviewSubmissionSchema, reviewDecisionSchema, reviewConsumeSchema } from "../reviews/api";
 import { z, type ZodType } from "zod";
 
@@ -34,6 +35,9 @@ import { SERVICE_VERSION } from "../version";
 
 const registry = z.registry<{ id: string }>();
 const schemas: ReadonlyArray<readonly [string, ZodType]> = [
+  ["FinancialPolicy", financialPolicySchema],
+  ["FinancialTransaction", transactionSchema],
+  ["HumanReviewCancel", z.strictObject({ request_hash: z.string().regex(/^[a-f0-9]{64}$/), reason: z.string().min(1).max(2000) })],
   ["HumanReviewSubmission", reviewSubmissionSchema],
   ["HumanReviewDecision", reviewDecisionSchema],
   ["HumanReviewConsume", reviewConsumeSchema],
@@ -196,7 +200,19 @@ export function createOpenApiDocument(
     paths: {
       "/v1/reviews": {
         get: { operationId: "listHumanReviews", summary: "List the latest 100 administrative reviews", responses: { "200": { description: "Review queue, integration or reviewer credential required." }, ...ERROR_RESPONSE_REFS } },
-        post: { operationId: "submitHumanReview", summary: "Explicitly store a review for seven days", description: "Integration credential only. No tenant keys. Evidence remains submitter-supplied.", requestBody: requestBody("HumanReviewSubmission"), responses: { "201": { description: "Pending exact request and SHA-256 binding." }, ...ERROR_RESPONSE_REFS } },
+        post: { operationId: "submitHumanReview", summary: "Store an exact review; reserve workflow budget for Base USDC", description: "Integration credential only. No tenant keys. Evidence remains submitter-supplied. Financial claims persist until reconciled, then at least seven days; other reviews persist seven days. Financial submissions require an enabled reviewer-configured policy.", requestBody: requestBody("HumanReviewSubmission"), responses: { "201": { description: "Pending exact request and SHA-256 binding." }, ...ERROR_RESPONSE_REFS } },
+      },
+      "/v1/reviews/policies": {
+        get: { operationId: "getFinancialPolicies", summary: "Read Base USDC workflow limits", responses: { "200": { description: "Policies in exact base units. Does not cover out-of-band transfers." }, ...ERROR_RESPONSE_REFS } },
+        post: { operationId: "setFinancialPolicy", summary: "Reviewer configures owner-approved workflow limits", requestBody: requestBody("FinancialPolicy"), responses: { "200": { description: "Policy saved with an audit event. No funds moved." }, ...ERROR_RESPONSE_REFS } },
+      },
+      "/v1/reviews/{id}/cancel": {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        post: { operationId: "cancelHumanReview", summary: "Reviewer cancels an unclaimed request", requestBody: requestBody("HumanReviewCancel"), responses: { "200": { description: "Unclaimed request rejected; reservation no longer counts." }, "409": errorResponse("Already claimed or resolved."), ...ERROR_RESPONSE_REFS } },
+      },
+      "/v1/reviews/{id}/transaction": {
+        parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],
+        post: { operationId: "reconcileFinancialTransaction", summary: "Attach immutable transaction hash and verify finalized Base outcome", description: "Integration credential only. Fixed Base RPC checks exact transaction and USDC Transfer evidence. Pending or unverifiable results retain the hold. Never signs or sends a transaction.", requestBody: requestBody("FinancialTransaction"), responses: { "200": { description: "CLAIMED (pending), SETTLED, or REVERTED. Read the state and finalized flag." }, "409": errorResponse("Unverified evidence, changed attachment or resolved reservation."), ...ERROR_RESPONSE_REFS } },
       },
       "/v1/reviews/{id}": {
         parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],

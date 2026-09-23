@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-09-23
+
+- Atomically reserve reviewer-configured Base native-USDC workflow budgets alongside human reviews; recheck limits at approval and consumption. No default financial policy.
+- Retain claimed holds through expiry, expose reviewer cancellation before claim, and verify exact finalized Base transactions before settling or releasing reverted transfers.
+- Add console controls, REST discovery, SDK reconciliation, mandatory financial audit events and extended retention for unresolved claims.
+- Limits cover this queue only, not out-of-band wallet spending. See [financial reservations](docs/FINANCIAL_RESERVATIONS.md).
+
 ## 0.4.0 — 2026-09-21
 
 - Add an explicit administrative human-review queue, separate reviewer credential, signed five-minute attestations and atomic one-time D1 claims.

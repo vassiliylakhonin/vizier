@@ -21,7 +21,7 @@ export default {
     });
   },
   scheduled(controller, env: ExtendedEnv, ctx): void {
-    ctx.waitUntil(env.DB.prepare("DELETE FROM human_reviews WHERE created_at <= ?").bind(Math.floor(controller.scheduledTime / 1000) - 7 * 86400).run());
+    ctx.waitUntil(env.DB.prepare("DELETE FROM human_reviews WHERE created_at <= ? AND id NOT IN (SELECT review_id FROM financial_reservations WHERE state='CLAIMED' OR settled_at > unixepoch()-604800)").bind(Math.floor(controller.scheduledTime / 1000) - 7 * 86400).run());
     ctx.waitUntil(
       pruneAuditMetadata(env.DB, new Date(controller.scheduledTime))
         .then((result) => {
