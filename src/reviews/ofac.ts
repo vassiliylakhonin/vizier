@@ -1,8 +1,7 @@
-import type { KVNamespace } from "@cloudflare/workers-types";
+import type { D1Database } from "@cloudflare/workers-types";
 import { z } from "zod";
 import { TransportRequestError } from "../transport/shared";
 
-export const OFAC_KV_KEY = "ofac-evm-addresses-v1";
 export const OFAC_SOURCE = "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML";
 const address = z.string().regex(/^0x[0-9a-f]{40}$/);
 const snapshotSchema = z.strictObject({
@@ -13,9 +12,12 @@ const snapshotSchema = z.strictObject({
 });
 
 /** Exact address match against a recent official SDN snapshot; never a sanctions clearance. */
-export async function checkOfacAddresses(kv: KVNamespace | undefined, addresses: readonly string[]): Promise<void> {
+export async function checkOfacAddresses(db: D1Database, addresses: readonly string[]): Promise<void> {
   let raw: string | null = null;
-  try { raw = await kv?.get(OFAC_KV_KEY) ?? null; } catch { /* unavailable means block */ }
+  try {
+    const row = await db.prepare("SELECT payload_json FROM ofac_snapshots WHERE id=1").first<{ payload_json: string }>();
+    raw = row?.payload_json ?? null;
+  } catch { /* unavailable means block */ }
   let snapshot: z.infer<typeof snapshotSchema> | undefined;
   try { snapshot = snapshotSchema.parse(JSON.parse(raw ?? "null")); } catch { /* malformed means block */ }
   const now = Math.floor(Date.now() / 1000);

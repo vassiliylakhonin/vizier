@@ -49,13 +49,23 @@ def build_snapshot(raw: bytes, checked_at: int) -> dict[str, object]:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit("Usage: sync-ofac-snapshot.py OUTPUT_JSON")
+    if len(sys.argv) != 3:
+        raise SystemExit("Usage: sync-ofac-snapshot.py OUTPUT_JSON OUTPUT_SQL")
     request = urllib.request.Request(SOURCE, headers={"User-Agent": "Vizier-OFAC-SDN-Snapshot/1.0 (+https://github.com/vassiliylakhonin/vizier)"})
     with urllib.request.urlopen(request, timeout=60) as response:
         raw = response.read(MAX_BYTES + 1)
     snapshot = build_snapshot(raw, int(time.time()))
-    Path(sys.argv[1]).write_text(json.dumps(snapshot, separators=(",", ":")) + "\n", encoding="utf-8")
+    payload = json.dumps(snapshot, separators=(",", ":"))
+    if len(payload) > 100_000:
+        raise ValueError("OFAC snapshot exceeds SQL upload budget")
+    Path(sys.argv[1]).write_text(payload + "\n", encoding="utf-8")
+    quoted = payload.replace("'", "''")
+    Path(sys.argv[2]).write_text(
+        "INSERT INTO ofac_snapshots(id,payload_json,checked_at) VALUES(1,'"
+        + quoted + f"',{snapshot['checked_at']}) ON CONFLICT(id) DO UPDATE SET "
+        "payload_json=excluded.payload_json,checked_at=excluded.checked_at;\n",
+        encoding="utf-8",
+    )
     print(f"OFAC SDN snapshot: {snapshot['record_count']} records, {len(snapshot['addresses'])} EVM addresses, published {snapshot['publish_date']}")
 
 

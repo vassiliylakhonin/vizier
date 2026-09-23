@@ -62,7 +62,13 @@ jobs:
       # Ordered before the registry step on purpose: an endpoint that does not
       # answer must not be advertised as a new version in a public registry.
       - name: Check the deployed Worker answers
-        run: npm run check:live
+        run: |
+          for attempt in {1..12}; do
+            if npm run check:live; then exit 0; fi
+            echo "Waiting for Worker edge propagation ($attempt/12)..."
+            sleep 5
+          done
+          exit 1
 
       # The registry entry is the one copy of the service version no test can
       # reach. Pinned to a tag and a digest, because this binary runs with a
