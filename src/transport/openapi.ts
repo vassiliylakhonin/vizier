@@ -1,5 +1,5 @@
 import { financialPolicySchema, transactionSchema } from "../reviews/financial";
-import { reviewSubmissionSchema, reviewDecisionSchema, reviewConsumeSchema } from "../reviews/api";
+import { reviewSubmissionSchema, reviewDecisionSchema, reviewConsumeSchema, walletHistoryInput } from "../reviews/api";
 import { z, type ZodType } from "zod";
 
 import {
@@ -37,6 +37,7 @@ const registry = z.registry<{ id: string }>();
 const schemas: ReadonlyArray<readonly [string, ZodType]> = [
   ["FinancialPolicy", financialPolicySchema],
   ["FinancialTransaction", transactionSchema],
+  ["WalletHistoryInput", walletHistoryInput],
   ["HumanReviewCancel", z.strictObject({ request_hash: z.string().regex(/^[a-f0-9]{64}$/), reason: z.string().min(1).max(2000) })],
   ["HumanReviewSubmission", reviewSubmissionSchema],
   ["HumanReviewDecision", reviewDecisionSchema],
@@ -205,6 +206,11 @@ export function createOpenApiDocument(
       "/v1/reviews/policies": {
         get: { operationId: "getFinancialPolicies", summary: "Read Base USDC workflow limits", responses: { "200": { description: "Policies in exact base units. Does not cover out-of-band transfers." }, ...ERROR_RESPONSE_REFS } },
         post: { operationId: "setFinancialPolicy", summary: "Reviewer configures owner-approved workflow limits", requestBody: requestBody("FinancialPolicy"), responses: { "200": { description: "Policy saved with an audit event. No funds moved." }, ...ERROR_RESPONSE_REFS } },
+      },
+      "/v1/reviews/wallet-history": {
+        post: { operationId: "observeWalletHistory", summary: "Read finalized Base USDC history for a configured wallet",
+          description: "Reviewer credential only. Reads the fixed public Base RPC; does not require an enabled policy, create a review or reservation, authorize, sign or broadcast a payment. A 50-subrequest scan may fail closed.",
+          requestBody: requestBody("WalletHistoryInput"), responses: { "200": { description: "Observed finalized native-USDC outgoing amount and anchor, never spending authorization." }, ...ERROR_RESPONSE_REFS } },
       },
       "/v1/reviews/{id}/cancel": {
         parameters: [{ in: "path", name: "id", required: true, schema: { type: "string" } }],

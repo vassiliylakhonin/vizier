@@ -104,6 +104,7 @@ describe("machine-readable discovery contracts", () => {
       "/v1/quorum/propose",
       "/v1/reviews",
       "/v1/reviews/policies",
+      "/v1/reviews/wallet-history",
       "/v1/reviews/{id}",
       "/v1/reviews/{id}/cancel",
       "/v1/reviews/{id}/consume",

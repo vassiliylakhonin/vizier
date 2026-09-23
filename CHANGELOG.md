@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.5.5 — 2026-09-23
+
+- Add a reviewer-only, read-only wallet-history diagnostic for an already configured Base wallet. It uses the same bounded native-USDC collector as financial submissions and returns an explicit non-authorization result without creating a review or changing policy.
+
 ## 0.5.4 — 2026-09-23
 
 - Collect conservative finalized native-USDC history directly from the fixed public Base RPC before financial review submission. A 50-subrequest bound, 1,000-block log ranges, anchor verification and D1 trigger combine observed spending with concurrent review holds; unavailable or incomplete evidence blocks without a reservation.

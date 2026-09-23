@@ -1,4 +1,4 @@
-import { financialAction, budgetError, handleFinancialPolicy, reconcileFinancial } from "./financial";
+import { financialAction, budgetError, handleFinancialPolicy, reconcileFinancial, USDC } from "./financial";
 import { checkOfacAddresses } from "./ofac";
 import { collectWalletHistory } from "./wallet-history";
 import { z } from "zod";
@@ -18,6 +18,7 @@ export const reviewSubmissionSchema = z.strictObject({
 });
 export const reviewDecisionSchema = z.strictObject({ request_hash: hashSchema, decision: z.enum(["APPROVED", "REJECTED"]), reason: z.string().trim().min(1).max(2000) });
 export const reviewConsumeSchema = z.strictObject({ token: z.string().max(12000), request_hash: hashSchema, audience: z.string().min(1).max(200) });
+export const walletHistoryInput = z.strictObject({ wallet: z.string().regex(/^0x[0-9a-f]{40}$/).refine(value => value !== "0x" + "0".repeat(40)) });
 interface ReviewRow {
   id: string; request_hash: string; payload_json: string; status: string;
   created_at: number; expires_at: number; decided_at: number | null;
@@ -56,6 +57,22 @@ export async function handleReviews(request: Request, options: TransportOptions)
   const db = options.db;
   const now = Math.floor(Date.now() / 1000);
   if (url.pathname === "/v1/reviews/policies") return handleFinancialPolicy(request, db, reviewer);
+  if (url.pathname === "/v1/reviews/wallet-history") {
+    if (request.method !== "POST") failure(405, "METHOD_NOT_ALLOWED", "Use POST for a read-only wallet observation.");
+    if (!reviewer) failure(403, "REVIEWER_REQUIRED", "Only the reviewer may request a wallet observation.");
+    const input = walletHistoryInput.safeParse(await readLimitedJson(request));
+    if (!input.success) failure(400, "INVALID_WALLET", "Supply one lowercase nonzero Base wallet address.");
+    const policy = await db.prepare("SELECT wallet FROM financial_policies WHERE wallet=?").bind(input.data.wallet).first();
+    if (!policy) failure(404, "WALLET_NOT_CONFIGURED", "This wallet has no owner-configured review policy.");
+    let history;
+    try { history = await collectWalletHistory(input.data.wallet); }
+    catch { failure(409, "WALLET_HISTORY_UNAVAILABLE", "Independent finalized Base USDC history could not be verified."); }
+    return jsonResponse({ wallet: input.data.wallet, chain_id: 8453, token_contract: USDC,
+      source: "https://mainnet.base.org", scope: "finalized_native_usdc_only",
+      outgoing_base_units: String(history.outgoing), observed_at: history.observedAt,
+      start_block: history.startBlock, end_block: history.endBlock, end_block_hash: history.endBlockHash,
+      authorization: "not_authorized", execution: "not_performed" });
+  }
   if (url.pathname === "/v1/reviews") {
     if (request.method === "GET") {
       const rows = await db.prepare("SELECT * FROM human_reviews WHERE (created_at > ? OR id IN (SELECT review_id FROM financial_reservations WHERE state='CLAIMED' OR settled_at > unixepoch()-604800)) ORDER BY created_at DESC LIMIT 100").bind(now - 7 * 86400).all<ReviewRow>();
