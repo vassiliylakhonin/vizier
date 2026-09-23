@@ -31,6 +31,9 @@ db.exec(`
   );
 `);
 
+const financialSql = readFileSync(new URL("0007_financial_reservations.sql", migrationsUrl), "utf8");
+assert.equal((financialSql.match(/SELECT \(CASE WHEN/g) ?? []).length, 2,
+  "D1 remote migration parser requires parenthesized CASE in triggers");
 for (const migration of migrations.slice(1)) {
   db.exec(readFileSync(new URL(migration, migrationsUrl), "utf8"));
 }
