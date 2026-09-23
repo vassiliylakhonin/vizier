@@ -6,6 +6,7 @@ import {
   maskSecret,
   scanDlpText,
 } from "../src/core/dlp";
+import { canonicalize, sha256 } from "../src/core/receipts";
 import { handleHttpRequest } from "../src/transport/http";
 import type { VerificationRequest } from "../src/core/schemas";
 
@@ -254,6 +255,15 @@ describe("PII & Secret Leak Firewall (DLP)", () => {
       expect(data.total_leaks_prevented).toBe(0);
       expect(typeof data.receipt).toBe("string");
       expect(data.receipt?.split(".").length).toBe(3);
+      const [header, payload, signature] = data.receipt!.split(".");
+      const claims = JSON.parse(Buffer.from(payload!, "base64url").toString("utf8"));
+      expect(claims.scope).toBe("dlp_scan_only");
+      expect(claims.input_sha256).toBe(await sha256(canonicalize({ text: "Clean text with no secrets." })));
+      expect(claims.input_sha256).not.toBe(await sha256(canonicalize({ text: "Different text." })));
+      expect(await crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" }, keyPair.publicKey,
+        Buffer.from(signature!, "base64url"), new TextEncoder().encode(`${header}.${payload}`),
+      )).toBe(true);
     });
 
     it("blocks secret leak at /v1/verify with SECRET_LEAK_PREVENTED", async () => {

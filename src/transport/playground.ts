@@ -50,11 +50,12 @@ export function createPlaygroundHtml(origin: string): string {
       max-width: 1200px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 24px;
     }
     @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
     .card {
+      min-width: 0;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -189,6 +190,7 @@ export function createPlaygroundHtml(origin: string): string {
     </div>
   </div>
 
+  <p>Evaluation playground: caller-supplied authority is unverified and produces REVIEW. No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
   <div class="container">
     <!-- Left: Request Simulator -->
     <div class="card">
@@ -196,7 +198,7 @@ export function createPlaygroundHtml(origin: string): string {
         <span>Proposed Action Simulator</span>
       </div>
       <div class="presets">
-        <button class="preset-btn" onclick="loadPreset('allow')">🟢 Allow: Purchase $820</button>
+        <button class="preset-btn" onclick="loadPreset('allow')">🟡 Evaluate: Purchase $820</button>
         <button class="preset-btn" onclick="loadPreset('block_amount')">🔴 Block: Exceeds Limit ($12,000)</button>
         <button class="preset-btn" onclick="loadPreset('block_target')">🔴 Block: Target Denied</button>
         <button class="preset-btn" onclick="loadPreset('review_sensitive')">🟡 Review: Deploy Worker</button>
