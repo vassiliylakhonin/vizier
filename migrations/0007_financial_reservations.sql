@@ -61,7 +61,7 @@ END;
 CREATE TRIGGER financial_reserved AFTER INSERT ON financial_reservations BEGIN
   INSERT INTO financial_events(review_id,state,occurred_at) VALUES(NEW.review_id,NEW.state,unixepoch());
 END;
--- Legacy financial approvals without reservations cannot be consumed.
+-- Legacy financial approvals without reservations cannot be approved or consumed.
 CREATE TRIGGER financial_claim BEFORE UPDATE OF status ON human_reviews
 WHEN NEW.status IN ('APPROVED','CONSUMED') AND (
   json_extract(NEW.payload_json,'$.audience')='agenda-financial-guard:base-native-usdc'
