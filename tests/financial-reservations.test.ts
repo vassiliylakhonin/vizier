@@ -107,6 +107,10 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT enabled FROM financial_policies WHERE wallet=?").get(wallet)!.enabled).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
+    mockHistory(0, { eth_chainId: new TypeError("fetch blocked") });
+    const transport = await call("/v1/reviews/wallet-history", input, "reviewer");
+    expect(transport.status).toBe(409);
+    expect(await transport.json()).toMatchObject({ error: { details: { reason: "Base RPC transport: fetch blocked" } } });
     mockHistory(0, { eth_getLogs: new Error("RPC unavailable") });
     const failed = await call("/v1/reviews/wallet-history", input, "reviewer");
     expect(failed.status).toBe(409);
