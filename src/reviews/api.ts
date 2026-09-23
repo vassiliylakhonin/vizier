@@ -66,7 +66,13 @@ export async function handleReviews(request: Request, options: TransportOptions)
     if (!policy) failure(404, "WALLET_NOT_CONFIGURED", "This wallet has no owner-configured review policy.");
     let history;
     try { history = await collectWalletHistory(input.data.wallet); }
-    catch { failure(409, "WALLET_HISTORY_UNAVAILABLE", "Independent finalized Base USDC history could not be verified."); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const reason = /^Base RPC HTTP [45]\d\d$/.test(message) ? message
+        : /^(Base RPC empty response|Base RPC response too large|Invalid Base RPC envelope|Wrong Base chain|Insufficient Base history|Finalized history does not cover a fresh full day|Base history timed out|Incomplete Base logs|Invalid Base transfer log|Observed spend exceeds supported budget|Base finality anchor changed)$/.test(message) ? message
+          : error instanceof Error && error.name === "TypeError" ? "Base RPC fetch or parse failed" : "Base RPC evidence invalid";
+      throw new TransportRequestError(409, "WALLET_HISTORY_UNAVAILABLE", "Independent finalized Base USDC history could not be verified.", { reason });
+    }
     return jsonResponse({ wallet: input.data.wallet, chain_id: 8453, token_contract: USDC,
       source: "https://mainnet.base.org", scope: "finalized_native_usdc_only",
       outgoing_base_units: String(history.outgoing), observed_at: history.observedAt,

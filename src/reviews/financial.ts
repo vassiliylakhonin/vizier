@@ -49,7 +49,8 @@ export async function handleFinancialPolicy(request: Request, db: D1Database, re
 export async function rpc(method: string, params: unknown[]): Promise<unknown> {
   const response = await fetch("https://mainnet.base.org", { method: "POST", redirect: "error",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
-  if (!response.ok || !response.body) throw new Error("Base RPC unavailable");
+  if (!response.ok) throw new Error(`Base RPC HTTP ${response.status}`);
+  if (!response.body) throw new Error("Base RPC empty response");
   const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
   try {
     for (;;) { const part = await reader.read(); if (part.done) break; size += part.value.length;

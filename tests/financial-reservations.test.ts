@@ -108,7 +108,11 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
     mockHistory(0, { eth_getLogs: new Error("RPC unavailable") });
-    expect((await call("/v1/reviews/wallet-history", input, "reviewer")).status).toBe(409);
+    const failed = await call("/v1/reviews/wallet-history", input, "reviewer");
+    expect(failed.status).toBe(409);
+    expect(await failed.json()).toMatchObject({ error: { code: "WALLET_HISTORY_UNAVAILABLE", details: { reason: "Base RPC evidence invalid" } } });
+    expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
+    expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
   });
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();
