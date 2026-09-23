@@ -34,7 +34,7 @@ the proposing integration or include private keys/seed phrases in requests.
 
 The scheduled `sync-ofac.yml` workflow downloads the official OFAC `SDN.XML`
 with a User-Agent, validates its declared record count, and atomically replaces
-one KV key with a timestamped, SHA-256 identified list of exact 20-byte digital
+one D1 row with a timestamped, SHA-256 identified list of exact 20-byte digital
 currency addresses. The list includes all OFAC digital-currency address types
 whose identifier is a 20-byte `0x` value, including ETH, ARB, BSC and USDC.
 It is refreshed daily; a failed refresh leaves the prior snapshot in place.
@@ -44,9 +44,9 @@ checked within 36 hours. A missing, stale or malformed snapshot blocks the
 request. An exact sender or recipient match blocks it. A non-match means only that the
 address did not exactly match this published subset; it is **not** general
 sanctions clearance, ownership analysis or a check of counterparties behind
-contracts. The list depends on official publication and Cloudflare KV
-propagation (which can lag briefly after an update). Run the workflow manually
-after first deployment and verify its success before any policy activation.
+contracts. The list depends on official publication and the D1 refresh job.
+Run the workflow manually after first deployment and verify its success before
+any policy activation.
 
 ## Reservation lifecycle
 

@@ -19,7 +19,7 @@ function action(amount = "60000000"): FinancialAction {
 function submission(amount?: string) { return { audience: FINANCIAL_AUDIENCE, action: action(amount), evidence: {}, escalation_reason: "Local synthetic test", expires_in_seconds: 1800 }; }
 function fakeD1(): D1Database {
   mem = new DatabaseSync(":memory:"); mem.exec("PRAGMA foreign_keys=ON");
-  for (const name of ["0006_human_reviews.sql", "0007_financial_reservations.sql"]) mem.exec(readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"));
+  for (const name of ["0006_human_reviews.sql", "0007_financial_reservations.sql", "0008_ofac_snapshot.sql"]) mem.exec(readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"));
   function prepare(query: string, values: SQLInputValue[] = []) {
     return { bind(...args: SQLInputValue[]) { return prepare(query, args); },
       execute() { return mem.prepare(query).all(...values); },
@@ -51,45 +51,45 @@ async function approve(row: Review): Promise<Review> {
 function claim(row: Review) { return call(`/v1/reviews/${row.id}/consume`, { request_hash: row.request_hash, token: row.token, audience: FINANCIAL_AUDIENCE }); }
 function cancel(row: Review, key = "reviewer") { return call(`/v1/reviews/${row.id}/cancel`, { request_hash: row.request_hash, reason: "Cancelled locally" }, key); }
 function reservation(row: Review) { return mem.prepare("SELECT * FROM financial_reservations WHERE review_id=?").get(row.id)!; }
+function setSnapshot(snapshot: object | null) {
+  if (snapshot === null) mem.prepare("DELETE FROM ofac_snapshots").run();
+  else mem.prepare("INSERT INTO ofac_snapshots(id,payload_json,checked_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json,checked_at=excluded.checked_at")
+    .run(JSON.stringify(snapshot), Math.floor(Date.now()/1000));
+}
+function snapshot(addresses: string[] = Array.from({ length: 100 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), checkedAt = Math.floor(Date.now()/1000)) {
+  return { schema_version: 1, source: OFAC_SOURCE, checked_at: checkedAt, publish_date: "2026-09-18",
+    source_sha256: "a".repeat(64), record_count: 19000, addresses };
+}
 
 beforeEach(async () => {
   const pair = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
-  const snapshot = { schema_version: 1, source: OFAC_SOURCE, checked_at: Math.floor(Date.now() / 1000), publish_date: "2026-09-18",
-    source_sha256: "a".repeat(64), record_count: 19000, addresses: Array.from({ length: 100 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")) };
   options = { apiKey: "integration", reviewerApiKey: "reviewer", db: fakeD1(),
-    circuitBreakerKv: { get: async () => JSON.stringify(snapshot) } as unknown as TransportOptions["circuitBreakerKv"],
     receiptSigningKey: JSON.stringify({ ...await webcrypto.subtle.exportKey("jwk", pair.privateKey), alg: "ES256", kid: "test", use: "sig" }) };
+  setSnapshot(snapshot());
 });
 afterEach(() => { vi.unstubAllGlobals(); mem.close(); });
 
 describe("financial reservations", () => {
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();
-    options = { ...options, circuitBreakerKv: undefined };
+    setSnapshot(null);
     expect((await call("/v1/reviews", submission())).status).toBe(409);
-    options = { ...options, circuitBreakerKv: { get: async () => JSON.stringify({ schema_version: 1, source: OFAC_SOURCE,
-      checked_at: 1, publish_date: "2026-09-18", source_sha256: "a".repeat(64), record_count: 19000,
-      addresses: Array.from({ length: 100 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")) }) } as unknown as TransportOptions["circuitBreakerKv"] };
+    setSnapshot(snapshot(undefined, 1));
     expect((await call("/v1/reviews", submission())).status).toBe(409);
-    options = { ...options, circuitBreakerKv: { get: async () => JSON.stringify({ schema_version: 1, source: OFAC_SOURCE,
-      checked_at: Math.floor(Date.now()/1000), publish_date: "2026-09-18", source_sha256: "a".repeat(64), record_count: 19000,
-      addresses: [...Array.from({ length: 99 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), recipient] }) } as unknown as TransportOptions["circuitBreakerKv"] };
+    setSnapshot(snapshot([...Array.from({ length: 99 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), recipient]));
     expect((await call("/v1/reviews", submission())).status).toBe(409);
-    options = { ...options, circuitBreakerKv: { get: async () => JSON.stringify({ schema_version: 1, source: OFAC_SOURCE,
-      checked_at: Math.floor(Date.now()/1000), publish_date: "2026-09-18", source_sha256: "a".repeat(64), record_count: 19000,
-      addresses: [...Array.from({ length: 99 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), wallet] }) } as unknown as TransportOptions["circuitBreakerKv"] };
+    setSnapshot(snapshot([...Array.from({ length: 99 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), wallet]));
     expect((await call("/v1/reviews", submission())).status).toBe(409);
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
   });
   it("rechecks the address snapshot at approval and claim", async () => {
     await policy();
-    const goodKv = options.circuitBreakerKv;
     const pending = await create();
-    options = { ...options, circuitBreakerKv: undefined };
+    setSnapshot(null);
     expect((await call(`/v1/reviews/${pending.id}/decision`, { request_hash: pending.request_hash, decision: "APPROVED", reason: "Synthetic" }, "reviewer")).status).toBe(409);
-    options = { ...options, circuitBreakerKv: goodKv };
+    setSnapshot(snapshot());
     const approved = await approve(pending);
-    options = { ...options, circuitBreakerKv: undefined };
+    setSnapshot(null);
     expect((await claim(approved)).status).toBe(409);
     expect(reservation(approved).state).toBe("RESERVED");
   });
