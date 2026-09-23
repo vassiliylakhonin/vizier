@@ -111,7 +111,7 @@ integration POSTs `/v1/reviews/{id}/transaction` with
 The first hash attachment is immutable and unique across reviews. A wrong hash
 keeps the hold and requires operator investigation; no force-release API exists.
 
-The service queries only `https://mainnet.base.org` and checks chain ID,
+The service queries only `https://mainnet-preconf.base.org` and checks chain ID,
 finalized head freshness, canonical block hash/number, transaction hash,
 sender, USDC target, zero native value, exact calldata and a block timestamp
 strictly after consumption. Successful execution also requires exactly one
