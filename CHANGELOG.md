@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.5.1 — 2026-09-23
+
+- Parenthesize `CASE` expressions in financial D1 triggers so remote Cloudflare migration parsing succeeds. No policy defaults or runtime contract changes.
+
 ## 0.5.0 — 2026-09-23
 
 - Atomically reserve reviewer-configured Base native-USDC workflow budgets alongside human reviews; recheck limits at approval and consumption. No default financial policy.

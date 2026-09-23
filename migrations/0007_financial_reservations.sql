@@ -45,7 +45,7 @@ CREATE TRIGGER financial_policy_update AFTER UPDATE ON financial_policies BEGIN
 END;
 -- Check and reserve in the same write transaction, including concurrent callers.
 CREATE TRIGGER financial_reserve BEFORE INSERT ON financial_reservations BEGIN
-  SELECT CASE WHEN NEW.state <> 'RESERVED' OR NOT EXISTS (
+  SELECT (CASE WHEN NEW.state <> 'RESERVED' OR NOT EXISTS (
     SELECT 1 FROM financial_policies p WHERE p.wallet=NEW.wallet AND p.enabled=1
     AND NEW.amount <= p.single_limit
     AND NEW.amount + COALESCE((
@@ -56,7 +56,7 @@ CREATE TRIGGER financial_reserve BEFORE INSERT ON financial_reservations BEGIN
           (h.status='PENDING' OR (h.status='APPROVED' AND h.token_expires_at > unixepoch())))
       )
     ),0) <= p.daily_limit
-  ) THEN RAISE(ABORT,'FINANCIAL_BUDGET_UNAVAILABLE') END;
+  ) THEN RAISE(ABORT,'FINANCIAL_BUDGET_UNAVAILABLE') END);
 END;
 CREATE TRIGGER financial_reserved AFTER INSERT ON financial_reservations BEGIN
   INSERT INTO financial_events(review_id,state,occurred_at) VALUES(NEW.review_id,NEW.state,unixepoch());
@@ -67,13 +67,13 @@ WHEN NEW.status IN ('APPROVED','CONSUMED') AND (
   json_extract(NEW.payload_json,'$.audience')='agenda-financial-guard:base-native-usdc'
   OR json_extract(NEW.payload_json,'$.action.type')='base-native-usdc-transfer'
 ) BEGIN
-  SELECT CASE WHEN NOT EXISTS (
+  SELECT (CASE WHEN NOT EXISTS (
     SELECT 1 FROM financial_reservations r JOIN financial_policies p ON p.wallet=r.wallet
     WHERE r.review_id=NEW.id AND r.state='RESERVED' AND p.enabled=1 AND NEW.expires_at > unixepoch() AND NEW.token_expires_at > unixepoch() AND r.amount <= p.single_limit
     AND (SELECT COALESCE(SUM(r2.amount),0) FROM financial_reservations r2 JOIN human_reviews h ON h.id=r2.review_id
       WHERE r2.wallet=r.wallet AND (r2.state='CLAIMED' OR (r2.state='SETTLED' AND r2.settled_at > unixepoch()-86400)
       OR (r2.state='RESERVED' AND h.expires_at > unixepoch() AND (h.status='PENDING' OR (h.status='APPROVED' AND h.token_expires_at > unixepoch()))))) <= p.daily_limit
-  ) THEN RAISE(ABORT,'FINANCIAL_RESERVATION_UNAVAILABLE') END;
+  ) THEN RAISE(ABORT,'FINANCIAL_RESERVATION_UNAVAILABLE') END);
   UPDATE financial_reservations SET state='CLAIMED' WHERE review_id=NEW.id AND NEW.status='CONSUMED';
 END;
 CREATE TRIGGER financial_transition AFTER UPDATE ON financial_reservations
