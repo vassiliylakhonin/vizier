@@ -74,7 +74,7 @@ export async function handleReviews(request: Request, options: TransportOptions)
       throw new TransportRequestError(409, "WALLET_HISTORY_UNAVAILABLE", "Independent finalized Base USDC history could not be verified.", { reason });
     }
     return jsonResponse({ wallet: input.data.wallet, chain_id: 8453, token_contract: USDC,
-      source: "https://mainnet.base.org", scope: "finalized_native_usdc_only",
+      source: "https://mainnet-preconf.base.org", scope: "finalized_native_usdc_only",
       outgoing_base_units: String(history.outgoing), observed_at: history.observedAt,
       start_block: history.startBlock, end_block: history.endBlock, end_block_hash: history.endBlockHash,
       authorization: "not_authorized", execution: "not_performed" });
