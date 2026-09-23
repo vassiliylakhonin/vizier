@@ -7,6 +7,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { handleHttpRequest } from "../src/transport/http";
 import type { TransportOptions } from "../src/transport/shared";
 import { FINANCIAL_AUDIENCE, USDC, verifyFinancialOutcome, type FinancialAction } from "../src/reviews/financial";
+import { OFAC_SOURCE } from "../src/reviews/ofac";
 
 let mem: DatabaseSync;
 let options: TransportOptions;
@@ -53,11 +54,41 @@ function reservation(row: Review) { return mem.prepare("SELECT * FROM financial_
 
 beforeEach(async () => {
   const pair = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
-  options = { apiKey: "integration", reviewerApiKey: "reviewer", db: fakeD1(), receiptSigningKey: JSON.stringify({ ...await webcrypto.subtle.exportKey("jwk", pair.privateKey), alg: "ES256", kid: "test", use: "sig" }) };
+  const snapshot = { schema_version: 1, source: OFAC_SOURCE, checked_at: Math.floor(Date.now() / 1000), publish_date: "2026-09-18",
+    source_sha256: "a".repeat(64), record_count: 19000, addresses: Array.from({ length: 100 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")) };
+  options = { apiKey: "integration", reviewerApiKey: "reviewer", db: fakeD1(),
+    circuitBreakerKv: { get: async () => JSON.stringify(snapshot) } as unknown as TransportOptions["circuitBreakerKv"],
+    receiptSigningKey: JSON.stringify({ ...await webcrypto.subtle.exportKey("jwk", pair.privateKey), alg: "ES256", kid: "test", use: "sig" }) };
 });
 afterEach(() => { vi.unstubAllGlobals(); mem.close(); });
 
 describe("financial reservations", () => {
+  it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
+    await policy();
+    options = { ...options, circuitBreakerKv: undefined };
+    expect((await call("/v1/reviews", submission())).status).toBe(409);
+    options = { ...options, circuitBreakerKv: { get: async () => JSON.stringify({ schema_version: 1, source: OFAC_SOURCE,
+      checked_at: 1, publish_date: "2026-09-18", source_sha256: "a".repeat(64), record_count: 19000,
+      addresses: Array.from({ length: 100 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")) }) } as unknown as TransportOptions["circuitBreakerKv"] };
+    expect((await call("/v1/reviews", submission())).status).toBe(409);
+    options = { ...options, circuitBreakerKv: { get: async () => JSON.stringify({ schema_version: 1, source: OFAC_SOURCE,
+      checked_at: Math.floor(Date.now()/1000), publish_date: "2026-09-18", source_sha256: "a".repeat(64), record_count: 19000,
+      addresses: [...Array.from({ length: 99 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), recipient] }) } as unknown as TransportOptions["circuitBreakerKv"] };
+    expect((await call("/v1/reviews", submission())).status).toBe(409);
+    expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
+  });
+  it("rechecks the address snapshot at approval and claim", async () => {
+    await policy();
+    const goodKv = options.circuitBreakerKv;
+    const pending = await create();
+    options = { ...options, circuitBreakerKv: undefined };
+    expect((await call(`/v1/reviews/${pending.id}/decision`, { request_hash: pending.request_hash, decision: "APPROVED", reason: "Synthetic" }, "reviewer")).status).toBe(409);
+    options = { ...options, circuitBreakerKv: goodKv };
+    const approved = await approve(pending);
+    options = { ...options, circuitBreakerKv: undefined };
+    expect((await claim(approved)).status).toBe(409);
+    expect(reservation(approved).state).toBe("RESERVED");
+  });
   it("has no default policy, rolls back the review, and separates policy authority", async () => {
     expect((await call("/v1/reviews", submission())).status).toBe(409);
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);

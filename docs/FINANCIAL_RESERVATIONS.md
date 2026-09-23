@@ -4,7 +4,9 @@ Experimental single-operator workflow accounting. This is a limit on requests
 through this review queue, **not a complete wallet spending limit**: manual
 transfers elsewhere, other assets, gas, approvals and external pending
 transactions are excluded. No automatic ALLOW, signature or broadcast is added.
-Use independent wallet and sanctions checks before manual execution.
+Keep a financial policy disabled until independent wallet-wide history and
+pending-transaction evidence are available. The public Base RPC can refuse
+historical `eth_getLogs` queries; an unavailable history is not zero spending.
 
 ## Owner policy
 
@@ -27,6 +29,24 @@ new approvals/claims without clearing existing holds.
 The `/reviews` console exposes policy read/write, cancellation, and transaction
 reconciliation. It keeps credentials in memory. Never give the reviewer key to
 the proposing integration or include private keys/seed phrases in requests.
+
+## Official address snapshot
+
+The scheduled `sync-ofac.yml` workflow downloads the official OFAC `SDN.XML`
+with a User-Agent, validates its declared record count, and atomically replaces
+one KV key with a timestamped, SHA-256 identified list of exact 20-byte digital
+currency addresses. The list includes all OFAC digital-currency address types
+whose identifier is a 20-byte `0x` value, including ETH, ARB, BSC and USDC.
+It is refreshed daily; a failed refresh leaves the prior snapshot in place.
+
+Financial submission, approval, and claim require a well-formed snapshot
+checked within 36 hours. A missing, stale or malformed snapshot blocks the
+request. An exact recipient match blocks it. A non-match means only that the
+address did not exactly match this published subset; it is **not** general
+sanctions clearance, ownership analysis or a check of counterparties behind
+contracts. The list depends on official publication and Cloudflare KV
+propagation (which can lag briefly after an update). Run the workflow manually
+after first deployment and verify its success before any policy activation.
 
 ## Reservation lifecycle
 
