@@ -47,7 +47,7 @@ export async function handleFinancialPolicy(request: Request, db: D1Database, re
 
 /** All reads go to one fixed Base endpoint; never accept caller RPC URLs or outcomes. */
 export async function rpc(method: string, params: unknown[]): Promise<unknown> {
-  const response = await fetch("https://mainnet.base.org", { method: "POST", redirect: "error",
+  const response = await fetch("https://mainnet.base.org", { method: "POST", redirect: "manual",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error(`Base RPC HTTP ${response.status}`);
   if (!response.body) throw new Error("Base RPC empty response");

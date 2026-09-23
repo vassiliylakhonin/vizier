@@ -69,6 +69,7 @@ function mockHistory(outgoing = 0, overrides: Record<string, unknown> = {}) {
     data: "0x" + outgoing.toString(16).padStart(64, "0"), removed: false, blockNumber: "0x" + (end - 10).toString(16),
     logIndex: "0x0", transactionHash: "0x" + "a".repeat(64), blockHash: "0x" + "b".repeat(64) };
   vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+    if (init.redirect !== "manual") throw new TypeError("Workers only support follow or manual redirects");
     const { method, params } = JSON.parse(init.body as string) as { method: string; params: unknown[] };
     if (overrides[method] instanceof Error) throw overrides[method];
     let result: unknown;
@@ -257,7 +258,7 @@ function mockRpc(change: Record<string, unknown> = {}) {
     ...change,
   };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
-    expect(url).toBe("https://mainnet.base.org"); expect(init.redirect).toBe("error");
+    expect(url).toBe("https://mainnet.base.org"); expect(init.redirect).toBe("manual");
     const input = JSON.parse(init.body as string) as { method: string };
     return Response.json({ jsonrpc: "2.0", id: 1, result: answers[input.method] });
   }));
