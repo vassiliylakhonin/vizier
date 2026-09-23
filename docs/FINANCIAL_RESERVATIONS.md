@@ -84,6 +84,17 @@ The independent history does not include unfinalized or pending transfers,
 other assets, token approvals or transfers made after the anchor. It is not an
 atomic wallet-wide cap, so do not enable an owner policy on this basis alone.
 
+For an operational read-only check, the reviewer can POST
+`/v1/reviews/wallet-history` with `{"wallet":"0x..."}` and the separate
+reviewer credential. The wallet must already have a configured policy, which
+may remain disabled. The response reports the scoped outgoing base units,
+observed time and finalized block anchor with `authorization:"not_authorized"`
+and `execution:"not_performed"`. The call uses the same collector as
+submission and does not insert a review, reserve budget, change the policy,
+sign or broadcast. An unavailable or incomplete RPC returns 409; do not
+interpret it as zero spend. The scan can use all 50 external subrequests in a
+Workers Free invocation, so reserve this diagnostic for operator checks.
+
 Before consumption, reviewer-only POST `/v1/reviews/{id}/cancel` accepts
 `{request_hash, reason}` and changes PENDING/APPROVED to REJECTED. Existing tokens
 then fail. Ordinary rejection, request expiry or approval expiry also removes

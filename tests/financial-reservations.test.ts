@@ -93,6 +93,23 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllGlobals(); mem.close(); });
 
 describe("financial reservations", () => {
+  it("observes a configured wallet with reviewer authority and no policy or review mutation", async () => {
+    await policy({ enabled: false });
+    mockHistory(750000);
+    const input = { wallet };
+    expect((await call("/v1/reviews/wallet-history", input, "integration")).status).toBe(403);
+    expect((await call("/v1/reviews/wallet-history", input, "wrong")).status).toBe(401);
+    expect((await call("/v1/reviews/wallet-history", { wallet: recipient }, "reviewer")).status).toBe(404);
+    expect((await call("/v1/reviews/wallet-history", { wallet: wallet.toUpperCase() }, "reviewer")).status).toBe(400);
+    const response = await call("/v1/reviews/wallet-history", input, "reviewer");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ wallet, outgoing_base_units: "750000", authorization: "not_authorized", execution: "not_performed" });
+    expect(mem.prepare("SELECT enabled FROM financial_policies WHERE wallet=?").get(wallet)!.enabled).toBe(0);
+    expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
+    expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
+    mockHistory(0, { eth_getLogs: new Error("RPC unavailable") });
+    expect((await call("/v1/reviews/wallet-history", input, "reviewer")).status).toBe(409);
+  });
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();
     setSnapshot(null);
