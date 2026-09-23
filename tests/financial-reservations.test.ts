@@ -75,6 +75,10 @@ describe("financial reservations", () => {
       checked_at: Math.floor(Date.now()/1000), publish_date: "2026-09-18", source_sha256: "a".repeat(64), record_count: 19000,
       addresses: [...Array.from({ length: 99 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), recipient] }) } as unknown as TransportOptions["circuitBreakerKv"] };
     expect((await call("/v1/reviews", submission())).status).toBe(409);
+    options = { ...options, circuitBreakerKv: { get: async () => JSON.stringify({ schema_version: 1, source: OFAC_SOURCE,
+      checked_at: Math.floor(Date.now()/1000), publish_date: "2026-09-18", source_sha256: "a".repeat(64), record_count: 19000,
+      addresses: [...Array.from({ length: 99 }, (_, i) => "0x" + i.toString(16).padStart(40, "0")), wallet] }) } as unknown as TransportOptions["circuitBreakerKv"] };
+    expect((await call("/v1/reviews", submission())).status).toBe(409);
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
   });
   it("rechecks the address snapshot at approval and claim", async () => {

@@ -41,7 +41,7 @@ It is refreshed daily; a failed refresh leaves the prior snapshot in place.
 
 Financial submission, approval, and claim require a well-formed snapshot
 checked within 36 hours. A missing, stale or malformed snapshot blocks the
-request. An exact recipient match blocks it. A non-match means only that the
+request. An exact sender or recipient match blocks it. A non-match means only that the
 address did not exactly match this published subset; it is **not** general
 sanctions clearance, ownership analysis or a check of counterparties behind
 contracts. The list depends on official publication and Cloudflare KV

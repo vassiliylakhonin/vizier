@@ -13,7 +13,7 @@ const snapshotSchema = z.strictObject({
 });
 
 /** Exact address match against a recent official SDN snapshot; never a sanctions clearance. */
-export async function checkOfacAddress(kv: KVNamespace | undefined, recipient: string): Promise<void> {
+export async function checkOfacAddresses(kv: KVNamespace | undefined, addresses: readonly string[]): Promise<void> {
   let raw: string | null = null;
   try { raw = await kv?.get(OFAC_KV_KEY) ?? null; } catch { /* unavailable means block */ }
   let snapshot: z.infer<typeof snapshotSchema> | undefined;
@@ -23,7 +23,7 @@ export async function checkOfacAddress(kv: KVNamespace | undefined, recipient: s
     || snapshot.addresses.some((value, i) => i > 0 && value <= snapshot!.addresses[i - 1]!)) {
     throw new TransportRequestError(409, "SANCTIONS_DATA_UNAVAILABLE", "A recent official OFAC address snapshot is required for financial review.");
   }
-  if (snapshot.addresses.includes(recipient)) {
-    throw new TransportRequestError(409, "SANCTIONS_ADDRESS_MATCH", "The recipient exactly matches an address in the OFAC SDN snapshot.");
+  if (addresses.some(address => snapshot!.addresses.includes(address))) {
+    throw new TransportRequestError(409, "SANCTIONS_ADDRESS_MATCH", "A transfer address exactly matches an address in the OFAC SDN snapshot.");
   }
 }
