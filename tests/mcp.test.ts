@@ -240,13 +240,26 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
     });
   });
 
-  it("returns 405 for GET on the single MCP endpoint", async () => {
+  it("returns a non-executing capability document for GET on the MCP endpoint", async () => {
     const response = await handleHttpRequest(
       new Request("https://vizier.example/mcp"),
     );
 
-    expect(response.status).toBe(405);
-    expect(response.headers.get("Allow")).toBe("POST");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Allow")).toBe("GET, HEAD, POST, OPTIONS");
+    expect(response.headers.get("Accept-Post")).toBe("application/json");
+    await expect(response.json()).resolves.toMatchObject({
+      liveness: "ok",
+      supports_sse_get: false,
+      invocation: { method: "POST" },
+      tools: ["vizier_verify_action"],
+    });
+
+    const head = await handleHttpRequest(
+      new Request("https://vizier.example/mcp", { method: "HEAD" }),
+    );
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
   });
 });
 

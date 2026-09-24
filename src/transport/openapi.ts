@@ -507,6 +507,15 @@ export function createOpenApiDocument(
         },
       },
       "/mcp": {
+        get: {
+          operationId: "getMcpCapabilities",
+          tags: ["MCP", "Discovery"],
+          summary: "Inspect MCP transport capabilities without invoking a tool",
+          security: [],
+          responses: {
+            "200": { description: "MCP transport capability document." },
+          },
+        },
         post: {
           operationId: "handleMcpJsonRpc",
           tags: ["MCP"],

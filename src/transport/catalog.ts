@@ -193,4 +193,77 @@ OpenAPI: ${origin}/openapi.json
 `;
 }
 
+export function createVizierRobotsTxt(origin: string): string {
+  return `User-agent: *
+Allow: /
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+
+Agentmap: ${origin}/.well-known/ai-catalog.json
+Sitemap: ${origin}/sitemap.xml
+`;
+}
+
+export function createVizierSitemap(origin: string): string {
+  const paths = [
+    "/",
+    "/docs",
+    "/playground",
+    "/.well-known/agent-card.json",
+    "/.well-known/ai-catalog.json",
+    "/.well-known/mcp.json",
+    "/openapi.json",
+    "/llms.txt",
+  ];
+  const urls = paths
+    .map((path) => `  <url><loc>${origin}${path}</loc></url>`)
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+}
+
+export function createVizierOwnersDocument(): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    $schema: "https://verifymcp.io/schemas/owners-v1.json",
+    version: "1.0",
+    owners: [
+      {
+        name: "Vassiliy Lakhonin",
+        role: "Founder & Maintainer",
+        email: "vassiliy.lakhonin@gmail.com",
+        github: "vassiliylakhonin",
+      },
+    ],
+    service: {
+      name: "Vizier",
+      description: "Deterministic authorization checks for actions proposed by AI agents.",
+      security_contact: "vassiliy.lakhonin@gmail.com",
+    },
+  });
+}
+
+export function createMcpCapabilityDocument(
+  origin: string,
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    ok: true,
+    protocol: "Model Context Protocol",
+    transport: "streamable-http",
+    endpoint: `${origin}/mcp`,
+    invocation: {
+      method: "POST",
+      content_type: "application/json",
+      accept: ["application/json", "text/event-stream"],
+    },
+    supports_sse_get: false,
+    supported_protocol_versions: [
+      "2026-07-28",
+      "2025-06-18",
+      "2025-03-26",
+      "2024-11-05",
+    ],
+    server_card: `${origin}/.well-known/mcp.json`,
+    tools: ["vizier_verify_action"],
+    liveness: "ok",
+    version: SERVICE_VERSION,
+  });
+}
 

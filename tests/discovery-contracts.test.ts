@@ -219,6 +219,36 @@ describe("machine-readable discovery contracts", () => {
     expect(agentsText).toContain("LLMs-txt:");
   });
 
+  it("serves shared crawler assets, ownership metadata, and canonical MCP aliases", async () => {
+    const [robots, sitemap, favicon, owners, directory, probing] = await Promise.all([
+      get("/robots.txt"),
+      get("/sitemap.xml"),
+      get("/favicon.ico"),
+      get("/.well-known/owners.json"),
+      get("/.well-known/agent-directory.json"),
+      get("/.well-known/mcp-probing.json"),
+    ]);
+
+    expect(robots.status).toBe(200);
+    expect(await robots.text()).toContain("Sitemap: https://vizier.example/sitemap.xml");
+    expect(sitemap.status).toBe(200);
+    expect(await sitemap.text()).toContain("<urlset");
+    expect(favicon.status).toBe(200);
+    expect(favicon.headers.get("content-type")).toContain("image/svg+xml");
+    await expect(owners.json()).resolves.toMatchObject({
+      version: "1.0",
+      owners: [expect.objectContaining({ github: "vassiliylakhonin" })],
+    });
+    await expect(directory.json()).resolves.toMatchObject({ specVersion: "1.0" });
+    await expect(probing.json()).resolves.toMatchObject({ liveness: "ok" });
+
+    for (const alias of ["/api/mcp", "/mcp/v1", "/sse"]) {
+      const response = await get(alias);
+      expect(response.status).toBe(308);
+      expect(response.headers.get("location")).toBe("https://vizier.example/mcp");
+    }
+  });
+
   it("serves the Glama MCP verification manifest at /.well-known/glama.json and /glama.json", async () => {
     const [wellKnown, root] = await Promise.all([
       get("/.well-known/glama.json"),

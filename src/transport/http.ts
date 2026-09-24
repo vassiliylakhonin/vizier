@@ -53,11 +53,15 @@ import {
 import { createAgentCard, handleA2aRequest } from "./a2a";
 import {
   createAiCatalog,
+  createMcpCapabilityDocument,
   createMcpServerManifest,
   createVizierAgentsTxt,
   createVizierGlamaJson,
   createVizierLlmsTxt,
   createVizierOAuthProtectedResource,
+  createVizierOwnersDocument,
+  createVizierRobotsTxt,
+  createVizierSitemap,
 } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
@@ -84,6 +88,75 @@ interface ApiErrorBody {
     readonly message: string;
     readonly details?: unknown;
   };
+}
+
+const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#111827"/><path d="m15 18 17 31 17-31h-9l-8 16-8-16z" fill="#38bdf8"/></svg>`;
+
+const DISCOVERY_REDIRECTS: Readonly<Record<string, string>> = Object.freeze({
+  "/api/mcp": "/mcp",
+  "/mcp/v1": "/mcp",
+  "/sse": "/mcp",
+  "/discovery/resources": "/.well-known/ai-catalog.json",
+  "/sitemap-index.xml": "/sitemap.xml",
+  "/sitemap_index.xml": "/sitemap.xml",
+});
+
+function trafficStep(path: string): string {
+  if (path === "/") return "landing";
+  if (path === "/.well-known/agent-card.json" || path === "/.well-known/agent.json") return "card";
+  if (path === "/docs" || path === "/openapi.json" || path === "/llms.txt") return "docs";
+  if (path === "/mcp" || path === "/a2a" || path === "/message/send") return "action";
+  if (path.startsWith("/.well-known/")) return "discovery";
+  if (path.startsWith("/v1/")) return "api";
+  return "other";
+}
+
+function classifyTraffic(userAgent: string): "self_test" | "machine_probe" | "machine_client" | "human_browser" {
+  const value = userAgent.toLowerCase();
+  if (/vizier-(?:live-)?smoke|agenda-intelligence-live-smoke/.test(value)) return "self_test";
+  if (/mcpbeat|sentineloracle|agentprobe|brickbluebot|crawler|spider|collector|probe|audit|bot\b/.test(value)) {
+    return "machine_probe";
+  }
+  if (/mozilla\//.test(value)) return "human_browser";
+  return "machine_client";
+}
+
+function referrerHost(request: Request): string | null {
+  const value = request.headers.get("referer");
+  if (value === null) return null;
+  try {
+    return new URL(value).host;
+  } catch {
+    return null;
+  }
+}
+
+function logTraffic(request: Request, url: URL): void {
+  const userAgent = request.headers.get("user-agent") ?? "";
+  const trafficClass = classifyTraffic(userAgent);
+  const cf = (request as Request & {
+    readonly cf?: {
+      readonly country?: string;
+      readonly asOrganization?: string;
+      readonly colo?: string;
+    };
+  }).cf;
+  console.log(JSON.stringify({
+    event: "vizier.http.request",
+    event_version: 1,
+    timestamp: new Date().toISOString(),
+    method: request.method,
+    host: url.host,
+    path: url.pathname,
+    step: trafficStep(url.pathname),
+    traffic_class: trafficClass,
+    caller_kind: trafficClass === "self_test" ? "self_test" : trafficClass === "machine_probe" ? "service_probe" : "external",
+    user_agent: userAgent,
+    referrer_host: referrerHost(request),
+    country: cf?.country ?? null,
+    as_org: cf?.asOrganization ?? null,
+    colo: cf?.colo ?? null,
+  }));
 }
 
 function errorResponse(error: TransportRequestError): Response {
@@ -227,36 +300,29 @@ async function executeVerificationPipeline(
     context: { ...parsed.data.context, source: "rest" as const },
   };
 
-  let circuitBreakerResult: EdgeCircuitBreakerResult | undefined;
-  // In evaluation mode, DO NOT pass circuitBreakerKv to prevent unauthenticated clients
-  // from mutating, budgeting, or tripping production session state.
-  if (!params.isEvaluation && params.options.circuitBreakerKv !== undefined) {
-    circuitBreakerResult = await evaluateEdgeCircuitBreaker(
-      params.options.circuitBreakerKv,
-      normalizedRequest,
-    );
-  }
-
-  let sanctionsResult: SanctionsEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.sanctions_screening !== false) {
-    sanctionsResult = await evaluateSanctions(
-      normalizedRequest,
-      params.options.circuitBreakerKv,
-    );
-  }
-
-  let dlpResult: DlpEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.dlp_screening !== false) {
-    dlpResult = evaluateDlp(normalizedRequest);
-  }
-
-  let quorumResult: QuorumEvaluationResult | undefined;
-  if (normalizedRequest.authority.constraints.quorum !== undefined) {
-    quorumResult = await evaluateQuorum(
-      normalizedRequest,
-      params.options.circuitBreakerKv,
-    );
-  }
+  // These checks are independent inputs to the deterministic policy kernel.
+  // Run their I/O concurrently so KV latency does not add serially.
+  const circuitBreakerPromise: Promise<EdgeCircuitBreakerResult | undefined> =
+    !params.isEvaluation && params.options.circuitBreakerKv !== undefined
+      ? evaluateEdgeCircuitBreaker(params.options.circuitBreakerKv, normalizedRequest)
+      : Promise.resolve(undefined);
+  const sanctionsPromise: Promise<SanctionsEvaluationResult | undefined> =
+    normalizedRequest.authority.constraints.sanctions_screening !== false
+      ? evaluateSanctions(normalizedRequest, params.options.circuitBreakerKv)
+      : Promise.resolve(undefined);
+  const quorumPromise: Promise<QuorumEvaluationResult | undefined> =
+    normalizedRequest.authority.constraints.quorum !== undefined
+      ? evaluateQuorum(normalizedRequest, params.options.circuitBreakerKv)
+      : Promise.resolve(undefined);
+  const dlpResult: DlpEvaluationResult | undefined =
+    normalizedRequest.authority.constraints.dlp_screening !== false
+      ? evaluateDlp(normalizedRequest)
+      : undefined;
+  const [circuitBreakerResult, sanctionsResult, quorumResult] = await Promise.all([
+    circuitBreakerPromise,
+    sanctionsPromise,
+    quorumPromise,
+  ]);
 
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: params.trustedAuthority,
@@ -1129,7 +1195,18 @@ export async function handleHttpRequest(
   options: TransportOptions = {},
 ): Promise<Response> {
   const url = new URL(request.url);
+  logTraffic(request, url);
   try {
+    const discoveryRedirect = DISCOVERY_REDIRECTS[url.pathname];
+    if ((request.method === "GET" || request.method === "HEAD") && discoveryRedirect !== undefined) {
+      return new Response(null, {
+        status: 308,
+        headers: {
+          Location: `${url.origin}${discoveryRedirect}`,
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
+    }
     if (request.method === "GET" && url.pathname === "/reviews") return createReviewConsole();
     if (url.pathname === "/v1/reviews" || url.pathname.startsWith("/v1/reviews/")) {
       return await handleReviews(request, options);
@@ -1162,6 +1239,24 @@ export async function handleHttpRequest(
     }
     if (request.method === "GET" && url.pathname === "/health") {
       return jsonResponse({ status: "ok" });
+    }
+    if (request.method === "GET" && url.pathname === "/robots.txt") {
+      return new Response(createVizierRobotsTxt(url.origin), {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" },
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/sitemap.xml") {
+      return new Response(createVizierSitemap(url.origin), {
+        status: 200,
+        headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" },
+      });
+    }
+    if (request.method === "GET" && (url.pathname === "/favicon.ico" || url.pathname === "/favicon.svg")) {
+      return new Response(FAVICON_SVG, {
+        status: 200,
+        headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+      });
     }
     if (request.method === "GET" && url.pathname === "/docs") {
       return docsDocument(options);
@@ -1213,9 +1308,30 @@ export async function handleHttpRequest(
     }
     if (
       request.method === "GET" &&
-      url.pathname === "/.well-known/mcp.json"
+      (url.pathname === "/.well-known/mcp.json" ||
+        url.pathname === "/.well-known/mcp" ||
+        url.pathname === "/mcp.json")
     ) {
       return jsonResponse(createMcpServerManifest(url.origin), 200, {
+        "Cache-Control": "public, max-age=300",
+      });
+    }
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/.well-known/owners.json" ||
+        url.pathname === "/.well-known/agent-directory.json" ||
+        url.pathname === "/agent-directory.json")
+    ) {
+      return jsonResponse(
+        url.pathname === "/.well-known/owners.json"
+          ? createVizierOwnersDocument()
+          : createAiCatalog(url.origin),
+        200,
+        { "Cache-Control": "public, max-age=300" },
+      );
+    }
+    if (request.method === "GET" && url.pathname === "/.well-known/mcp-probing.json") {
+      return jsonResponse(createMcpCapabilityDocument(url.origin), 200, {
         "Cache-Control": "public, max-age=300",
       });
     }
@@ -1286,16 +1402,26 @@ export async function handleHttpRequest(
       }
       return await handleMcpRequest(request, options);
     }
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/mcp") {
+      const headers = {
+        Allow: "GET, HEAD, POST, OPTIONS",
+        "Accept-Post": "application/json",
+        "Cache-Control": "public, max-age=300",
+      };
+      if (request.method === "HEAD") return new Response(null, { status: 200, headers });
+      return jsonResponse(createMcpCapabilityDocument(url.origin), 200, headers);
+    }
     if (url.pathname === "/mcp") {
       return jsonResponse(
         {
           error: {
             code: "METHOD_NOT_ALLOWED",
-            message: "Use POST for this endpoint.",
+            message: "Use GET for capabilities or POST for MCP JSON-RPC.",
           },
+          server_card: `${url.origin}/.well-known/mcp.json`,
         },
         405,
-        { Allow: "POST" },
+        { Allow: "GET, HEAD, POST, OPTIONS" },
       );
     }
     if (
