@@ -9,6 +9,7 @@ import type { TransportOptions } from "../src/transport/shared";
 import { FINANCIAL_AUDIENCE, USDC, verifyFinancialOutcome, type FinancialAction } from "../src/reviews/financial";
 import { OFAC_SOURCE } from "../src/reviews/ofac";
 import { collectWalletHistory } from "../src/reviews/wallet-history";
+import { runWalletHistoryMonitor } from "../src/reviews/wallet-monitor";
 
 let mem: DatabaseSync;
 let options: TransportOptions;
@@ -20,7 +21,7 @@ function action(amount = "60000000"): FinancialAction {
 function submission(amount?: string) { return { audience: FINANCIAL_AUDIENCE, action: action(amount), evidence: {}, escalation_reason: "Local synthetic test", expires_in_seconds: 1800 }; }
 function fakeD1(): D1Database {
   mem = new DatabaseSync(":memory:"); mem.exec("PRAGMA foreign_keys=ON");
-  for (const name of ["0006_human_reviews.sql", "0007_financial_reservations.sql", "0008_ofac_snapshot.sql", "0009_wallet_history_evidence.sql"]) mem.exec(readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"));
+  for (const name of ["0006_human_reviews.sql", "0007_financial_reservations.sql", "0008_ofac_snapshot.sql", "0009_wallet_history_evidence.sql", "0010_wallet_history_monitor.sql"]) mem.exec(readFileSync(new URL("../migrations/" + name, import.meta.url), "utf8"));
   function prepare(query: string, values: SQLInputValue[] = []) {
     return { bind(...args: SQLInputValue[]) { return prepare(query, args); },
       execute() { return mem.prepare(query).all(...values); },
@@ -72,6 +73,7 @@ function mockHistory(outgoing = 0, overrides: Record<string, unknown> = {}) {
     if (init.redirect !== "manual") throw new TypeError("Workers only support follow or manual redirects");
     const { method, params } = JSON.parse(init.body as string) as { method: string; params: unknown[] };
     if (overrides[method] instanceof Error) throw overrides[method];
+    if (overrides[method] instanceof Response) return overrides[method];
     let result: unknown;
     if (method === "eth_chainId") result = "0x2105";
     else if (method === "eth_getBlockByNumber") {
@@ -108,6 +110,16 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT enabled FROM financial_policies WHERE wallet=?").get(wallet)!.enabled).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
+    mockHistory(0, { eth_getLogs: new Response(null, { status: 429 }) });
+    const limited = await call("/v1/reviews/wallet-history", input, "reviewer");
+    expect(limited.status).toBe(409);
+    expect(await limited.json()).toMatchObject({ error: { code: "WALLET_HISTORY_UNAVAILABLE", details: { reason: "Base RPC HTTP 429" } } });
+    mockHistory(0, { eth_getLogs: {} });
+    const incomplete = await call("/v1/reviews/wallet-history", input, "reviewer");
+    expect(incomplete.status).toBe(409);
+    expect(await incomplete.json()).toMatchObject({ error: { code: "WALLET_HISTORY_UNAVAILABLE", details: { reason: "Incomplete Base logs" } } });
+    expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
+    expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
     mockHistory(0, { eth_chainId: new TypeError("fetch blocked") });
     const transport = await call("/v1/reviews/wallet-history", input, "reviewer");
     expect(transport.status).toBe(409);
@@ -116,6 +128,33 @@ describe("financial reservations", () => {
     const failed = await call("/v1/reviews/wallet-history", input, "reviewer");
     expect(failed.status).toBe(409);
     expect(await failed.json()).toMatchObject({ error: { code: "WALLET_HISTORY_UNAVAILABLE", details: { reason: "Base RPC evidence invalid" } } });
+    expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
+    expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
+  });
+  it("monitors a complete 1024-block window within 48 RPC calls and records failures", async () => {
+    await policy({ enabled: false });
+    const rpcFetch = vi.mocked(fetch);
+    rpcFetch.mockClear();
+    const history = await runWalletHistoryMonitor(options.db!, wallet);
+    expect(history.outgoing).toBe(0);
+    const calls = rpcFetch.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string) as { method: string; params: unknown[] });
+    const ranges = calls.filter(call => call.method === "eth_getLogs")
+      .map(call => call.params[0] as { fromBlock: string; toBlock: string });
+    expect(calls).toHaveLength(48);
+    expect(ranges).toHaveLength(44);
+    expect(ranges[0]).toMatchObject({ fromBlock: "0x1388", toBlock: "0x1787" });
+    expect(ranges.at(-1)?.toBlock).toBe("0xc350");
+    expect(mem.prepare("SELECT state,observed_outgoing,reason FROM wallet_history_monitor WHERE id=1").get())
+      .toMatchObject({ state: "OK", observed_outgoing: 0, reason: null });
+
+    mockHistory(0, { eth_getLogs: new Response(null, { status: 429 }) });
+    await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
+    expect(mem.prepare("SELECT state,observed_outgoing,reason FROM wallet_history_monitor WHERE id=1").get())
+      .toMatchObject({ state: "FAILED", observed_outgoing: null, reason: "MONITOR_HISTORY_UNAVAILABLE" });
+    await policy({ enabled: true });
+    vi.mocked(fetch).mockClear();
+    await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_POLICY_ENABLED");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
   });
@@ -173,14 +212,14 @@ describe("financial reservations", () => {
     expect((await call("/v1/reviews", submission())).status).toBe(409);
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
   });
-  it("bounds the full history scan to 50 external requests and 1,000-block log ranges", async () => {
+  it("bounds the full history scan to 48 external requests and 1,024-block log ranges", async () => {
     const history = await collectWalletHistory(wallet);
     const requests = vi.mocked(fetch).mock.calls.map(([, init]) => JSON.parse(init?.body as string) as { method: string; params: [{ fromBlock: string; toBlock: string }] });
-    expect(requests).toHaveLength(50);
+    expect(requests).toHaveLength(48);
     expect(history.outgoing).toBe(0);
     expect(history.endBlock - history.startBlock).toBe(45000);
     for (const request of requests.filter(r => r.method === "eth_getLogs")) {
-      expect(BigInt(request.params[0].toBlock) - BigInt(request.params[0].fromBlock)).toBeLessThan(1000n);
+      expect(BigInt(request.params[0].toBlock) - BigInt(request.params[0].fromBlock)).toBeLessThan(1024n);
     }
   });
   it("keeps an owner-disabled policy closed without consulting the RPC", async () => {

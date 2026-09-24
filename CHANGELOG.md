@@ -4,6 +4,7 @@
 
 - Add structured request-class telemetry, crawler/discovery assets, ownership metadata, canonical MCP aliases, and a non-executing capability response for `GET`/`HEAD /mcp`.
 - Run independent circuit-breaker, sanctions and quorum lookups concurrently before deterministic verification to reduce I/O tail latency without changing policy results.
+- Reduce the 24-hour Base history scan from 50 to 48 external RPC requests by using BlockPI's 1,024-block public log range. Add a daily read-only Worker Cron observation and a scheduled drift check; monitoring never authorizes spending.
 
 ## 0.5.5 — 2026-09-24
 

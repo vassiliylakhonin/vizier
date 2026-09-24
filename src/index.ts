@@ -1,9 +1,11 @@
 import { handleHttpRequest } from "./transport/http";
 import { pruneAuditMetadata } from "./storage/audit";
+import { runWalletHistoryMonitor } from "./reviews/wallet-monitor";
 
 interface ExtendedEnv extends Env {
   readonly VIZIER_PRINCIPAL_KEYS?: string;
   readonly VIZIER_REVIEWER_KEY?: string;
+  readonly VIZIER_MONITORED_WALLET?: string;
 }
 
 export default {
@@ -42,5 +44,14 @@ export default {
           );
         }),
     );
+    if (env.VIZIER_MONITORED_WALLET) {
+      ctx.waitUntil(runWalletHistoryMonitor(env.DB, env.VIZIER_MONITORED_WALLET)
+        .then((history) => console.log(JSON.stringify({ event: "vizier.wallet_history.monitor", state: "OK",
+          observed_at: history.observedAt, end_block: history.endBlock })))
+        .catch((error: unknown) => console.error(JSON.stringify({ event: "vizier.wallet_history.monitor", state: "FAILED",
+          reason: error instanceof Error ? error.message : "UNKNOWN" }))));
+    } else {
+      console.error(JSON.stringify({ event: "vizier.wallet_history.monitor", state: "FAILED", reason: "MONITOR_WALLET_NOT_CONFIGURED" }));
+    }
   },
 } satisfies ExportedHandler<ExtendedEnv>;
