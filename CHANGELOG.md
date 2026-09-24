@@ -2,9 +2,12 @@
 
 ## Unreleased
 
-## 0.5.5 — 2026-09-23
+## 0.5.5 — 2026-09-24
 
 - Add a reviewer-only, read-only wallet-history diagnostic for an already configured Base wallet. It uses the same bounded native-USDC collector as financial submissions and returns an explicit non-authorization result without creating a review or changing policy.
+- Make Base RPC requests compatible with Cloudflare Workers and use a fixed public BlockPI endpoint after Base's public endpoints returned HTTP 429 from production. A live 45,001-block finalized native-USDC scan completed; unavailable or incomplete evidence still blocks financial reviews. The owner policy remains disabled.
+- Bind DLP receipts to the scanned input and clarify the scope of playground evaluations.
+- Keep playground metadata and code tabs inside the viewport on narrow screens.
 
 ## 0.5.4 — 2026-09-23
 
