@@ -158,6 +158,39 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
   });
+  it("uses only the two spare RPC calls for transient provider envelopes", async () => {
+    await policy({ enabled: false });
+    const originalFetch = fetch;
+    let logCalls = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => {
+      const { method } = JSON.parse(init.body as string) as { method: string };
+      if (method === "eth_getLogs" && ++logCalls === 10) {
+        return Promise.resolve(Response.json({ jsonrpc: "2.0", id: 1,
+          error: { code: -32005, message: "Transient provider limit" } }));
+      }
+      return originalFetch(url, init);
+    }));
+    const observed = await runWalletHistoryMonitor(options.db!, wallet);
+    expect(observed.outgoing).toBe(0);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(49);
+    expect(mem.prepare("SELECT state FROM wallet_history_monitor WHERE id=1").get()).toMatchObject({ state: "OK" });
+
+    mockHistory();
+    const stableFetch = fetch;
+    logCalls = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => {
+      const { method } = JSON.parse(init.body as string) as { method: string };
+      if (method === "eth_getLogs" && ++logCalls <= 3) {
+        return Promise.resolve(Response.json({ jsonrpc: "2.0", id: 1,
+          error: { code: -32005, message: "Transient provider limit" } }));
+      }
+      return stableFetch(url, init);
+    }));
+    await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(6);
+    expect(mem.prepare("SELECT state FROM wallet_history_monitor WHERE id=1").get()).toMatchObject({ state: "FAILED" });
+    expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
+  });
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();
     setSnapshot(null);
