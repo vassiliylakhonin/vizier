@@ -258,7 +258,7 @@ function mockRpc(change: Record<string, unknown> = {}) {
     ...change,
   };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
-    expect(url).toBe("https://mainnet-preconf.base.org"); expect(init.redirect).toBe("manual");
+    expect(url).toBe("https://base.public.blockpi.network/v1/rpc/public"); expect(init.redirect).toBe("manual");
     const input = JSON.parse(init.body as string) as { method: string };
     return Response.json({ jsonrpc: "2.0", id: 1, result: answers[input.method] });
   }));
