@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## 0.5.5 — 2026-09-23
+
+- Add a reviewer-only, read-only wallet-history diagnostic for an already configured Base wallet. It uses the same bounded native-USDC collector as financial submissions and returns an explicit non-authorization result without creating a review or changing policy.
+
+## 0.5.4 — 2026-09-23
+
+- Collect conservative finalized native-USDC history directly from the fixed public Base RPC before financial review submission. A 50-subrequest bound, 1,000-block log ranges, anchor verification and D1 trigger combine observed spending with concurrent review holds; unavailable or incomplete evidence blocks without a reservation.
+- Persist the observation and anchor alongside the reservation. This remains review-queue accounting, not pending-transfer detection or wallet-wide authorization; the owner policy stays disabled.
+
+## 0.5.3 — 2026-09-23
+
+- Store the official address snapshot in D1 through the existing deployment credential, replacing the CI KV write that lacked permission. Retry the live check during edge propagation.
+
+## 0.5.2 — 2026-09-23
+
+- Require a fresh official OFAC SDN exact-address snapshot on Base native-USDC review submission, approval and claim. A scheduled sync writes the validated XML-derived snapshot to KV; absent, stale or matching data blocks. This is not comprehensive sanctions clearance or wallet-wide spend accounting.
+
+## 0.5.1 — 2026-09-23
+
+- Parenthesize `CASE` expressions in financial D1 triggers so remote Cloudflare migration parsing succeeds. No policy defaults or runtime contract changes.
+
+## 0.5.0 — 2026-09-23
+
+- Atomically reserve reviewer-configured Base native-USDC workflow budgets alongside human reviews; recheck limits at approval and consumption. No default financial policy.
+- Retain claimed holds through expiry, expose reviewer cancellation before claim, and verify exact finalized Base transactions before settling or releasing reverted transfers.
+- Add console controls, REST discovery, SDK reconciliation, mandatory financial audit events and extended retention for unresolved claims.
+- Limits cover this queue only, not out-of-band wallet spending. See [financial reservations](docs/FINANCIAL_RESERVATIONS.md).
+
 ## 0.4.0 — 2026-09-21
 
 - Add an explicit administrative human-review queue, separate reviewer credential, signed five-minute attestations and atomic one-time D1 claims.

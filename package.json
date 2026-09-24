@@ -1,6 +1,6 @@
 {
   "name": "vizier",
-  "version": "0.4.0",
+  "version": "0.5.5",
   "private": true,
   "license": "MIT",
   "workspaces": [
@@ -27,10 +27,10 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260831.1",
+    "@cloudflare/workers-types": "^5.20260918.1",
     "@eslint/js": "10.0.1",
     "@types/node": "^26.6.1",
-    "eslint": "10.10.0",
+    "eslint": "10.11.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.0",
     "vitest": "^4.1.11",

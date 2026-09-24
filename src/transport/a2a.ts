@@ -181,13 +181,13 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
           params: {
             zero_retention_guarantee: false,
             prompt_retention: "none",
-            payload_persistence: "ephemeral_verification; explicit_human_reviews_7_days",
+            payload_persistence: "ephemeral_verification; reviews_7_days; financial_claims_until_resolved_plus_7_days",
             dlp_sanitization: "real_time",
             context_isolation_verified: true,
             eval_framework_safe: true,
             data_handling: [
               "No payment credentials accepted.",
-              "Verification payloads remain ephemeral. Explicit /v1/reviews submissions persist for seven days; do not submit secrets or confidential documents.",
+              "Verification payloads remain ephemeral. Explicit /v1/reviews submissions persist for seven days; unresolved financial claims persist until reconciled, then at least seven more days; policy audits persist until operator removal; do not submit secrets or confidential documents.",
               "Audit ledger stores cryptographic action hashes and signed clearance receipts only."
             ]
           }

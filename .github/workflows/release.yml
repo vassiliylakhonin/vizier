@@ -57,7 +57,7 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/vizier-archive-smoke" --ignore-scripts "$GITHUB_WORKSPACE"/release-archives/*.tgz
           cd "$RUNNER_TEMP/vizier-archive-smoke"
-          node --input-type=module -e 'import {Vizier} from "@vizier/sdk"; if(typeof Vizier.prototype.submitHumanReview !== "function" || typeof Vizier.prototype.claimHumanReview !== "function") process.exit(1);'
+          node --input-type=module -e 'import {Vizier} from "@vizier/sdk"; if(typeof Vizier.prototype.submitHumanReview !== "function" || typeof Vizier.prototype.claimHumanReview !== "function" || typeof Vizier.prototype.reconcileFinancialTransaction !== "function") process.exit(1);'
 
       - name: Publish archives to GitHub Release
         if: github.event_name == 'push'

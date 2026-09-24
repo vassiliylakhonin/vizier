@@ -1,3 +1,4 @@
+import { canonicalize, sha256 } from "../core/receipts";
 import { createReviewConsole } from "../reviews/console";
 import { handleReviews } from "../reviews/api";
 import { z } from "zod";
@@ -613,6 +614,8 @@ async function handleDlpScan(
       const receiptPayload = {
         iss: "vizier-action-firewall",
         sub: "dlp-scan",
+        scope: "dlp_scan_only",
+        input_sha256: await sha256(canonicalize(parsed.data)),
         iat: Math.floor(Date.now() / 1000),
         engine: "vizier_dlp_firewall",
         clean,
