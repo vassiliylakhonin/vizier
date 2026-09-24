@@ -30,7 +30,7 @@
     "@cloudflare/workers-types": "^5.20260831.1",
     "@eslint/js": "10.0.1",
     "@types/node": "^26.5.1",
-    "eslint": "10.10.0",
+    "eslint": "10.11.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.0",
     "vitest": "^4.1.11",
