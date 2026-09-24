@@ -129,6 +129,14 @@ unfinalized transaction never frees a hold. Resolved requests reject repeated
 POSTs; GET `/v1/reviews/{id}` exposes the reservation and financial audit events.
 The verification trusts a single RPC operator, not a cryptographic light client.
 
+The existing daily Worker Cron also runs this finalized history collector for
+the wallet named by the Cloudflare-only `VIZIER_MONITORED_WALLET` secret. The
+latest observation or failure is stored in `wallet_history_monitor`; it is
+never consulted to admit spending. The existing scheduled GitHub drift job
+fails if the observation is missing, older than 18 hours, failed, or the
+wallet's financial policy is enabled. The monitoring secret contains only the
+public address; the reviewer key is not stored in GitHub Actions.
+
 ## Retention and safe operation
 
 Normal reviews retain the seven-day policy. Unresolved CLAIMED financial

@@ -7,11 +7,11 @@ const block = z.object({ number: quantity, hash, timestamp: quantity });
 const log = z.object({ address: z.string(), topics: z.array(hash).length(3), data: hash,
   removed: z.literal(false), blockNumber: quantity, logIndex: quantity, transactionHash: hash, blockHash: hash });
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-// 46 log calls plus chain, finalized, starting-block and anchor reads fit the
-// Workers Free limit of 50 external subrequests. If 45,001 blocks do not cover
-// the full day, refuse evidence rather than shorten the window.
+// BlockPI permits 1,024 blocks per public eth_getLogs request. The 45,001-block
+// window takes 44 log calls plus four chain/anchor reads: 48 external requests
+// under the Workers Free limit of 50. Never shorten an incomplete day.
 const LOOKBACK_BLOCKS = 45000n;
-const LOG_SPAN = 1000n;
+const LOG_SPAN = 1024n;
 
 export interface WalletHistory {
   outgoing: number;
