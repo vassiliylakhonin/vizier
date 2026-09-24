@@ -744,7 +744,7 @@ export class Vizier {
     }
   }
 
-  /** Explicit opt-in persistence: the review service retains this payload for seven days. */
+  /** Explicit opt-in persistence: seven days, or until financial reconciliation plus seven days. */
   async submitHumanReview(request: HumanReviewRequest, options: VerifyOptions = {}): Promise<{ id: string; request_hash: string }> {
     const normalized = { ...request, expires_in_seconds: request.expires_in_seconds ?? 1800 };
     const expectedHash = await hashCanonicalJson(normalized);
@@ -778,6 +778,20 @@ export class Vizier {
       throw new VizierError("Invalid claim response; reconcile state before any execution.", status, "INVALID_RESPONSE");
     }
     return { id, request_hash: expectedHash, status: "CONSUMED", execution: "not_performed" };
+  }
+
+  /** Attach an immutable transaction hash; independently observe its finalized Base outcome. */
+  async reconcileFinancialTransaction(id: string, transactionHash: string, options: VerifyOptions = {}): Promise<{ id: string; state: "CLAIMED" | "SETTLED" | "REVERTED"; transaction_hash: string; finalized: boolean }> {
+    if (!/^rev_[a-f0-9-]{36}$/.test(id) || !/^0x[a-f0-9]{64}$/.test(transactionHash)) {
+      throw new VizierError("Invalid review ID or transaction hash.", 0, "INVALID_REQUEST");
+    }
+    const { body, status } = await this.#postJson(`/v1/reviews/${id}/transaction`, { transaction_hash: transactionHash }, options);
+    if (!isRecord(body) || body.id !== id || body.transaction_hash !== transactionHash ||
+      (body.state !== "CLAIMED" && body.state !== "SETTLED" && body.state !== "REVERTED") ||
+      body.finalized !== (body.state !== "CLAIMED")) {
+      throw new VizierError("Invalid reconciliation response. The hold must be treated as unresolved.", status, "INVALID_RESPONSE");
+    }
+    return { id, state: body.state, transaction_hash: transactionHash, finalized: body.finalized };
   }
 
   async verify(
