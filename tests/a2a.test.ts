@@ -450,3 +450,24 @@ describe("A2A JSON-RPC binding", () => {
     }
   });
 });
+
+describe("A2A card intake and authority boundary", () => {
+  it("publishes an executable example while distinguishing anonymous evaluation", async () => {
+    const card = createAgentCard("https://vizier.example");
+    const capabilities = card.capabilities as {
+      extensions: Array<{ params: Record<string, string> }>;
+    };
+    const extension = capabilities.extensions[0]!.params;
+    expect(card.description as string).toContain("anonymous calls cannot authorize ALLOW");
+    expect(extension.evaluation_boundary).toContain("never ALLOW");
+    const response = await handleA2aRequest(anonymousRpcRequest(extension.a2a_send_message_example));
+    const body = (await response.json()) as {
+      result?: {
+        task?: { status?: { state?: string } };
+        status?: { state?: string };
+      };
+    };
+    expect(body.result?.task?.status?.state ?? body.result?.status?.state).toBe("TASK_STATE_COMPLETED");
+  });
+});
+

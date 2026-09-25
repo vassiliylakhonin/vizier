@@ -155,7 +155,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
   return Object.freeze({
     name: "Vizier",
     description:
-      "Evaluates proposed agent actions against supplied authority and deterministic policy. Not a factuality verifier; no live source retrieval. REVIEW requires a human decision before the external action.",
+      "Free anonymous A2A evaluation of proposed agent actions against caller-supplied authority; anonymous calls cannot authorize ALLOW. An authenticated integration is required for enforcement receipts. Not factuality verification or independent execution proof; REVIEW requires a human decision.",
     provider: {
       organization: "Vassiliy Lakhonin",
       url: "https://github.com/vassiliylakhonin",
@@ -179,6 +179,9 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
           description: "Vizier Security Posture and Data Retention",
           required: false,
           params: {
+            a2a_send_message_example: REQUEST_GUIDANCE.example_request,
+            evaluation_boundary: "Anonymous A2A calls return evaluation-only decisions, never ALLOW. Authenticated enforcement requires an integration credential and a distinct receipt.",
+            price: "Anonymous A2A evaluation is free; no paid enforcement price is asserted by this card.",
             zero_retention_guarantee: false,
             prompt_retention: "none",
             payload_persistence: "ephemeral_verification; reviews_7_days; financial_claims_until_resolved_plus_7_days",
