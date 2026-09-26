@@ -1232,9 +1232,17 @@ export async function handleHttpRequest(
       return rootDocument();
     }
     if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/dashboard")) {
-      return new Response(createConsoleHtml(url.origin), {
+      // One nonce per response: the console's only inline script carries it
+      // and the CSP refuses every other inline script or event handler.
+      const consoleNonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18))));
+      return new Response(createConsoleHtml(url.origin, consoleNonce), {
         status: 200,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy":
+            `default-src 'none'; script-src 'nonce-${consoleNonce}'; style-src 'unsafe-inline'; ` +
+            `img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+        },
       });
     }
     if (request.method === "GET" && url.pathname === "/health") {

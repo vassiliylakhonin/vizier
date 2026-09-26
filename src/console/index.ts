@@ -1,4 +1,6 @@
-export function createConsoleHtml(origin: string): string {
+// The CSP nonce is generated per response by the HTTP transport and threaded
+// into the single inline script block; script-src has no 'unsafe-inline'.
+export function createConsoleHtml(origin: string, scriptNonce: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -174,16 +176,16 @@ export function createConsoleHtml(origin: string): string {
     </div>
     <div style="display: flex; gap: 8px; align-items: center;">
       <input id="apiKeyInput" type="password" placeholder="Master or Tenant API Key" style="width: 260px;" />
-      <button class="btn secondary" onclick="saveKey()">Set Key</button>
+      <button class="btn secondary" id="saveKeyBtn">Set Key</button>
     </div>
   </div>
 
   <p><a href="/reviews" style="color:inherit">Human review queue →</a></p>
   <div class="nav-tabs">
-    <button class="tab-btn active" onclick="showTab('guardrails')">Guardrails Simulator</button>
-    <button class="tab-btn" onclick="showTab('quorum')">HITL Quorum Gate (4-Eyes)</button>
-    <button class="tab-btn" onclick="showTab('keys')">API Keys & Quotas</button>
-    <button class="tab-btn" onclick="showTab('proxy')">Transparent AI Proxy</button>
+    <button class="tab-btn active" data-tab="guardrails">Guardrails Simulator</button>
+    <button class="tab-btn" data-tab="quorum">HITL Quorum Gate (4-Eyes)</button>
+    <button class="tab-btn" data-tab="keys">API Keys & Quotas</button>
+    <button class="tab-btn" data-tab="proxy">Transparent AI Proxy</button>
   </div>
 
   <!-- TAB 1: Guardrails Simulator -->
@@ -212,7 +214,7 @@ export function createConsoleHtml(origin: string): string {
   ]
 }</textarea>
         </div>
-        <button class="btn" onclick="runSanctions50Screen()">Screen Entity</button>
+        <button class="btn" id="screenEntityBtn">Screen Entity</button>
         <div>
           <label>Evaluation Output</label>
           <div id="sanctionsOutput" class="output-box">// Results will appear here</div>
@@ -234,7 +236,7 @@ export function createConsoleHtml(origin: string): string {
 API_KEY = "sk-proj-1234567890abcdef1234567890abcdef1234567890"
 Card = "4111-2222-3333-4444"</textarea>
         </div>
-        <button class="btn" onclick="runDlpScan()">Scan for Leaks</button>
+        <button class="btn" id="dlpScanBtn">Scan for Leaks</button>
         <div>
           <label>DLP Firewall Result</label>
           <div id="dlpOutput" class="output-box">// Scan results will appear here</div>
@@ -255,7 +257,7 @@ Card = "4111-2222-3333-4444"</textarea>
           <label>Proposal ID</label>
           <input id="propLookupId" placeholder="prp_..." />
         </div>
-        <button class="btn secondary" onclick="lookupProposal()">Query Proposal</button>
+        <button class="btn secondary" id="lookupProposalBtn">Query Proposal</button>
         <div>
           <label>Proposal Details</label>
           <div id="propDetails" class="output-box">// Proposal details will appear here</div>
@@ -279,8 +281,8 @@ Card = "4111-2222-3333-4444"</textarea>
           <input id="approvalNotes" value="Manual compliance review complete. Verified." />
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn success" style="flex: 1;" onclick="voteQuorum('APPROVE')">Approve (Authorize)</button>
-          <button class="btn danger" style="flex: 1;" onclick="voteQuorum('REJECT')">Reject (Veto)</button>
+          <button class="btn success" style="flex: 1;" id="voteApproveBtn">Approve (Authorize)</button>
+          <button class="btn danger" style="flex: 1;" id="voteRejectBtn">Reject (Veto)</button>
         </div>
         <div id="voteOutput" class="output-box">// Approval receipt will appear here</div>
       </div>
@@ -310,14 +312,14 @@ Card = "4111-2222-3333-4444"</textarea>
             <option value="enterprise">Enterprise (1,000,000 req/mo)</option>
           </select>
         </div>
-        <button class="btn" onclick="createTenantKey()">Generate Secret Key</button>
+        <button class="btn" id="createKeyBtn">Generate Secret Key</button>
         <div id="newKeyResult" class="output-box">// Generated key will appear here</div>
       </div>
 
       <div class="card">
         <div class="card-title">
           <span>📋 Active API Keys</span>
-          <button class="btn secondary" style="padding: 4px 8px; font-size: 0.75rem;" onclick="loadKeys()">Refresh</button>
+          <button class="btn secondary" style="padding: 4px 8px; font-size: 0.75rem;" id="refreshKeysBtn">Refresh</button>
         </div>
         <div id="keysTableContainer" style="overflow-x: auto;">
           <table>
@@ -356,31 +358,31 @@ client = openai.OpenAI(
     </div>
   </div>
 
-  <script>
+  <script nonce="${scriptNonce}">
     const ORIGIN = "${origin}";
 
+    // The master/tenant key lives only in this page's memory for the session.
+    // Persisting it to browser web storage made it readable to any script
+    // that ever ran on this origin and survived the tab.
+    let sessionKey = "";
+
     function getKey() {
-      return localStorage.getItem("vizier_api_key") || document.getElementById("apiKeyInput").value;
+      return sessionKey || document.getElementById("apiKeyInput").value;
     }
 
     function saveKey() {
       const val = document.getElementById("apiKeyInput").value.trim();
       if (val) {
-        localStorage.setItem("vizier_api_key", val);
-        alert("API Key saved to browser local storage!");
+        sessionKey = val;
+        alert("API Key set for this session only. It is cleared when the tab closes.");
       }
     }
 
-    window.onload = () => {
-      const saved = localStorage.getItem("vizier_api_key");
-      if (saved) document.getElementById("apiKeyInput").value = saved;
-    };
-
-    function showTab(tabId) {
+    function showTab(tabId, btn) {
       document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
       document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
       document.getElementById("tab-" + tabId).classList.add("active");
-      event.target.classList.add("active");
+      if (btn) btn.classList.add("active");
     }
 
     async function runSanctions50Screen() {
@@ -489,31 +491,86 @@ client = openai.OpenAI(
       }
     }
 
+    function appendCell(row, build) {
+      const td = document.createElement("td");
+      build(td);
+      row.appendChild(td);
+    }
+
     async function loadKeys() {
       const org_id = document.getElementById("newOrgId").value.trim() || "default";
       const tbody = document.getElementById("keysTableBody");
+      // Server-supplied key fields are rendered via textContent only: no
+      // innerHTML, so a crafted key name or prefix cannot inject markup.
+      tbody.textContent = "";
+      const infoRow = (colspan, text, color) => {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = colspan;
+        td.textContent = text;
+        if (color) td.style.color = color; else { td.style.textAlign = "center"; td.style.color = "var(--muted)"; }
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+      };
       try {
         const res = await fetch(ORIGIN + "/v1/admin/keys?org_id=" + encodeURIComponent(org_id), {
           headers: { "X-Vizier-Key": getKey() }
         });
         const data = await res.json();
         if (data.keys && data.keys.length > 0) {
-          tbody.innerHTML = data.keys.map(k => \`
-            <tr>
-              <td><code>\${k.key_prefix}...</code></td>
-              <td>\${k.name}</td>
-              <td><span class="badge">\${k.tier}</span></td>
-              <td>\${k.current_usage} / \${k.monthly_quota}</td>
-              <td>\${k.revoked_at ? '<span style="color:red">Revoked</span>' : \`<button class="btn danger" style="padding:2px 6px;font-size:0.75rem;" onclick="revokeKey('\${k.id}')">Revoke</button>\`}</td>
-            </tr>
-          \`).join("");
+          for (const k of data.keys) {
+            const tr = document.createElement("tr");
+            appendCell(tr, td => {
+              const code = document.createElement("code");
+              code.textContent = String(k.key_prefix ?? "") + "...";
+              td.appendChild(code);
+            });
+            appendCell(tr, td => { td.textContent = String(k.name ?? ""); });
+            appendCell(tr, td => {
+              const badge = document.createElement("span");
+              badge.className = "badge";
+              badge.textContent = String(k.tier ?? "");
+              td.appendChild(badge);
+            });
+            appendCell(tr, td => { td.textContent = String(k.current_usage ?? "") + " / " + String(k.monthly_quota ?? ""); });
+            appendCell(tr, td => {
+              if (k.revoked_at) {
+                const span = document.createElement("span");
+                span.style.color = "red";
+                span.textContent = "Revoked";
+                td.appendChild(span);
+              } else {
+                const btn = document.createElement("button");
+                btn.className = "btn danger";
+                btn.style.padding = "2px 6px";
+                btn.style.fontSize = "0.75rem";
+                btn.textContent = "Revoke";
+                btn.addEventListener("click", () => revokeKey(k.id));
+                td.appendChild(btn);
+              }
+            });
+            tbody.appendChild(tr);
+          }
         } else {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--muted);">No keys found for this organization</td></tr>';
+          infoRow(5, "No keys found for this organization");
         }
       } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="5" style="color: red;">Error: ' + err.message + '</td></tr>';
+        infoRow(5, "Error: " + err.message, "red");
       }
     }
+
+    // Wire every control here: the CSP forbids inline event handlers.
+    document.getElementById("saveKeyBtn").addEventListener("click", saveKey);
+    document.getElementById("screenEntityBtn").addEventListener("click", runSanctions50Screen);
+    document.getElementById("dlpScanBtn").addEventListener("click", runDlpScan);
+    document.getElementById("lookupProposalBtn").addEventListener("click", lookupProposal);
+    document.getElementById("voteApproveBtn").addEventListener("click", () => voteQuorum("APPROVE"));
+    document.getElementById("voteRejectBtn").addEventListener("click", () => voteQuorum("REJECT"));
+    document.getElementById("createKeyBtn").addEventListener("click", createTenantKey);
+    document.getElementById("refreshKeysBtn").addEventListener("click", loadKeys);
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => showTab(btn.getAttribute("data-tab"), btn));
+    });
 
     async function revokeKey(id) {
       if (!confirm("Are you sure you want to revoke this API key?")) return;

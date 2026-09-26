@@ -92,6 +92,14 @@ describe("REST transport", () => {
       expect(html).toContain("OFAC 50% Rule & Ownership Graph");
       expect(html).toContain("HITL Quorum Gate");
       expect(html).toContain("API Keys & Quotas");
+      // 2026-09-26: the console is locked behind a per-response nonce CSP.
+      const csp = response.headers.get("Content-Security-Policy");
+      expect(csp).toBeTruthy();
+      expect(csp).not.toContain("script-src 'unsafe-inline'");
+      const nonceMatch = /script-src 'nonce-([^']+)'/.exec(csp || "");
+      expect(nonceMatch).toBeTruthy();
+      expect(html).toContain(`<script nonce="${nonceMatch![1]}">`);
+      expect(html.match(/<script/g)?.length).toBe(1);
     }
   });
 
