@@ -1,7 +1,7 @@
 <!-- mcp-name: io.github.vassiliylakhonin/vizier-guard -->
 # Vizier
 
-**Deterministic Authorization & Signed Audit Firewall for AI Agents.**
+**Check an AI agent's proposed action against a policy before it calls a tool that can change the world.**
 
 [![CI](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml)
 [![Deploy](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml)
@@ -11,10 +11,17 @@
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.vassiliylakhonin%2Fvizier-purple.svg)](https://github.com/modelcontextprotocol/registry)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Vizier is an ultra-fast, edge-native deterministic authorization and audit firewall for action-taking AI agents. Before an agent executes an external side effect (making a payment, executing code, modifying a database, dispatching messages, or deploying infrastructure), it submits the proposed action to Vizier.
+Vizier is for developers running agents that can call tools, send messages, change data, or spend money. Put its SDK or MCP proxy between the agent and the tool: it asks a deterministic policy service to `ALLOW`, `BLOCK`, or route for human `REVIEW`, and records a receipt. A response is not proof of user consent unless the authority behind it is verified; see [signed delegation grants](#proving-the-authority-instead-of-asserting-it).
 
-> ⚡ **Try the Live Interactive Playground**: [https://vizier.vassiliy-lakhonin.workers.dev/playground](https://vizier.vassiliy-lakhonin.workers.dev/playground)  
-> Test policy presets (`ALLOW`, `BLOCK_AMOUNT`, `BLOCK_TARGET`, `SENSITIVE`), inspect sub-25ms edge latency, and verify SHA-256 canonical integrity and signed audit receipts in real time directly from your browser.
+**One-minute tour:** [open the live playground](https://vizier.vassiliy-lakhonin.workers.dev/playground), choose an allowed action, then try `BLOCK_AMOUNT` and `BLOCK_TARGET`. The playground uses example policies and data; it does not connect to your bank or modify a real account. The point is to see *where* the stop occurs before wiring an agent to an external tool.
+
+**Try it in code:** [wrap an MCP server](#2-mcp-enforcement-proxy-cli) or [use the Python SDK](#1-python-sdk-vizier-guard). [Field reference](https://vizier.vassiliy-lakhonin.workers.dev/docs) · [Threat model](docs/THREAT_MODEL.md) · [OpenAPI](https://vizier.vassiliy-lakhonin.workers.dev/openapi.json).
+
+**What it does not do:** Vizier does not execute the protected action for you. An unverified caller-supplied `authority` field is an assertion, not a signed grant. Integrate a guard at the tool boundary and check fail-closed behavior before relying on it. This is experimental v0.5.5, not an independent security certification. The `@vizier` npm scope is not currently published; install the [release archives](#installing-the-review-sdk-release-archives). The MCP proxy is a separate package, not a hosted MCP wrapper of every agent.
+
+**How it fits together:** agent -> Python/TypeScript guard or MCP proxy -> deterministic policy service on Cloudflare Workers -> decision and receipt -> protected tool only on an authorized allow path. The architecture diagram and technical reference below retain the integration details.
+
+**License:** [MIT](LICENSE). **Questions and integration feedback:** [GitHub issues](https://github.com/vassiliylakhonin/vizier/issues).
 
 ---
 
