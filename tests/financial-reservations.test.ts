@@ -187,7 +187,9 @@ describe("financial reservations", () => {
       return stableFetch(url, init);
     }));
     await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(6);
+    // The first six-range batch is already in flight when the third transient
+    // failure exhausts the two-call retry reserve.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(11);
     expect(mem.prepare("SELECT state FROM wallet_history_monitor WHERE id=1").get()).toMatchObject({ state: "FAILED" });
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
   });
@@ -254,6 +256,31 @@ describe("financial reservations", () => {
     for (const request of requests.filter(r => r.method === "eth_getLogs")) {
       expect(BigInt(request.params[0].toBlock) - BigInt(request.params[0].fromBlock)).toBeLessThan(1024n);
     }
+  });
+  it("runs Base log reads with bounded concurrency", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    let activeLogs = 0;
+    let peakLogs = 0;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const { method, params } = JSON.parse(init.body as string) as { method: string; params: unknown[] };
+      let result: unknown;
+      if (method === "eth_chainId") result = "0x2105";
+      else if (method === "eth_getBlockByNumber") {
+        result = params[0] === "0x1388"
+          ? { number: "0x1388", hash: "0x" + "c".repeat(64), timestamp: "0x" + (now - 88000).toString(16) }
+          : { number: "0xc350", hash: "0x" + "d".repeat(64), timestamp: "0x" + (now - 1000).toString(16) };
+      } else if (method === "eth_getLogs") {
+        activeLogs += 1;
+        peakLogs = Math.max(peakLogs, activeLogs);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        activeLogs -= 1;
+        result = [];
+      } else throw new Error("Unexpected RPC method");
+      return Response.json({ jsonrpc: "2.0", id: 1, result });
+    }));
+
+    await collectWalletHistory(wallet);
+    expect(peakLogs).toBe(6);
   });
   it("keeps an owner-disabled policy closed without consulting the RPC", async () => {
     await policy({ enabled: false });

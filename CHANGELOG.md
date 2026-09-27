@@ -5,9 +5,12 @@
 - Clarify the anonymous A2A evaluation-only boundary on the card and add a copy-paste SendMessage example in the card extension. No enforcement decision logic changed.
 
 - Add structured request-class telemetry, crawler/discovery assets, ownership metadata, canonical MCP aliases, and a non-executing capability response for `GET`/`HEAD /mcp`.
+- Emit request telemetry as indexed JSON objects and distinguish owner synthetic runs, benchmarks, service probes, browsers, and unsigned callers.
+- Refresh the Workers compatibility date to 2026-09-27 after validating the full suite against the current runtime contract.
 - Run independent circuit-breaker, sanctions and quorum lookups concurrently before deterministic verification to reduce I/O tail latency without changing policy results.
 - Reduce the 24-hour Base history scan from 50 to 48 external RPC requests by using BlockPI's 1,024-block public log range. Add a daily read-only Worker Cron observation and a scheduled drift check; monitoring never authorizes spending.
 - Retry transient Base RPC envelope, 429, and 5xx failures using at most two spare calls across the full scan; repeated failures still block without reserving funds.
+- Fetch independent Base evidence concurrently and scan log ranges in bounded batches of six, preserving the 48-request baseline and two-call retry reserve while reducing sequential RPC stages from 48 to 11.
 
 ## 0.5.5 — 2026-09-24
 

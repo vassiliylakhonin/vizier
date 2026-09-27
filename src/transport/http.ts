@@ -111,14 +111,29 @@ function trafficStep(path: string): string {
   return "other";
 }
 
-function classifyTraffic(userAgent: string): "self_test" | "machine_probe" | "machine_client" | "human_browser" {
+type TrafficClass = "self_test" | "machine_probe" | "machine_client" | "human_browser";
+type CallerKind = "self_test" | "owner_synthetic" | "benchmark_probe" | "service_probe" | "external" | "unsigned_external";
+
+function classifyTraffic(userAgent: string): { readonly trafficClass: TrafficClass; readonly callerKind: CallerKind } {
   const value = userAgent.toLowerCase();
-  if (/vizier-(?:live-)?smoke|agenda-intelligence-live-smoke/.test(value)) return "self_test";
-  if (/mcpbeat|sentineloracle|agentprobe|brickbluebot|crawler|spider|collector|probe|audit|bot\b/.test(value)) {
-    return "machine_probe";
+  if (/vizier-(?:live-)?smoke|agenda-intelligence-/.test(value)) {
+    return { trafficClass: "self_test", callerKind: "self_test" };
   }
-  if (/mozilla\//.test(value)) return "human_browser";
-  return "machine_client";
+  if (/instinctowner(?:verify|feedback|security)synthetic/.test(value)) {
+    return { trafficClass: "self_test", callerKind: "owner_synthetic" };
+  }
+  if (/zeromockproof|proofbench|benchmark/.test(value)) {
+    return { trafficClass: "machine_probe", callerKind: "benchmark_probe" };
+  }
+  if (
+    /mcpbeat|sentineloracle|agentprobe|brickbluebot|agenstrybot|rokmcp|crawler|spider|collector|probe|audit|registry|monitor|census|grader|bot\b|scout|indexer|test[-_ ]?loop/.test(value) ||
+    /\(\+\s*(?:https?:\/\/|mailto:)/.test(value)
+  ) {
+    return { trafficClass: "machine_probe", callerKind: "service_probe" };
+  }
+  if (/mozilla\//.test(value)) return { trafficClass: "human_browser", callerKind: "external" };
+  if (!value.trim()) return { trafficClass: "machine_client", callerKind: "unsigned_external" };
+  return { trafficClass: "machine_client", callerKind: "external" };
 }
 
 function referrerHost(request: Request): string | null {
@@ -133,7 +148,7 @@ function referrerHost(request: Request): string | null {
 
 function logTraffic(request: Request, url: URL): void {
   const userAgent = request.headers.get("user-agent") ?? "";
-  const trafficClass = classifyTraffic(userAgent);
+  const { trafficClass, callerKind } = classifyTraffic(userAgent);
   const cf = (request as Request & {
     readonly cf?: {
       readonly country?: string;
@@ -141,22 +156,22 @@ function logTraffic(request: Request, url: URL): void {
       readonly colo?: string;
     };
   }).cf;
-  console.log(JSON.stringify({
+  console.log({
     event: "vizier.http.request",
-    event_version: 1,
+    event_version: 2,
     timestamp: new Date().toISOString(),
     method: request.method,
     host: url.host,
     path: url.pathname,
     step: trafficStep(url.pathname),
     traffic_class: trafficClass,
-    caller_kind: trafficClass === "self_test" ? "self_test" : trafficClass === "machine_probe" ? "service_probe" : "external",
+    caller_kind: callerKind,
     user_agent: userAgent,
     referrer_host: referrerHost(request),
     country: cf?.country ?? null,
     as_org: cf?.asOrganization ?? null,
     colo: cf?.colo ?? null,
-  }));
+  });
 }
 
 function errorResponse(error: TransportRequestError): Response {

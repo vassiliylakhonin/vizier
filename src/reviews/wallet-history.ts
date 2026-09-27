@@ -13,6 +13,7 @@ const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 // Never shorten an incomplete day.
 const LOOKBACK_BLOCKS = 45000n;
 const LOG_SPAN = 1024n;
+const LOG_FETCH_CONCURRENCY = 6;
 
 export interface WalletHistory {
   outgoing: number;
@@ -36,8 +37,12 @@ export async function collectWalletHistory(wallet: string): Promise<WalletHistor
       }
     }
   }
-  if (await historyRpc("eth_chainId", []) !== "0x2105") throw new Error("Wrong Base chain");
-  const anchor = block.parse(await historyRpc("eth_getBlockByNumber", ["finalized", false]));
+  const [chainId, rawAnchor] = await Promise.all([
+    historyRpc("eth_chainId", []),
+    historyRpc("eth_getBlockByNumber", ["finalized", false]),
+  ]);
+  if (chainId !== "0x2105") throw new Error("Wrong Base chain");
+  const anchor = block.parse(rawAnchor);
   const end = BigInt(anchor.number);
   if (end < LOOKBACK_BLOCKS) throw new Error("Insufficient Base history");
   const first = end - LOOKBACK_BLOCKS;
@@ -51,21 +56,30 @@ export async function collectWalletHistory(wallet: string): Promise<WalletHistor
   const sender = "0x" + wallet.slice(2).padStart(64, "0");
   const seen = new Set<string>();
   let outgoing = 0n;
+  const ranges: Array<{ readonly from: bigint; readonly to: bigint }> = [];
   for (let from = first; from <= end; from += LOG_SPAN) {
+    ranges.push({ from, to: from + LOG_SPAN - 1n < end ? from + LOG_SPAN - 1n : end });
+  }
+  for (let offset = 0; offset < ranges.length; offset += LOG_FETCH_CONCURRENCY) {
     if (Date.now() - started > 120000) throw new Error("Base history timed out");
-    const to = from + LOG_SPAN - 1n < end ? from + LOG_SPAN - 1n : end;
-    const raw = await historyRpc("eth_getLogs", [{ address: USDC, fromBlock: "0x" + from.toString(16),
-      toBlock: "0x" + to.toString(16), topics: [TRANSFER, sender] }]);
-    if (!Array.isArray(raw) || raw.length > 1000) throw new Error("Incomplete Base logs");
-    for (const item of raw) {
-      const entry = log.parse(item);
-      const height = BigInt(entry.blockNumber);
-      const key = entry.transactionHash + ":" + entry.logIndex;
-      if (entry.address.toLowerCase() !== USDC || entry.topics[0] !== TRANSFER || entry.topics[1] !== sender
-        || height < from || height > to || seen.has(key)) throw new Error("Invalid Base transfer log");
-      seen.add(key);
-      outgoing += BigInt(entry.data);
-      if (outgoing > 1000000000000n) throw new Error("Observed spend exceeds supported budget");
+    const batch = ranges.slice(offset, offset + LOG_FETCH_CONCURRENCY);
+    const responses = await Promise.all(batch.map(({ from, to }) =>
+      historyRpc("eth_getLogs", [{ address: USDC, fromBlock: "0x" + from.toString(16),
+        toBlock: "0x" + to.toString(16), topics: [TRANSFER, sender] }])));
+    for (let index = 0; index < batch.length; index += 1) {
+      const range = batch[index];
+      const raw = responses[index];
+      if (!range || !Array.isArray(raw) || raw.length > 1000) throw new Error("Incomplete Base logs");
+      for (const item of raw) {
+        const entry = log.parse(item);
+        const height = BigInt(entry.blockNumber);
+        const key = entry.transactionHash + ":" + entry.logIndex;
+        if (entry.address.toLowerCase() !== USDC || entry.topics[0] !== TRANSFER || entry.topics[1] !== sender
+          || height < range.from || height > range.to || seen.has(key)) throw new Error("Invalid Base transfer log");
+        seen.add(key);
+        outgoing += BigInt(entry.data);
+        if (outgoing > 1000000000000n) throw new Error("Observed spend exceeds supported budget");
+      }
     }
   }
   const confirm = block.parse(await historyRpc("eth_getBlockByNumber", [anchor.number, false]));
