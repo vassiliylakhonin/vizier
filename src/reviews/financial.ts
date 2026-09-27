@@ -70,16 +70,23 @@ const receiptSchema = z.object({ transactionHash: hash, blockHash: hash, blockNu
   logs: z.array(z.object({ address: z.string(), topics: z.array(z.string()), data: z.string(), removed: z.boolean().optional() })).max(1000) });
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 export async function verifyFinancialOutcome(action: FinancialAction, txHash: string, consumedAt: number) {
-  if (await rpc("eth_chainId", []) !== "0x2105") throw new Error("Wrong chain");
-  const rawReceipt = await rpc("eth_getTransactionReceipt", [txHash]);
+  const [chainId, rawReceipt] = await Promise.all([
+    rpc("eth_chainId", []),
+    rpc("eth_getTransactionReceipt", [txHash]),
+  ]);
+  if (chainId !== "0x2105") throw new Error("Wrong chain");
   if (rawReceipt === null) return null;
   const receipt = receiptSchema.parse(rawReceipt);
   const finalized = blockSchema.parse(await rpc("eth_getBlockByNumber", ["finalized", false]));
   const now = Math.floor(Date.now() / 1000);
   if (BigInt(finalized.timestamp) > BigInt(now + 60) || BigInt(finalized.timestamp) < BigInt(now - 3600)) throw new Error("Stale finality anchor");
   if (BigInt(receipt.blockNumber) > BigInt(finalized.number)) return null;
-  const block = blockSchema.parse(await rpc("eth_getBlockByNumber", [receipt.blockNumber, false]));
-  const tx = txSchema.parse(await rpc("eth_getTransactionByHash", [txHash]));
+  const [rawBlock, rawTransaction] = await Promise.all([
+    rpc("eth_getBlockByNumber", [receipt.blockNumber, false]),
+    rpc("eth_getTransactionByHash", [txHash]),
+  ]);
+  const block = blockSchema.parse(rawBlock);
+  const tx = txSchema.parse(rawTransaction);
   if (receipt.transactionHash !== txHash || tx.hash !== txHash || tx.from !== action.from || tx.input !== action.data || tx.value !== "0x0"
     || block.hash !== receipt.blockHash || tx.blockHash !== block.hash || tx.blockNumber !== block.number || receipt.blockNumber !== block.number
     || BigInt(block.timestamp) <= BigInt(consumedAt) || BigInt(block.timestamp) > BigInt(finalized.timestamp)) throw new Error("Transaction does not match claimed action");

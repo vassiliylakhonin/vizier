@@ -63,6 +63,31 @@ function collectReferences(value: unknown, references: string[] = []): string[] 
 }
 
 describe("machine-readable discovery contracts", () => {
+  it.each([
+    ["ZeroMockProof/1.0", "machine_probe", "benchmark_probe"],
+    ["InstinctOwnerVerifySynthetic/1.0", "self_test", "owner_synthetic"],
+    ["agentprobe/0.1.0 (+https://agentprobe.org/methodology)", "machine_probe", "service_probe"],
+    ["Mozilla/5.0", "human_browser", "external"],
+    ["", "machine_client", "unsigned_external"],
+  ])("indexes %s traffic as %s/%s", async (userAgent, trafficClass, callerKind) => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      const response = await handleHttpRequest(new Request(`${ORIGIN}/health`, {
+        headers: userAgent ? { "User-Agent": userAgent } : {},
+      }));
+      expect(response.status).toBe(200);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({
+        event: "vizier.http.request",
+        event_version: 2,
+        traffic_class: trafficClass,
+        caller_kind: callerKind,
+        user_agent: userAgent,
+      }));
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("publishes one OpenAPI 3.1 contract for every REST resource", async () => {
     const response = await get("/openapi.json");
     const document = (await response.json()) as Record<string, unknown>;

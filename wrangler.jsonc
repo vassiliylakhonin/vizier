@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "vizier",
   "main": "src/index.ts",
-  "compatibility_date": "2026-08-08",
+  "compatibility_date": "2026-09-27",
   "compatibility_flags": ["nodejs_compat"],
   // VIZIER_PRINCIPAL_KEYS is deliberately not required: delegation grants are
   // opt-in, and an unset registry simply means no grant can be verified.
