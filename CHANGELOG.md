@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Publish a complete MCP outputSchema for vizier_verify_action, including policy results, authority provenance and optional signed-grant receipt fields. Validate real verification output and malformed response controls.
+
+
 ## 0.5.6 — 2026-09-30
 
 - Add operator-controlled `VIZIER_SIGNED_GRANT_MODE=required` across REST/MCP/A2A verification; missing grants block, invalid configuration blocks even valid grants. Default remains optional for existing integrations.

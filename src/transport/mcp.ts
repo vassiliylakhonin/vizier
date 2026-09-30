@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { verificationRequestSchema, verifyAction } from "../core/index";
+import { verificationRequestSchema, verificationResponseSchema, verifyAction } from "../core/index";
 import {
   jsonResponse,
   readLimitedJson,
@@ -75,6 +75,7 @@ const verifyTool = Object.freeze({
   description:
     "Evaluate whether an AI agent should be allowed to perform a proposed action.",
   inputSchema: toolInputSchema,
+  outputSchema: z.toJSONSchema(verificationResponseSchema, { target: "draft-2020-12" }),
   annotations: {
     title: "Verify Agent Action",
     readOnlyHint: true,

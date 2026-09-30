@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { handleMcpRequest } from "../src/transport/mcp";
 import { handleHttpRequest } from "../src/transport/http";
+import { verificationResponseSchema } from "../src/core/index";
 import { SERVICE_VERSION } from "../src/version";
 
 const MCP_VERSION = "2026-07-28";
@@ -103,6 +104,7 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
         tools: Array<{
           name: string;
           inputSchema: { $schema?: string; type?: string };
+          outputSchema: { $schema?: string; type?: string; required?: string[] };
         }>;
       };
     };
@@ -111,6 +113,9 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
     expect(body.result.tools[0]?.name).toBe("vizier_verify_action");
     expect(body.result.tools[0]?.inputSchema.type).toBe("object");
     expect(body.result.tools[0]?.inputSchema.$schema).toContain("2020-12");
+    expect(body.result.tools[0]?.outputSchema.type).toBe("object");
+    expect(body.result.tools[0]?.outputSchema.$schema).toContain("2020-12");
+    expect(body.result.tools[0]?.outputSchema.required).toContain("receipt");
   });
 
   it("calls the verification tool and returns structured content", async () => {
@@ -136,6 +141,9 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
     expect(result.result.isError).toBe(false);
     expect(result.result.structuredContent.decision).toBe("ALLOW");
     expect(result.result.structuredContent.receipt.id).toMatch(/^vrf_/);
+    expect(verificationResponseSchema.safeParse(result.result.structuredContent).success).toBe(true);
+    expect(verificationResponseSchema.safeParse({ ...result.result.structuredContent, decision: "invented" }).success).toBe(false);
+    expect(verificationResponseSchema.safeParse({ ...result.result.structuredContent, receipt: {} }).success).toBe(false);
   });
 
   it("returns REVIEW for an open tools/call evaluation", async () => {

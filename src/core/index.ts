@@ -4,6 +4,7 @@ export {
   delegationGrantTokenSchema,
   identifierSchema,
   verificationRequestSchema,
+  verificationResponseSchema,
 } from "./schemas";
 export type { VerificationRequest } from "./schemas";
 export {
