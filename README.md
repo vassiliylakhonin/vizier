@@ -17,7 +17,7 @@ Vizier is for developers running agents that can call tools, send messages, chan
 
 **Try it in code:** [wrap an MCP server](#2-mcp-enforcement-proxy-cli) or [use the Python SDK](#1-python-sdk-vizier-guard). [Field reference](https://vizier.vassiliy-lakhonin.workers.dev/docs) · [Threat model](docs/THREAT_MODEL.md) · [OpenAPI](https://vizier.vassiliy-lakhonin.workers.dev/openapi.json).
 
-**What it does not do:** Vizier does not execute the protected action for you. An unverified caller-supplied `authority` field is an assertion, not a signed grant. Integrate a guard at the tool boundary and check fail-closed behavior before relying on it. This is experimental v0.5.5, not an independent security certification. The `@vizier` npm scope is not currently published; install the [release archives](#installing-the-review-sdk-release-archives). The MCP proxy is a separate package, not a hosted MCP wrapper of every agent.
+**What it does not do:** Vizier does not execute the protected action for you. An unverified caller-supplied `authority` field is an assertion, not a signed grant. Integrate a guard at the tool boundary and check fail-closed behavior before relying on it. This is experimental v0.5.6, not an independent security certification. The `@vizier` npm scope is not currently published; install the [release archives](#installing-the-review-sdk-release-archives). The MCP proxy is a separate package, not a hosted MCP wrapper of every agent.
 
 **How it fits together:** agent -> Python/TypeScript guard or MCP proxy -> deterministic policy service on Cloudflare Workers -> decision and receipt -> protected tool only on an authorized allow path. The architecture diagram and technical reference below retain the integration details.
 
@@ -74,9 +74,9 @@ flowchart TD
     P -.->|"Decision: BLOCK / REVIEW"| G3
 ```
 
-The decision path is strictly deterministic — no non-deterministic LLMs in the critical decision loop. It checks delegated actions, principal identity, amount limits, targets, sensitive operations, and authenticated integration boundaries. Every response includes policy results and a tamper-proof SHA-256 canonical receipt hash.
+The decision path is strictly deterministic — no non-deterministic LLMs in the critical decision loop. It checks delegated actions, principal identity, amount limits, targets, sensitive operations, and authenticated integration boundaries. Every response includes policy results and a SHA-256 canonical receipt hash bound to the request.
 
-Status: experimental v0.5.5, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
+Status: experimental v0.5.6, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
 
 ---
 
@@ -197,7 +197,7 @@ Equip Claude Desktop or Cursor with deterministic guardrails (`vizier_screen_act
 Wrap any local or remote MCP server with deterministic authorization:
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.5/vizier-sdk-0.5.5.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.5/vizier-mcp-proxy-0.5.5.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-mcp-proxy-0.5.6.tgz
 npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \
@@ -210,7 +210,7 @@ npx --no-install vizier-mcp-proxy \
 ### 3. TypeScript SDK (`@vizier/sdk`)
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.5/vizier-sdk-0.5.5.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz
 ```
 
 ```ts
@@ -860,17 +860,17 @@ provide them until its next package release.
 
 ### Installing the review SDK release archives
 
-Version 0.5.5 is distributed as GitHub Release archives. The `@vizier` npm scope
+Version 0.5.6 is distributed as GitHub Release archives. The `@vizier` npm scope
 is not currently published; do not assume `npm install @vizier/sdk` succeeds.
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.5/vizier-sdk-0.5.5.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz
 ```
 
 For the proxy, install both archives together so its SDK dependency is satisfied:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.5/vizier-sdk-0.5.5.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.5/vizier-mcp-proxy-0.5.5.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-mcp-proxy-0.5.6.tgz
 ```
 
 Release assets include `SHA256SUMS`. Imports remain `@vizier/sdk`. Release CI
@@ -881,3 +881,16 @@ explicit warnings and summary entries, not a claim of successful registry public
 ### Financial workflow reservations
 
 Base native-USDC reviews require a reviewer-configured workflow budget. Concurrent requests reserve budget atomically; claimed holds persist until finalized Base reconciliation. No default limits are activated and wallet signing remains manual. See [the contract and limitations](docs/FINANCIAL_RESERVATIONS.md).
+
+### Protected delegation profile
+
+v0.5.6 adds operator-controlled mandatory delegation and rotating grant files
+for the MCP proxy. Set `VIZIER_SIGNED_GRANT_MODE=required` only after migrating
+all callers on that deployment; unset remains compatible with existing trusted
+integrations. Invalid configured modes fail closed. The strict proxy also
+requires signed-grant provenance, correct identities, expiry and request binding
+before forwarding an allowed call. See [mandatory delegation and proxy setup](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056).
+
+This is an opt-in protected profile, not a claim that every current production
+caller has migrated. Downstream credentials and configuration must remain
+operator-controlled, and the agent's direct upstream route must be removed.

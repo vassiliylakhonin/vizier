@@ -477,3 +477,51 @@ describe("delegation grants", () => {
     }
   });
 });
+
+describe("operator-required delegation", () => {
+  it("blocks a trusted integration with no grant", async () => {
+    const response = await verifyAction(request(), { trustedAuthority: true, signedGrantMode: "required" });
+    expect(response.decision).toBe("BLOCK");
+    expect(response.reason_codes).toContain("GRANT_REQUIRED");
+  });
+
+  it("accepts a verified grant in required mode", async () => {
+    const signer = await createSigner("strict-principal");
+    const grant = await grantFor(signer);
+    const response = await verifyAction(request({ grant }), {
+      signedGrantMode: "required", principalKeys: registryOf(["acme-corp", signer]),
+    });
+    expect(response.decision).toBe("ALLOW");
+    expect(response.receipt.authority_provenance).toBe("principal_signed");
+  });
+
+  it("invalid policy blocks even a valid signed grant", async () => {
+    const signer = await createSigner("strict-principal");
+    const response = await verifyAction(request({ grant: await grantFor(signer) }), {
+      signedGrantMode: "invalid", principalKeys: registryOf(["acme-corp", signer]),
+    });
+    expect(response.decision).toBe("BLOCK");
+    expect(response.reason_codes).toContain("GRANT_POLICY_MISCONFIGURED");
+  });
+
+  it("cannot fall back after widening authority or changing the principal", async () => {
+    const signer = await createSigner("strict-principal");
+    const grant = await grantFor(signer);
+    for (const modified of [request({ grant, authority: WIDENED_AUTHORITY }), request({ grant, principalId: "other" })]) {
+      const response = await verifyAction(modified, { signedGrantMode: "required", principalKeys: registryOf(["acme-corp", signer]) });
+      expect(response.decision).toBe("BLOCK");
+    }
+  });
+
+  it("blocks expired delegation in required mode", async () => {
+    const signer = await createSigner("strict-principal");
+    const now = new Date();
+    const grant = await grantFor(signer, { issuedAt: now, ttlSeconds: 60 });
+    const response = await verifyAction(request({ grant }), {
+      signedGrantMode: "required", principalKeys: registryOf(["acme-corp", signer]),
+      now: () => new Date(now.getTime()+180_000),
+    });
+    expect(response.decision).toBe("BLOCK");
+    expect(response.reason_codes).toContain("GRANT_EXPIRED");
+  });
+});

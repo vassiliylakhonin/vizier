@@ -31,6 +31,7 @@ export interface TransportOptions {
    * the edge so a bad value cannot take the whole Worker down.
    */
   readonly principalKeySource?: string;
+  readonly signedGrantModeSource?: string;
   readonly upstreamFetch?: typeof fetch;
   readonly upstreamUrl?: string;
   readonly allowedUpstreamOrigins?: readonly string[];
@@ -188,4 +189,11 @@ export async function readLimitedJson(request: Request): Promise<unknown> {
       "Request body contains invalid JSON.",
     );
   }
+}
+
+/** Operator policy only; request bodies cannot select or downgrade this mode. */
+export function resolveSignedGrantMode(options: TransportOptions): "optional" | "required" | "invalid" {
+  if (options.signedGrantModeSource === undefined) return "optional";
+  const mode = options.signedGrantModeSource.trim();
+  return mode === "optional" || mode === "required" ? mode : "invalid";
 }

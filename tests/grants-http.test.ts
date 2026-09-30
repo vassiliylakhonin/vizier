@@ -194,3 +194,51 @@ describe("delegation grants over HTTP", () => {
     expect(payload.delegation.grant_field).toBe("grant");
   });
 });
+
+describe("required delegation transport policy", () => {
+  it.each(["required", "requird", ""])("server mode %s cannot be disabled by request fields", async (mode) => {
+    const request = new Request("https://vizier.example/v1/verify", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${TEST_API_KEY}` },
+      body: JSON.stringify(body()),
+    });
+    const response = await handleHttpRequest(request, { apiKey: TEST_API_KEY, signedGrantModeSource: mode });
+    const result = await response.json() as { decision: string; reason_codes: string[] };
+    expect(result.decision).toBe("BLOCK");
+    expect(result.reason_codes).toContain(mode === "required" ? "GRANT_REQUIRED" : "GRANT_POLICY_MISCONFIGURED");
+  });
+
+  it("blocks missing grants through both MCP protocol profiles", async () => {
+    for (const version of ["2026-07-28", "2025-06-18"]) {
+      const modern = version === "2026-07-28";
+      const response = await handleHttpRequest(new Request("https://vizier.example/mcp", {
+        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream",
+          Authorization: `Bearer ${TEST_API_KEY}`, "MCP-Protocol-Version": version, "Mcp-Method": "tools/call", "Mcp-Name": "vizier_verify_action" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: "strict", method: "tools/call", params: {
+          name: "vizier_verify_action", arguments: body(), ...(modern ? { _meta: {
+            "io.modelcontextprotocol/protocolVersion": version,
+            "io.modelcontextprotocol/clientCapabilities": {},
+          } } : {}),
+        } }),
+      }), { apiKey: TEST_API_KEY, signedGrantModeSource: "required" });
+      const text = await response.text();
+      expect(text).toContain("GRANT_REQUIRED");
+      expect(text).toContain("BLOCK");
+    }
+  });
+
+  it("blocks the A2A verification route without a grant", async () => {
+    const response = await handleHttpRequest(new Request("https://vizier.example/a2a", {
+      method: "POST", headers: { "Content-Type": "application/json", "A2A-Version": "1.0", Authorization: `Bearer ${TEST_API_KEY}` },
+      body: JSON.stringify({ jsonrpc: "2.0", id: "strict", method: "SendMessage", params: { message: {
+        messageId: "strict-message", role: "ROLE_USER", parts: [{ data: body(), mediaType: "application/json" }],
+      } } }),
+    }), { apiKey: TEST_API_KEY, signedGrantModeSource: "required" });
+    expect(await response.text()).toContain("GRANT_REQUIRED");
+  });
+
+  it("publishes the actual server mode in docs", async () => {
+    const response = await handleHttpRequest(new Request("https://vizier.example/docs"), { signedGrantModeSource: "required" });
+    const result = await response.json() as { delegation: { mode: string; grant_required: boolean } };
+    expect(result.delegation).toMatchObject({ mode: "required", grant_required: true });
+  });
+});

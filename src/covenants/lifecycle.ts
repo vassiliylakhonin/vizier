@@ -293,6 +293,7 @@ export async function authorizeActionCovenant(
     ...evaluateInvalidation(request),
     ...evaluatePolicies(verificationRequest, {
       sensitiveActions: options.sensitiveActions,
+      signedGrantMode: options.signedGrantMode,
       trustedAuthority: options.trustedAuthority ?? false,
     }),
   ]);

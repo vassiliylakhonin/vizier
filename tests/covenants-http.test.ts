@@ -57,6 +57,7 @@ async function post(
     readonly apiKey?: string;
     readonly bearer?: string;
     readonly receiptSigningKey?: string;
+    readonly signedGrantModeSource?: string;
   },
 ): Promise<Response> {
   return handleHttpRequest(
@@ -73,6 +74,7 @@ async function post(
     {
       apiKey: options.apiKey,
       receiptSigningKey: options.receiptSigningKey,
+      signedGrantModeSource: options.signedGrantModeSource,
     },
   );
 }
@@ -225,4 +227,21 @@ describe("Action Covenant REST resources", () => {
     ]);
     expect(body.keys.every((key) => key.d === undefined)).toBe(true);
   });
+});
+
+
+it("cannot use covenant authorization to bypass required grants", async () => {
+  const draft = createDraft();
+  const options = { apiKey: API_KEY, bearer: API_KEY, receiptSigningKey: await createTestSigningKey("strict-test"),
+    signedGrantModeSource: "required" };
+  const activation = await post("/v1/covenants", { draft, acceptance: {
+    accepted_by: draft.principal, accepted_at: new Date().toISOString(), draft_hash: await hashActionCovenantDraft(draft),
+  } }, options);
+  const covenant = await activation.json();
+  const authorization = await post("/v1/authorizations", { covenant, action: draft.action, evidence: [], signals: [],
+    context: { request_id: "strict-covenant", timestamp: new Date().toISOString(), source: "rest" },
+  }, options);
+  const result = await authorization.json() as { decision: string; reason_codes: string[] };
+  expect(result.decision).toBe("BLOCK");
+  expect(result.reason_codes).toContain("GRANT_REQUIRED");
 });

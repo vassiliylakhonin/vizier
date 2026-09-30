@@ -118,7 +118,10 @@ or network failure.
   can alter the controlled backend's `authority` input, can still grant itself
   permission for any request that carries no grant. A grant closes this for the
   requests that carry one; it does not close it for the ones that do not, and
-  Vizier does not currently offer a way to require grants per principal.
+  `VIZIER_SIGNED_GRANT_MODE=required` closes the missing-grant path for the
+  entire verification deployment; unset/optional retains this limitation.
+  Invalid configured modes block authorization. Per-principal selective
+  policy is not implemented, so migrate all callers before global activation.
 - A delegation grant proves delegation, not intent or possession. It shows the
   principal signed this authority for this agent; it does not show a human
   reviewed this particular action, nor that the signing key is still in the

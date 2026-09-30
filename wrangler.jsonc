@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-27",
   "compatibility_flags": ["nodejs_compat"],
+  // Optional VIZIER_SIGNED_GRANT_MODE: required | optional. Unset keeps legacy
+  // callers compatible; invalid configured values block verification.
   // VIZIER_PRINCIPAL_KEYS is deliberately not required: delegation grants are
   // opt-in, and an unset registry simply means no grant can be verified.
   "secrets": {

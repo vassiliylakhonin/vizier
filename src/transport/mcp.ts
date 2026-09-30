@@ -7,6 +7,7 @@ import {
   type TransportOptions,
   TransportRequestError,
   resolvePrincipalKeys,
+  resolveSignedGrantMode,
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
@@ -279,6 +280,7 @@ async function runVerifyTool(
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
     principalKeys: resolvePrincipalKeys(options),
+    signedGrantMode: resolveSignedGrantMode(options),
   });
   console.log(
     JSON.stringify({
