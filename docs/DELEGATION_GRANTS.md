@@ -175,3 +175,74 @@ answers, for an arbitrary action, "who authorised this agent to do this much of
 this, and can I prove it after the fact." A delegation grant plus the receipt it
 produces is one deterministic, offline-checkable answer to that question. It
 depends on neither protocol and composes with both.
+
+## Mandatory server policy (v0.5.6)
+
+Set the operator-controlled Worker binding `VIZIER_SIGNED_GRANT_MODE` to
+`required` for a deployment whose callers have been migrated to grants. Unset
+or `optional` preserves the existing trusted-integration path. Every other
+configured value, including an empty string or typo, blocks authorization with
+`GRANT_POLICY_MISCONFIGURED`. Request fields and headers cannot downgrade the
+server policy. Required mode blocks missing/unverifiable grants across REST,
+both MCP profiles and A2A; unknown or malformed principal key registries also
+fail to verify grants. `/docs` exposes `delegation.mode` and `grant_required`.
+
+The existing covenant authorization contract has no grant field: it is blocked
+in required mode, including attempts to use it as an alternative path. Human
+review attestations are a separate explicit operator-approval workflow and are
+not principal delegation grants. Source screening receipts are not permission
+to execute. This switch does not remove direct access to downstream tools.
+
+Before activation, register genuine owner public keys, issue short-lived grants
+for each intended agent/authority, remove the agent's direct upstream route and
+keep the signing key, upstream credential and proxy configuration outside the
+agent's control. Do not reuse test keys. Test allow, missing/expired grant,
+changed authority/target and service timeout in that actual boundary. Existing
+Agenda gated deployment currently asserts authority; migrate it before enabling
+required mode globally. A grant delegates a scope, not approval of every action
+inside that scope. Revocation and durable global spending remain separate.
+
+## Protected MCP proxy
+
+An operator-supplied `delegationGrant` automatically selects strict proxy checks;
+`requireSignedGrant: true` rejects startup if no grant/provider was configured.
+A provider can load rotated grants for each call. The principal must sign this
+exact authority for the proxy's configured agent:
+
+```json
+{
+  "iss": "platform-team",
+  "sub": "coding-agent-01",
+  "authority": {
+    "allowed_actions": ["mcp_tool_call"],
+    "constraints": {
+      "allowed_targets": ["mcp://filesystem/tools/write_file"]
+    }
+  }
+}
+```
+
+Configure matching upstream ID, allowed tools, principal and agent:
+
+```sh
+VIZIER_PROXY_UPSTREAM_ID=filesystem \
+VIZIER_PROXY_AGENT_ID=coding-agent-01 \
+VIZIER_PROXY_PRINCIPAL_ID=platform-team \
+VIZIER_PROXY_GRANT_MODE=required \
+VIZIER_PROXY_GRANT_FILE=/operator-owned/grant.jws \
+npx --no-install vizier-mcp-proxy --upstream https://mcp.example/mcp --tools write_file
+```
+
+The existing API/client/upstream credentials are configured separately. Store
+only the compact grant in this file, not the private signing key. The CLI reads
+a regular file of at most 32 KiB per tool call; rotate it with an atomic rename
+before expiry. Missing, oversized or invalid replacement files stop forwarding.
+Client tool arguments cannot replace the operator grant. The grant is sent to
+Vizier only and is not forwarded to the upstream tool or included in proxy logs.
+
+Even an ALLOW must carry `principal_signed` provenance, the intended identities,
+an unexpired grant and a receipt hash bound to the exact request, before strict
+proxy forwarding. Legacy `/v1/verify` receipts are unsigned: this path trusts the
+configured verifier over HTTPS, not an offline receipt signature. Signature and
+receipt binding do not independently prove source truth or prevent direct tool
+access. External executors still need idempotency to prevent duplicate effects.

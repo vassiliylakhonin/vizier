@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { open } from "node:fs/promises";
+
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
@@ -12,7 +14,7 @@ import { createMcpEnforcementProxy } from "./index.js";
 const MAX_BODY_BYTES = 64 * 1024;
 
 const helpText = `
-Vizier MCP Enforcement Proxy (v0.4.0)
+Vizier MCP Enforcement Proxy (v0.5.6)
 Deterministic authorization firewall for MCP servers and AI agents.
 
 Usage:
@@ -34,6 +36,9 @@ Options:
 Environment Variables:
   VIZIER_PROXY_UPSTREAM_URL, VIZIER_PROXY_ALLOWED_TOOLS, VIZIER_BASE_URL,
   VIZIER_API_KEY, VIZIER_PROXY_PORT, VIZIER_PROXY_HOST, VIZIER_PROXY_CLIENT_TOKEN
+  VIZIER_PROXY_GRANT_MODE (optional|required), VIZIER_PROXY_GRANT_FILE
+  --grant-mode required --grant-file /operator/path/grant.jws
+  Grant files are read for every tool call. Never pass private signing keys.
 `;
 
 const configSchema = z.strictObject({
@@ -52,6 +57,8 @@ const configSchema = z.strictObject({
     .pipe(z.array(z.string().min(1).max(256)).min(1).max(100)),
   agentId: z.string().trim().min(1).max(256).default("agent"),
   agentOwner: z.string().trim().min(1).max(256).nullable().default(null),
+  grantFile: z.string().min(1).optional(),
+  grantMode: z.enum(["optional", "required"]).default("optional"),
   principalId: z.string().trim().min(1).max(256).default("principal"),
 });
 
@@ -69,6 +76,8 @@ function loadConfig(): z.infer<typeof configSchema> {
       "upstream-token": { type: "string" },
       "agent-id": { type: "string" },
       "principal-id": { type: "string" },
+      "grant-file": { type: "string" },
+      "grant-mode": { type: "string" },
     },
     strict: false,
   });
@@ -93,6 +102,8 @@ function loadConfig(): z.infer<typeof configSchema> {
     allowedTools: values.tools ?? process.env.VIZIER_PROXY_ALLOWED_TOOLS,
     agentId: values["agent-id"] ?? process.env.VIZIER_PROXY_AGENT_ID ?? "agent",
     agentOwner: process.env.VIZIER_PROXY_AGENT_OWNER ?? null,
+    grantFile: values["grant-file"] ?? process.env.VIZIER_PROXY_GRANT_FILE,
+    grantMode: values["grant-mode"] ?? process.env.VIZIER_PROXY_GRANT_MODE ?? "optional",
     principalId: values["principal-id"] ?? process.env.VIZIER_PROXY_PRINCIPAL_ID ?? "principal",
   });
 
@@ -147,6 +158,24 @@ async function main(): Promise<void> {
     agent: { id: config.agentId, owner: config.agentOwner },
     principal: { id: config.principalId },
     verifier,
+    requireSignedGrant: config.grantMode === "required" || config.grantFile !== undefined,
+    ...(config.grantFile === undefined ? {} : { delegationGrant: async () => {
+      const file = await open(config.grantFile!, "r");
+      try {
+        if (!(await file.stat()).isFile()) throw new TypeError("Grant must be a regular file.");
+        const buffer = Buffer.alloc(32_769);
+        let bytes = 0;
+        while (bytes < buffer.length) {
+          const part = await file.read(buffer, bytes, buffer.length-bytes, null);
+          if (part.bytesRead === 0) break;
+          bytes += part.bytesRead;
+        }
+        if (bytes > 32_768) throw new TypeError("Grant exceeds size limit.");
+        return z.string().trim().min(1).max(32_768).parse(buffer.subarray(0, bytes).toString("utf8"));
+      } finally {
+        await file.close();
+      }
+    } }),
   });
   const server = createServer(async (incoming, outgoing) => {
     try {

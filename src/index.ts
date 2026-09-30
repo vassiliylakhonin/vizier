@@ -4,6 +4,7 @@ import { runWalletHistoryMonitor } from "./reviews/wallet-monitor";
 
 interface ExtendedEnv extends Env {
   readonly VIZIER_PRINCIPAL_KEYS?: string;
+  readonly VIZIER_SIGNED_GRANT_MODE?: string;
   readonly VIZIER_REVIEWER_KEY?: string;
   readonly VIZIER_MONITORED_WALLET?: string;
 }
@@ -18,6 +19,7 @@ export default {
       agentCardSigningKey: env.AGENT_CARD_SIGNING_KEY,
       receiptSigningKey: env.RECEIPT_SIGNING_KEY,
       principalKeySource: env.VIZIER_PRINCIPAL_KEYS,
+      signedGrantModeSource: env.VIZIER_SIGNED_GRANT_MODE,
       db: env.DB,
       ctx,
     });

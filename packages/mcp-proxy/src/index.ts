@@ -95,6 +95,8 @@ export interface McpEnforcementProxyOptions {
   readonly agent: { readonly id: string; readonly owner: string | null };
   readonly principal: { readonly id: string };
   readonly verifier: McpProxyVerifier;
+  readonly delegationGrant?: string | (() => Promise<string>);
+  readonly requireSignedGrant?: boolean;
   readonly fetch?: typeof globalThis.fetch;
   readonly verificationTimeoutMs?: number;
   readonly upstreamTimeoutMs?: number;
@@ -117,6 +119,8 @@ interface NormalizedOptions {
   readonly agent: { readonly id: string; readonly owner: string | null };
   readonly principal: { readonly id: string };
   readonly verifier: McpProxyVerifier;
+  readonly delegationGrant?: string | (() => Promise<string>);
+  readonly requireSignedGrant: boolean;
   readonly fetch: typeof globalThis.fetch;
   readonly verificationTimeoutMs: number;
   readonly upstreamTimeoutMs: number;
@@ -194,6 +198,13 @@ function normalizeOptions(options: McpEnforcementProxyOptions): NormalizedOption
   if (new Set(allowedTools).size !== allowedTools.length) {
     throw new TypeError("allowedTools must contain unique tool names.");
   }
+  const requireSignedGrant = options.requireSignedGrant ?? (options.delegationGrant !== undefined);
+  if (requireSignedGrant && options.delegationGrant === undefined) {
+    throw new TypeError("Strict proxy mode requires an operator-supplied delegation grant.");
+  }
+  if (typeof options.delegationGrant === "string") {
+    z.string().min(1).max(32_768).parse(options.delegationGrant);
+  }
   return {
     integrationId,
     clientBearerToken: z.string().min(16).max(4_096).parse(options.clientBearerToken),
@@ -219,6 +230,8 @@ function normalizeOptions(options: McpEnforcementProxyOptions): NormalizedOption
     },
     principal: { id: identifierSchema.parse(options.principal.id) },
     verifier: options.verifier,
+    requireSignedGrant,
+    ...(options.delegationGrant === undefined ? {} : { delegationGrant: options.delegationGrant }),
     fetch: options.fetch ?? globalThis.fetch,
     verificationTimeoutMs: boundedTimeout(
       options.verificationTimeoutMs,
@@ -526,12 +539,12 @@ function verificationRequest(
   options: NormalizedOptions,
 ): VerificationRequest {
   return {
-    agent: options.agent,
-    principal: options.principal,
+    agent: { ...options.agent },
+    principal: { ...options.principal },
     action: {
       type: MCP_PROXY_ACTION_TYPE,
       target: targetFor(options.upstreamId, toolName),
-      parameters: { tool_name: toolName, arguments: argumentsValue },
+      parameters: { tool_name: toolName, arguments: structuredClone(argumentsValue) },
     },
     authority: {
       allowed_actions: [MCP_PROXY_ACTION_TYPE],
@@ -623,9 +636,21 @@ async function handleToolCall(
     options.callHistory.entries.push({ timestamp: nowMs, signature });
   }
   let decision: VerificationResponse;
+  let hashes: string[] = [];
   try {
+    const grant = typeof options.delegationGrant === "function"
+      ? await options.delegationGrant() : options.delegationGrant;
+    const intendedRequest = {
+      ...verificationRequest(body, toolName.data, argumentsValue.data, options),
+      ...(grant === undefined ? {} : { grant: z.string().min(1).max(32_768).parse(grant) }),
+    };
+    if (options.requireSignedGrant) {
+      hashes = await Promise.all([hashCanonicalJson(intendedRequest), hashCanonicalJson({
+        ...intendedRequest, context: { ...intendedRequest.context, source: "rest" },
+      })]);
+    }
     decision = await options.verifier.verify(
-      verificationRequest(body, toolName.data, argumentsValue.data, options),
+      intendedRequest,
       { signal: AbortSignal.timeout(options.verificationTimeoutMs) },
     );
   } catch {
@@ -644,6 +669,20 @@ async function handleToolCall(
       200,
       { code: "VIZIER_UNAVAILABLE" },
     );
+  }
+  if (options.requireSignedGrant && decision.decision === "ALLOW") {
+    // SDK REST transport normalizes source to rest; in-process verifiers preserve mcp.
+    const grant = decision.receipt.grant;
+    if (decision.receipt.authority_provenance !== "principal_signed" || grant === undefined ||
+        grant.issuer !== options.principal.id || grant.subject !== options.agent.id ||
+        !Number.isFinite(Date.parse(grant.expires_at)) || Date.parse(grant.expires_at) <= options.now().getTime() ||
+        !hashes.includes(decision.receipt.request_hash) || decision.receipt.decision !== "ALLOW") {
+      options.log({ event: "vizier.mcp_proxy.completed", integration_id: options.integrationId,
+        request_id: requestId, tool_name: toolName.data, outcome: "denied", decision: "BLOCK",
+        reason_codes: ["SIGNED_GRANT_RECEIPT_REQUIRED"], duration_ms: Math.round(performance.now()-startedAt) });
+      return mcpError(body.id, -32003, "Signed delegation proof does not match this tool call.", 200,
+        { code: "SIGNED_GRANT_RECEIPT_REQUIRED" });
+    }
   }
   if (decision.decision !== "ALLOW") {
     options.log({

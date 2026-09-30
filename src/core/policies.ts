@@ -21,6 +21,7 @@ export type PolicyEvaluator = (request: VerificationRequest) => PolicyResult | r
 export interface PolicyOptions {
   readonly sensitiveActions?: readonly string[];
   readonly trustedAuthority?: boolean;
+  readonly signedGrantMode?: "optional" | "required" | "invalid";
   readonly customPolicies?: readonly PolicyEvaluator[];
   /**
    * Outcome of verifying a principal-signed delegation grant, when the request
@@ -221,6 +222,13 @@ export function evaluatePolicies(
     evaluateSensitiveAction(request, sensitiveActions),
     evaluateReversibility(request),
   ];
+
+  if (options.signedGrantMode === "invalid") {
+    results.push(result("authority.grant.required", "FAIL", "GRANT_POLICY_MISCONFIGURED"));
+  } else if (options.signedGrantMode === "required") {
+    results.push(result("authority.grant.required", grantVerification?.ok === true ? "PASS" : "FAIL",
+      grantVerification?.ok === true ? null : "GRANT_REQUIRED"));
+  }
 
   if (grantVerification !== undefined) {
     results.push(evaluateDelegationGrant(grantVerification));

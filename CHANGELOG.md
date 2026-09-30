@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.5.6 — 2026-09-30
+
+- Add operator-controlled `VIZIER_SIGNED_GRANT_MODE=required` across REST/MCP/A2A verification; missing grants block, invalid configuration blocks even valid grants. Default remains optional for existing integrations.
+- Prevent covenant authorization from bypassing strict mode: the legacy covenant contract has no grant field, so strict deployments block it rather than silently accepting asserted authority.
+- Add protected MCP proxy grants and receipt provenance, identity, expiry and exact-request binding checks. CLI reads an operator-owned grant file for every tool call, with bounded reads and no token forwarding upstream.
+- Add end-to-end signed tool-call, missing/expired/widened grant, invalid policy, transport and downgrade tests. Strict mode activation requires registered owner keys and migration of existing callers; this release does not silently activate it globally.
+
+## Previous unreleased changes
 
 - Clarify the anonymous A2A evaluation-only boundary on the card and add a copy-paste SendMessage example in the card extension. No enforcement decision logic changed.
 

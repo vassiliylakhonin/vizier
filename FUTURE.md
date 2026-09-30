@@ -16,7 +16,7 @@ fit MVP:
 - independent evidence and invalidation-signal retrieval
 - principal-level IAM or identity provider integration beyond the v0.2
   integration credential and the v0.3 registered signing keys
-- a per-principal policy requiring that every request carry a grant
+- a per-principal selective policy requiring grants (deployment-wide required mode shipped in v0.5.6)
 - sanctions databases or geopolitical intelligence
 - LLM-based policy evaluation inside the authorization kernel; models may
   compile strict drafts outside the authorization boundary

@@ -7,6 +7,7 @@ import {
   type TransportOptions,
   TransportRequestError,
   resolvePrincipalKeys,
+  resolveSignedGrantMode,
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
@@ -405,6 +406,7 @@ export async function handleA2aRequest(
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: authorization === "authenticated",
     principalKeys: resolvePrincipalKeys(options),
+    signedGrantMode: resolveSignedGrantMode(options),
   });
   const contextId =
     sendMessage.data.message.contextId ?? `ctx_${crypto.randomUUID()}`;

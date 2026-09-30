@@ -49,6 +49,7 @@ import {
   TransportRequestError,
   principalKeysMisconfigured,
   resolvePrincipalKeys,
+  resolveSignedGrantMode,
 } from "./shared";
 import { createAgentCard, handleA2aRequest } from "./a2a";
 import {
@@ -342,6 +343,7 @@ async function executeVerificationPipeline(
   const result = await verifyAction(normalizedRequest, {
     trustedAuthority: params.trustedAuthority,
     principalKeys: resolvePrincipalKeys(params.options),
+    signedGrantMode: resolveSignedGrantMode(params.options),
     circuitBreaker: circuitBreakerResult,
     sanctions: sanctionsResult,
     dlp: dlpResult,
@@ -864,6 +866,7 @@ async function handleCovenantAuthorization(
     signingKey,
     issuer,
     trustedAuthority: true,
+    signedGrantMode: resolveSignedGrantMode(options),
   });
   console.log(
     JSON.stringify({
@@ -1097,6 +1100,8 @@ function docsDocument(options: TransportOptions): Response {
         "VIZIER_PRINCIPAL_KEYS configured: a principal-signed grant is verified against a registered key, and the receipt records it",
     },
     delegation: {
+      mode: resolveSignedGrantMode(options),
+      grant_required: resolveSignedGrantMode(options) !== "optional",
       grant_field: "grant",
       grant_media_type: "compact JWS, typ vizier-delegation+jws, alg ES256",
       registered_principals: resolvePrincipalKeys(options).size,
@@ -1105,7 +1110,7 @@ function docsDocument(options: TransportOptions): Response {
         options.principalKeySource.trim().length > 0,
       principal_keys_valid: !principalKeysMisconfigured(options),
       authority_provenance: ["principal_signed", "trusted_integration", "unverified"],
-      note: "Without a grant the authority is whatever the caller asserts. A grant that does not verify is BLOCK, never a downgrade to the caller-asserted path.",
+      note: "Required mode blocks missing grants; invalid mode blocks all authorization. Optional mode permits caller-asserted authority. A grant that does not verify is BLOCK, never a downgrade to the caller-asserted path.",
     },
     machine_contracts: {
       openapi_3_1: "/openapi.json",

@@ -637,3 +637,78 @@ describe("MCP enforcement proxy", () => {
     ).toThrow(TypeError);
   });
 });
+
+describe("strict delegation proxy", () => {
+  it("requires an operator-supplied grant at startup", () => {
+    expect(() => createMcpEnforcementProxy({ ...proxyOptions({}), requireSignedGrant: true })).toThrow(/grant/);
+  });
+
+  it("refuses unsigned ALLOW and never forwards the grant upstream", async () => {
+    const upstream = vi.fn<typeof globalThis.fetch>();
+    const verify = vi.fn(async (request: VerificationRequest) => {
+      expect(request.grant).toBe("operator-grant");
+      return decision("ALLOW");
+    });
+    const proxy = createMcpEnforcementProxy({ ...proxyOptions({ verify, fetch: upstream }), delegationGrant: "operator-grant" });
+    const response = await proxy.handle(mcpRequest(mcpBody("tools/call", "strict", { name: "write_file", arguments: {} })));
+    expect(await response.text()).toContain("SIGNED_GRANT_RECEIPT_REQUIRED");
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it("runs a signed proxy call through the real HTTP verifier and stops an expired rotated grant", async () => {
+    const { mintDelegationGrant } = await import("../src/core/grants");
+    const keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+    const privateKey = JSON.stringify({ ...await crypto.subtle.exportKey("jwk", keys.privateKey), kid: "strict", alg: "ES256", use: "sig" });
+    const publicKey = { ...await crypto.subtle.exportKey("jwk", keys.publicKey), kid: "strict", alg: "ES256", use: "sig" };
+    const now = new Date();
+    const authority = { allowed_actions: ["mcp_tool_call"], constraints: { allowed_targets: ["mcp://filesystem/tools/write_file"] } };
+    let grant = await mintDelegationGrant({ signingKey: privateKey, issuer: "platform-team", subject: "coding-agent-01", authority, ttlSeconds: 600, issuedAt: now });
+    const verifier = new Vizier({ baseUrl: "https://vizier.example", apiKey: "test-key", fetch: async (input, init) =>
+      handleHttpRequest(new Request(String(input), init), { apiKey: "test-key", signedGrantModeSource: "required",
+        principalKeySource: JSON.stringify({ "platform-team": publicKey }) }) });
+    const upstream = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      expect(String(init?.body)).not.toContain(grant);
+      return Response.json({ jsonrpc: "2.0", id: "strict", result: { saved: true } });
+    });
+    const proxy = createMcpEnforcementProxy({ ...proxyOptions({ fetch: upstream }), verifier,
+      now: () => now, delegationGrant: async () => grant, requireSignedGrant: true });
+    const call = () => proxy.handle(mcpRequest(mcpBody("tools/call", "strict", { name: "write_file", arguments: { path: "a.txt" } })));
+    expect(await (await call()).text()).toContain('"saved":true');
+    expect(upstream).toHaveBeenCalledTimes(1);
+    grant = await mintDelegationGrant({ signingKey: privateKey, issuer: "platform-team", subject: "coding-agent-01", authority,
+      ttlSeconds: 60, issuedAt: new Date(now.getTime()-180_000) });
+    expect(await (await call()).text()).toContain("GRANT_EXPIRED");
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it("denies a grant provider failure without exposing it or calling upstream", async () => {
+    const upstream = vi.fn<typeof globalThis.fetch>();
+    const proxy = createMcpEnforcementProxy({ ...proxyOptions({ fetch: upstream }), requireSignedGrant: true,
+      delegationGrant: async () => { throw new Error("private-material"); } });
+    const text = await (await proxy.handle(mcpRequest(mcpBody("tools/call", "strict", { name: "write_file", arguments: {} })))).text();
+    expect(text).toContain("VIZIER_UNAVAILABLE");
+    expect(text).not.toContain("private-material");
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+it.each(["request", "identity", "expiry", "mutation"])("strict proxy rejects %s receipt mismatch", async (fault) => {
+  const { hashCanonicalJson } = await import("../packages/sdk/src/index");
+  const upstream = vi.fn<typeof globalThis.fetch>();
+  const now = new Date();
+  const verify = async (request: VerificationRequest) => {
+    if (fault === "mutation") request.action.parameters.arguments = { path: "different.txt" };
+    const response = decision("ALLOW");
+    response.receipt.authority_provenance = "principal_signed";
+    response.receipt.grant = { jti: "grant", issuer: fault === "identity" ? "other" : "platform-team",
+      subject: "coding-agent-01", key_id: "key",
+      expires_at: new Date(now.getTime()+(fault === "expiry" ? -1_000 : 60_000)).toISOString() };
+    response.receipt.request_hash = fault === "request" ? "0".repeat(64) : await hashCanonicalJson(request);
+    return response;
+  };
+  const proxy = createMcpEnforcementProxy({ ...proxyOptions({ verify, fetch: upstream }), now: () => now,
+    delegationGrant: "operator-grant", requireSignedGrant: true });
+  const result = await proxy.handle(mcpRequest(mcpBody("tools/call", "strict", { name: "write_file", arguments: { path: "intended.txt" } })));
+  expect(await result.text()).toContain("SIGNED_GRANT_RECEIPT_REQUIRED");
+  expect(upstream).not.toHaveBeenCalled();
+});
