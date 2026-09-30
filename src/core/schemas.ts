@@ -137,3 +137,32 @@ export const verificationRequestSchema = z.strictObject({
 });
 
 export type VerificationRequest = z.infer<typeof verificationRequestSchema>;
+
+
+/** Public success contract shared by MCP clients and response contract tests. */
+export const verificationResponseSchema = z.strictObject({
+  decision: z.enum(["ALLOW", "REVIEW", "BLOCK"]),
+  risk_score: z.number().finite(),
+  reason_codes: z.array(z.string()),
+  explanation: z.string(),
+  policy_results: z.array(z.strictObject({
+    rule_id: z.string(),
+    result: z.enum(["PASS", "REVIEW", "FAIL"]),
+    reason_code: z.string().nullable(),
+    details: z.record(z.string(), z.unknown()),
+  })),
+  receipt: z.strictObject({
+    id: z.string(),
+    created_at: z.string(),
+    request_hash: z.string(),
+    decision: z.enum(["ALLOW", "REVIEW", "BLOCK"]),
+    risk_score: z.number().finite(),
+    policy_rule_ids: z.array(z.string()),
+    reason_codes: z.array(z.string()),
+    authority_provenance: z.enum(["principal_signed", "trusted_integration", "unverified"]),
+    grant: z.strictObject({
+      jti: z.string(), issuer: z.string(), subject: z.string(),
+      key_id: z.string(), expires_at: z.string(),
+    }).optional(),
+  }),
+});
