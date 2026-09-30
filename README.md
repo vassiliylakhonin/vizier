@@ -1,896 +1,227 @@
 <!-- mcp-name: io.github.vassiliylakhonin/vizier-guard -->
 # Vizier
 
-**Check an AI agent's proposed action against a policy before it calls a tool that can change the world.**
+**Scoped authorization for AI agents before they act.**
 
 [![CI](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml)
 [![Deploy](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](packages/python-sdk)
-[![npm @vizier/sdk](https://img.shields.io/npm/v/@vizier/sdk.svg)](https://www.npmjs.com/package/@vizier/sdk)
-[![npm @vizier/mcp-proxy](https://img.shields.io/npm/v/@vizier/mcp-proxy.svg)](https://www.npmjs.com/package/@vizier/mcp-proxy)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.vassiliylakhonin%2Fvizier-purple.svg)](https://github.com/modelcontextprotocol/registry)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/vassiliylakhonin/vizier)](https://github.com/vassiliylakhonin/vizier/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Vizier is for developers running agents that can call tools, send messages, change data, or spend money. Put its SDK or MCP proxy between the agent and the tool: it asks a deterministic policy service to `ALLOW`, `BLOCK`, or route for human `REVIEW`, and records a receipt. A response is not proof of user consent unless the authority behind it is verified; see [signed delegation grants](#proving-the-authority-instead-of-asserting-it).
+Vizier checks a proposed agent action against permissions signed by its owner.
+It returns **ALLOW**, **BLOCK**, or **REVIEW**, together with policy results and a
+receipt bound to the request. Your integration invokes the protected tool only
+after validating the authorization.
 
-**One-minute tour:** [open the live playground](https://vizier.vassiliy-lakhonin.workers.dev/playground), choose an allowed action, then try `BLOCK_AMOUNT` and `BLOCK_TARGET`. The playground uses example policies and data; it does not connect to your bank or modify a real account. The point is to see *where* the stop occurs before wiring an agent to an external tool.
+Use it at the action boundary of an agent or recurring workflow: before a
+deployment, repository write, database change, message, or payment API call.
+A continuously running agent can receive short-lived permissions for specific
+actions and targets while the owner keeps control of the signing key.
 
-**Try it in code:** [wrap an MCP server](#2-mcp-enforcement-proxy-cli) or [use the Python SDK](#1-python-sdk-vizier-guard). [Field reference](https://vizier.vassiliy-lakhonin.workers.dev/docs) · [Threat model](docs/THREAT_MODEL.md) · [OpenAPI](https://vizier.vassiliy-lakhonin.workers.dev/openapi.json).
+[Playground](https://vizier.vassiliy-lakhonin.workers.dev/playground) ·
+[Live API reference](https://vizier.vassiliy-lakhonin.workers.dev/docs) ·
+[OpenAPI](https://vizier.vassiliy-lakhonin.workers.dev/openapi.json) ·
+[Delegation setup](docs/DELEGATION_GRANTS.md) ·
+[Threat model](docs/THREAT_MODEL.md)
 
-**What it does not do:** Vizier does not execute the protected action for you. An unverified caller-supplied `authority` field is an assertion, not a signed grant. Integrate a guard at the tool boundary and check fail-closed behavior before relying on it. This is experimental v0.5.6, not an independent security certification. The `@vizier` npm scope is not currently published; install the [release archives](#installing-the-review-sdk-release-archives). The MCP proxy is a separate package, not a hosted MCP wrapper of every agent.
-
-**How it fits together:** agent -> Python/TypeScript guard or MCP proxy -> deterministic policy service on Cloudflare Workers -> decision and receipt -> protected tool only on an authorized allow path. The architecture diagram and technical reference below retain the integration details.
-
-**License:** [MIT](LICENSE). **Questions and integration feedback:** [GitHub issues](https://github.com/vassiliylakhonin/vizier/issues).
-
----
-
-## 🏛️ Architecture
+## How it works
 
 ```mermaid
-flowchart TD
-    subgraph Agents["AI Agent Runtimes"]
-        A1["Python Agent (LangChain / CrewAI / AutoGen)"]
-        A2["MCP Client (Claude / Cursor / Tools)"]
-        A3["TypeScript / Node.js Agent"]
-    end
-
-    subgraph Guards["Vizier Enforcement Boundary"]
-        G1["@vizier_guard / Python SDK"]
-        G2["@vizier/mcp-proxy CLI"]
-        G3["@vizier/sdk (TypeScript)"]
-    end
-
-    subgraph Kernel["Cloudflare Workers Global Edge"]
-        K["Vizier Deterministic Kernel (/v1/verify)"]
-        P["Policy Engine: Limits, Targets, Roles, Grants"]
-        D1["D1 Audit Ledger & Cryptographic Receipts"]
-    end
-
-    subgraph Targets["Protected External Side-Effects"]
-        T1["Payment / Financial APIs"]
-        T2["Database Writes & Deletions"]
-        T3["Worker / Infrastructure Deployments"]
-        T4["External Message Dispatch"]
-    end
-
-    A1 --> G1
-    A2 --> G2
-    A3 --> G3
-
-    G1 -->|"POST /v1/verify"| K
-    G2 -->|"POST /v1/verify"| K
-    G3 -->|"POST /v1/verify"| K
-
-    K --> P
-    P --> D1
-
-    G1 -.->|"Decision: ALLOW"| T1
-    G2 -.->|"Decision: ALLOW"| T2
-    G3 -.->|"Decision: ALLOW"| T3
-
-    P -.->|"Decision: BLOCK / REVIEW"| G1
-    P -.->|"Decision: BLOCK / REVIEW"| G2
-    P -.->|"Decision: BLOCK / REVIEW"| G3
+flowchart LR
+    Owner[Owner-controlled signer] -->|Scoped, expiring grant| Guard[Tool guard or MCP proxy]
+    Agent[Agent proposes action] --> Guard
+    Guard -->|Action + grant| Vizier[Vizier policy service]
+    Vizier -->|Decision + receipt| Guard
+    Guard -->|Validated ALLOW| Tool[Protected tool]
+    Guard -->|Submit REVIEW explicitly| Human[Human review workflow]
 ```
 
-The decision path is strictly deterministic — no non-deterministic LLMs in the critical decision loop. It checks delegated actions, principal identity, amount limits, targets, sensitive operations, and authenticated integration boundaries. Every response includes policy results and a SHA-256 canonical receipt hash bound to the request.
+1. The owner signs an ES256 delegation: principal, agent, permitted actions,
+   constraints, and expiry. The operator registers only the public key in Vizier.
+2. The integration submits the intended action and grant to `/v1/verify`.
+3. Vizier verifies the signature, identities, expiry and exact authority binding,
+   then evaluates deterministic policies. No LLM runs in this decision path.
+4. The guard validates the response and request binding before invoking the tool.
+   BLOCK, REVIEW, invalid responses and unavailable authorization stop that path.
 
-Status: experimental v0.5.6, deployed on Cloudflare Workers edge. Since v0.3.0, authority can be **proved** rather than asserted: a principal signs a delegation grant, Vizier verifies it against a registered public key, and the receipt records authority provenance. Read the [threat model](docs/THREAT_MODEL.md) before placing this service in an execution path.
+**An API key authenticates the caller. A delegation grant proves the owner's
+permission.** They have separate roles. A request cannot enlarge the authority
+inside a valid grant; invalid grants are blocked.
 
----
+The hosted deployment uses `VIZIER_SIGNED_GRANT_MODE=required` as of
+**30 September 2026**. Unsigned verification requests return
+`BLOCK / GRANT_REQUIRED`. A hosted ALLOW requires an operator-registered
+principal key, a valid matching grant, and passing policies. Check `/docs` for
+current deployment settings. Self-hosted optional mode permits caller-asserted
+authority; its receipts do not establish owner delegation.
 
-## 🌐 Public Surfaces
+## Working integrations
 
-- **Edge Worker**: <https://vizier.vassiliy-lakhonin.workers.dev>
-- **Action Playground**: <https://vizier.vassiliy-lakhonin.workers.dev/playground>
-- **Live Field Reference**: <https://vizier.vassiliy-lakhonin.workers.dev/docs>
-- **OpenAPI 3.1 Contract**: <https://vizier.vassiliy-lakhonin.workers.dev/openapi.json>
-- **AI Discovery Catalog**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/ai-catalog.json>
-- **MCP Server Manifest**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/mcp.json>
-- **MCP Registry Entry**: `io.github.vassiliylakhonin/vizier`
-- **Agent Card**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json>
-- **Public Key Set (JWKS)**: <https://vizier.vassiliy-lakhonin.workers.dev/.well-known/jwks.json>
+These are owner-operated production workflows, not external customer adoption.
 
----
+| Workflow | Protected action | Evidence |
+| --- | --- | --- |
+| Agenda deployment | `deploy_worker` on `worker:agent-output-verification-a2a` | [Signed deployment run](https://github.com/vassiliylakhonin/agenda-intelligence-md/actions/runs/36702604857) |
+| Daily telemetry archive | `archive_telemetry` on the telemetry vault's `main` branch | [Workflow and archive](https://github.com/vassiliylakhonin/agenda-telemetry-vault), [authorization trace](https://github.com/vassiliylakhonin/agenda-telemetry-vault/blob/561c676a5088134a608d4b9ba14f7078036780bb/reports/authorizations/99a253ff5de4f038d08a3df13ed0bad6299f609966f22132271ff66b2c092472.json) |
 
-## 🚀 Quickstarts
+The daily chain runs **collection → Agenda evidence preflight → Vizier
+permission → Git write**. Agenda checks report structure and arithmetic against
+supplied records; Vizier authorizes the write. The archive gate binds the
+prepared changes and report digests to a receipt and skips an already recorded
+GitHub run. The [live run](https://github.com/vassiliylakhonin/agenda-telemetry-vault/actions/runs/36706597715)
+succeeded; rerunning it skipped the signing and write steps without another commit.
 
-### 1. Python SDK (`vizier-guard`)
+Both integrations use separate signer and execution steps, ten-minute grants,
+and protected GitHub Environments. Missing or expired grants and invalid
+receipts stop execution. Git path restrictions and duplicate-run handling belong
+to the archive integration; they are not general replay guarantees from Vizier.
 
-Zero external dependencies (Python standard library only):
+## Start with signed delegation
 
-```bash
-pip install vizier-guard
-```
+**Experimental v0.5.6.** TypeScript SDK and MCP proxy packages are available as
+[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.6),
+with `SHA256SUMS`. The `@vizier` npm scope is not currently published.
 
-```python
-from vizier import VizierClient, vizier_guard
-
-client = VizierClient(
-    base_url="https://vizier.vassiliy-lakhonin.workers.dev",
-    api_key="your-api-key"
-)
-
-# Protect any function or tool:
-@vizier_guard(
-    client=client,
-    action_type="purchase",
-    max_amount=500.0,
-    currency="USD",
-    allowed_targets=["supplier.example"]
-)
-def execute_order(amount: float, target: str):
-    # Runs ONLY if Vizier decision is ALLOW
-    return {"status": "success", "amount": amount}
-
-execute_order(amount=450.0, target="supplier.example")   # Allowed
-execute_order(amount=1200.0, target="supplier.example")  # Raises ActionBlockedError
-```
-
-#### LangChain / LangGraph & CrewAI:
-
-```python
-from vizier.integrations.langchain import VizierLangChainToolGuard
-from vizier.integrations.crewai import VizierCrewAIToolGuard
-
-# LangChain / LangGraph
-safe_tool = VizierLangChainToolGuard(
-    tool=my_search_tool,
-    client=client,
-    allowed_actions=["search"],
-    max_amount=0.0
-)
-
-# CrewAI
-safe_crew_tool = VizierCrewAIToolGuard(
-    tool=my_payment_tool,
-    client=client,
-    max_amount=250.0
-)
-```
-
-#### Human-in-the-Loop (Telegram / CLI / Webhooks) & Async:
-
-```python
-from vizier import AsyncVizierClient, vizier_guard, TelegramHITLHandler
-
-# Interactive approval buttons via Telegram Bot when decision is REVIEW
-telegram_approver = TelegramHITLHandler(
-    bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
-    chat_id=os.environ["TELEGRAM_CHAT_ID"]
-)
-
-@vizier_guard(
-    client=AsyncVizierClient(),
-    action_type="transfer_funds",
-    hitl_handler=telegram_approver
-)
-async def transfer(amount: float, target: str):
-    # Executes ONLY if human operator clicks [Approve] in Telegram
-    return await bank_api.send(amount, target)
-```
-
-#### MCP Server for Claude Desktop & Cursor:
-
-Equip Claude Desktop or Cursor with deterministic guardrails (`vizier_screen_action`, `vizier_verify_receipt`, `vizier_check_policy`):
-
-```json
-{
-  "mcpServers": {
-    "vizier": {
-      "command": "uvx",
-      "args": ["vizier-guard", "mcp"],
-      "env": {
-        "VIZIER_BASE_URL": "https://vizier.vassiliy-lakhonin.workers.dev",
-        "VIZIER_API_KEY": "your-vizier-api-key"
-      }
-    }
-  }
-}
-```
-
----
-
-### 2. MCP Enforcement Proxy CLI
-
-Wrap any local or remote MCP server with deterministic authorization:
-
-```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-mcp-proxy-0.5.6.tgz
-npx --no-install vizier-mcp-proxy \
-  --upstream http://localhost:3000/mcp \
-  --tools "query_db,execute_command,fetch_api" \
-  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
-  --api-key $VIZIER_API_KEY
-```
-
----
-
-### 3. TypeScript SDK (`@vizier/sdk`)
-
-```bash
+```sh
 npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz
 ```
 
+First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up)
+from an owner-controlled signer. This example requires a grant for
+`platform-owner` → `release-agent`, with exactly this authority:
+
+```json
+{
+  "allowed_actions": ["deploy_worker"],
+  "constraints": {
+    "allowed_targets": ["worker:example-worker"],
+    "allowed_sensitive_actions": ["deploy_worker"]
+  }
+}
+```
+
+Keep the private signing key outside the action-taking agent. Supply the
+integration API key and a current grant file to the trusted guard:
+
 ```ts
+import { readFile } from "node:fs/promises";
 import { Vizier } from "@vizier/sdk";
 
-const vizier = new Vizier({
+const client = new Vizier({
   baseUrl: "https://vizier.vassiliy-lakhonin.workers.dev",
   apiKey: process.env.VIZIER_API_KEY,
 });
 
-const decision = await vizier.verify({
-  agent: { id: "agent-01", owner: "acme-corp" },
-  principal: { id: "acme-corp" },
+const grantPath = process.env.VIZIER_GRANT_FILE;
+if (!grantPath) throw new Error("An owner-issued grant file is required.");
+const grant = (await readFile(grantPath, "utf8")).trim();
+
+const result = await client.verify({
+  agent: { id: "release-agent", owner: "platform-owner" },
+  principal: { id: "platform-owner" },
   action: {
-    type: "purchase",
-    target: "supplier.example",
-    parameters: { amount: 820, currency: "USD" }
+    type: "deploy_worker",
+    target: "worker:example-worker",
+    parameters: { commit: "reviewed-commit" },
   },
   authority: {
-    allowed_actions: ["purchase"],
-    constraints: { max_amount: 1000, currency: "USD" }
+    allowed_actions: ["deploy_worker"],
+    constraints: {
+      allowed_targets: ["worker:example-worker"],
+      allowed_sensitive_actions: ["deploy_worker"],
+    },
   },
-  context: { source: "rest" }
+  context: { request_id: null, timestamp: null, source: "rest" },
+  grant,
 });
 
-if (decision.decision === "ALLOW") {
-  // Execute protected operation
+// The SDK validates the response contract and recomputes the request hash.
+const proof = result.receipt.grant;
+if (
+  result.decision !== "ALLOW" ||
+  result.receipt.authority_provenance !== "principal_signed" ||
+  proof?.issuer !== "platform-owner" ||
+  proof?.subject !== "release-agent" ||
+  Date.parse(proof.expires_at) <= Date.now()
+) {
+  throw new Error("Stop: no valid signed authorization for this action.");
 }
+
+// Invoke the fixed protected deployment here; record its actual outcome.
+console.log("Authorized request:", result.receipt.id);
 ```
 
----
+The example authorizes an action; it does not perform a deployment. An unknown
+principal or key is blocked. For your own service origin, update both the client
+URL and the grant audience. [Grant setup and rotation](docs/DELEGATION_GRANTS.md)
+cover the full operator procedure.
 
-### 4. Direct HTTP / cURL
+For an MCP boundary, install both release archives:
 
-```bash
-curl -sS https://vizier.vassiliy-lakhonin.workers.dev/v1/verify \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer YOUR_KEY' \
-  -d '{
-    "agent": { "id": "agent-01", "owner": "acme" },
-    "principal": { "id": "acme" },
-    "action": {
-      "type": "purchase",
-      "target": "supplier.example",
-      "parameters": { "amount": 820, "currency": "USD" }
-    },
-    "authority": {
-      "allowed_actions": ["purchase"],
-      "constraints": { "max_amount": 1000, "currency": "USD" }
-    },
-    "context": { "source": "rest" }
-  }'
+```sh
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-mcp-proxy-0.5.6.tgz
 ```
 
----
+Use the [mandatory proxy profile](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056)
+with an operator-owned rotating grant file. The agent connects to the proxy;
+its direct upstream route and downstream credentials must be removed. Exposing
+Vizier as an optional MCP tool alone does not enforce a tool boundary.
 
-## 🛑 Agent Circuit Breaker & Loop Killer
+## Interfaces and capabilities
 
-Infinite tool loops and runaway retry storms are among the most catastrophic failure modes of autonomous agents — in minutes, an agent stuck in a loop can exhaust external API rate limits, burn through thousands of dollars in LLM tokens, or flood production databases.
-
-Vizier provides built-in circuit breakers across both Python and MCP environments:
-
-* **Sliding-Window Loop Detection**: Computes deterministic SHA-256 canonical JSON hashes of tool arguments. If the same tool is invoked repeatedly within a sliding window (e.g. 3 times in 30 seconds), the circuit trips immediately (`CIRCUIT_TRIPPED:LOOP_DETECTED`).
-* **Session Action Budgets**: Caps the total number of actions an agent can execute within a single task or session (`CIRCUIT_TRIPPED:BUDGET_EXCEEDED`).
-* **Python Guard Decorator**:
-  ```python
-  from vizier import CircuitBreaker, vizier_guard
-
-  breaker = CircuitBreaker(max_repeated_calls=3, time_window_seconds=30.0, max_session_actions=25)
-
-  @vizier_guard(action_type="query_db", circuit_breaker=breaker)
-  def query_database(query: str):
-      return db.execute(query)
-  ```
-* **MCP Enforcement Proxy**:
-  ```typescript
-  const proxy = createMcpEnforcementProxy({
-    // ...
-    circuitBreaker: { maxRepeats: 3, windowMs: 30_000 },
-  });
-  ```
-  Returns standardized JSON-RPC 2.0 error `-32028` on tripped loops without invoking the upstream tool.
-
----
-
-## Proving the authority instead of asserting it
-
-By default the `authority` in a request is whatever the calling application says
-it is. Vizier checks the action against it faithfully and signs the result — but
-the receipt then attests to a decision, not to a delegation.
-
-A **delegation grant** closes that gap. The principal signs a compact JWS that
-binds one authority to one agent for a bounded window, the agent sends it as a
-`grant` field, and Vizier verifies it against a public key registered for that
-principal:
-
-```bash
-# once, on the principal's machine
-node scripts/mint-grant.mjs keygen --kid acme-2026-09 --out principal.jwk.json
-
-# per delegation
-node scripts/mint-grant.mjs sign --key principal.jwk.json --grant grant.json --ttl 3600
-```
-
-The public half is registered as `VIZIER_PRINCIPAL_KEYS`; the private half never
-leaves the principal, and no endpoint would accept it. A verified grant makes the
-receipt say so:
-
-```json
-{
-  "authority_provenance": "principal_signed",
-  "grant": {
-    "jti": "grant_5f1c…",
-    "issuer": "acme-corp",
-    "subject": "procurement-agent-01",
-    "key_id": "acme-2026-09",
-    "expires_at": "2026-09-07T16:00:00.000Z"
-  }
-}
-```
-
-Two properties are worth stating plainly:
-
-- **A grant that does not verify is `BLOCK`,** never a quiet fall back to the
-  caller-asserted path. Failing it open would make a forged grant strictly
-  better for an attacker than sending none.
-- **The request's `authority` must match the signed one exactly.** A genuine
-  grant carried beside an enlarged authority is `BLOCK`, not an allow at the
-  larger limit.
-
-Keys are registered out of band and never fetched at decision time, so the
-authorization kernel still makes no outbound request. Full contract, reason
-codes and limits: [docs/DELEGATION_GRANTS.md](docs/DELEGATION_GRANTS.md).
-
-## API
-
-`POST /v1/verify` accepts one proposed action and its delegated authority.
-Malformed requests return a structured error and never produce `ALLOW`.
-JSON bodies are capped at 1 MiB, 64 levels, and 50,000 aggregate values before
-recursive schema validation.
-When `VIZIER_API_KEY` is absent, the service is in evaluation mode: valid
-requests can return `REVIEW` or `BLOCK`, never `ALLOW`. When the secret is
-configured, REST and MCP verification calls require `Authorization: Bearer
-<key>`. A2A also accepts an anonymous evaluation call for discovery and
-conformance checks, but that call can return only `REVIEW` or `BLOCK`.
-
-```json
-{
-  "agent": { "id": "procurement-agent-01", "owner": "acme-corp" },
-  "principal": { "id": "acme-corp" },
-  "action": {
-    "type": "purchase",
-    "target": "supplier.example",
-    "parameters": { "amount": 8200, "currency": "USD" }
-  },
-  "authority": {
-    "allowed_actions": ["purchase"],
-    "constraints": { "max_amount": 10000, "currency": "USD" }
-  },
-  "context": {
-    "request_id": "order-1842",
-    "timestamp": null,
-    "source": "rest"
-  }
-}
-```
-
-`principal` must be present. Set it to `null` when the principal is unknown;
-Vizier returns `REVIEW`. Omitting the field is a validation error.
-
-Decision priority is `BLOCK`, then `REVIEW`, then `ALLOW`. The numeric risk
-score explains accumulated risk but does not override policy results.
-
-### Action Covenant lifecycle
-
-The v0.3.0 resources are additive; `/v1/verify` remains compatible.
-
-1. `POST /v1/covenants` accepts a strict `ActionCovenantDraft` plus a
-   principal acceptance bound to the draft hash. A model may produce the draft,
-   but it cannot activate it by naming itself as the principal.
-2. `POST /v1/authorizations` checks covenant integrity and expiry, exact action
-   equality, evidence presence and freshness, shallow exact-match invalidation
-   signals, and the existing delegated-authority policies. It returns a compact
-   ES256 authorization JWS for every decision.
-3. The executor acts only on `ALLOW` before the receipt expires.
-4. `POST /v1/outcomes` verifies the authorization receipt, binds the reported
-   execution outcome, checks exact forbidden-effect rules, and returns a compact
-   ES256 outcome JWS.
-
-All three resources require authenticated enforcement and
-`RECEIPT_SIGNING_KEY`; there is no evaluation-only activation path. Covenants
-remain caller-held immutable envelopes in this milestone. Vizier stores bounded
-operational metadata and hashes asynchronously, but not full action parameters,
-evidence, signals, outcome effects, JWS tokens, or signing material. It does not
-retrieve evidence independently.
-
-## Integration rule
-
-Call Vizier immediately before the external action. Treat timeout, invalid JSON,
-`REVIEW`, and `BLOCK` as stop conditions.
-
-```ts
-const decision = await vizier.verify(proposedAction);
-
-if (decision.decision === "ALLOW") {
-  await executeAction();
-}
-```
-
-The thin TypeScript client lives in `packages/sdk`:
-
-```ts
-import { Vizier } from "@vizier/sdk";
-
-const vizier = new Vizier({
-  baseUrl: "https://vizier.vassiliy-lakhonin.workers.dev",
-  apiKey: process.env.VIZIER_API_KEY,
-});
-const decision = await vizier.verify(request);
-```
-
-### Python SDK (`vizier-guard`)
-
-The Python SDK lives in `packages/python-sdk` with zero external dependencies:
-
-```python
-from vizier import VizierClient, vizier_guard
-
-client = VizierClient(
-    base_url="https://vizier.vassiliy-lakhonin.workers.dev",
-    api_key=os.environ["VIZIER_API_KEY"],
-)
-
-# Protect any function / agent tool:
-@vizier_guard(client=client, action_type="purchase", max_amount=1000.0, currency="USD")
-def execute_order(amount: float, target: str):
-    return {"status": "success", "amount": amount}
-```
-
-Or protect LangChain / LangGraph tools:
-
-```python
-from vizier.integrations.langchain import VizierLangChainToolGuard
-
-guarded_tool = VizierLangChainToolGuard(
-    tool=my_search_or_db_tool,
-    client=client,
-    allowed_actions=["query_db"],
-)
-```
-
-### MCP Enforcement Proxy
-
-Protect any existing local or remote MCP server with deterministic policy checks:
-
-```bash
-npx --no-install vizier-mcp-proxy \
-  --upstream http://localhost:3000/mcp \
-  --tools "query_db,transfer_funds,send_message" \
-  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
-  --api-key $VIZIER_API_KEY
-```
-
-The API key belongs only in a controlled backend or orchestrator. Do not expose it
-to the action-taking agent. This key authenticates the integration; it does not
-prove that each supplied delegation was issued by the principal.
-
-## Policy rules
-
-| Rule | Result |
+| Surface | Role |
 | --- | --- |
-| No authenticated integration credential is configured | `REVIEW / AUTHORITY_SOURCE_UNTRUSTED` |
-| Action is absent from `allowed_actions` | `BLOCK / ACTION_NOT_DELEGATED` |
-| Principal is `null` | `REVIEW / PRINCIPAL_UNVERIFIED` |
-| Amount exceeds `max_amount` | `BLOCK / AUTHORITY_LIMIT_EXCEEDED` |
-| Amount or currency cannot be checked | `REVIEW` |
-| Target is blocked or absent from an allowlist | `BLOCK` |
-| Sensitive action lacks explicit sensitive authority | `REVIEW / SENSITIVE_ACTION_REVIEW` |
-| Authority requires reversibility and the action is not declared reversible | `REVIEW / IRREVERSIBLE_ACTION_REVIEW` |
+| REST `/v1/verify` | Action checks with deterministic policies, delegation provenance and request-bound receipts |
+| TypeScript SDK | Validates response contracts and bindings; includes explicit human-review helpers |
+| [Python SDK](packages/python-sdk) | Standard-library client, function guards and framework adapters |
+| MCP service | Discover and call verification tools; [manifest](https://vizier.vassiliy-lakhonin.workers.dev/.well-known/mcp.json) |
+| MCP enforcement proxy | Intercepts configured tool calls, validates authorization, and forwards permitted calls |
+| A2A | Verification adapter and [agent card](https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json) |
+| Human review queue | Separate reviewer credential, signed approval tokens and atomic server claims |
 
-The default sensitive actions are `transfer_funds`, `delete_data`,
-`deploy_worker`, `execute_code`, `send_external_message`,
-`modify_permissions`, and `sign_contract`.
+Policies cover permitted actions, targets, amount constraints, sensitive
+operations and configured review requirements. SDK/proxy circuit breakers can
+limit repeated tool calls and session budgets. Additional review workflows and
+financial reservations have their own contracts and deployment requirements;
+see [the live reference](https://vizier.vassiliy-lakhonin.workers.dev/docs) and
+[financial reservation limitations](docs/FINANCIAL_RESERVATIONS.md).
 
-`action.is_reversible` is an integration-supplied assertion, not an independently
-verified property. `require_review_for_irreversible` fails to `REVIEW` when that
-assertion is absent or false; it cannot prove a true assertion is accurate.
+## Receipts and trust boundary
 
-## Protocol endpoints
+A `/v1/verify` receipt records the request hash, decision, rule results and
+authority provenance. **The legacy verification receipt itself is unsigned**;
+the grant behind a `principal_signed` decision is owner-signed. The SDK checks
+response consistency and recomputes the request hash over canonical JSON.
+A receipt records authorization, not proof that a tool executed successfully.
 
-- `GET /openapi.json` and `GET /.well-known/openapi.json` return the same
-  OpenAPI 3.1 contract for `/v1/verify`, `/v1/covenants`,
-  `/v1/authorizations`, `/v1/outcomes`, and the authenticated
-  `/v1/insights`. Request schemas are emitted from the same Zod definitions
-  used at the runtime boundary.
-- `GET /.well-known/ai-catalog.json` routes machines to the A2A Agent Card, the
-  OpenAPI contract, and the MCP server manifest.
-- `GET /.well-known/agent-card.json` returns an A2A v1.0 Agent Card with a
-  canonical ES256 JWS in `signatures[]` when `AGENT_CARD_SIGNING_KEY` is
-  configured.
-- `GET /.well-known/jwks.json` returns the matching public key. The JWS protected
-  header points to this endpoint through a same-origin `jku`.
-- `POST /a2a` implements the A2A v1.0 JSON-RPC `SendMessage` method. Anonymous
-  requests run only in evaluation mode; a wrong supplied credential is rejected.
-- `POST /mcp` implements MCP `2026-07-28` with `server/discover`, `tools/list`,
-  and `tools/call` for `vizier_verify_action`. The same endpoint also answers
-  the session handshake used by shipping clients: `initialize`,
-  `notifications/initialized`, `ping`, `tools/list`, and `tools/call` over
-  `2025-06-18`, `2025-03-26`, or `2024-11-05`. The request body selects the
-  profile: only `2026-07-28` carries its protocol version in `params._meta`.
-- `GET /.well-known/mcp.json` returns the MCP server manifest, the same document
-  published to the MCP Registry from `server.json` at the repository root.
+Legacy Action Covenant and human-review tokens use separate signed receipt
+formats. Required-grant mode blocks legacy covenant authorization because that
+entrypoint does not carry a delegation grant. See
+[the covenant contract](docs/ADR-0001-ACTION-COVENANTS.md) and
+[the threat model](docs/THREAT_MODEL.md) before using compatibility surfaces.
 
-The session profile exists because no off-the-shelf client speaks the stateless
-profile yet. Measured 2026-09-02 against the deployed Worker: a standard
-`initialize` was rejected with `-32600`, so the endpoint could not be connected
-from any MCP client. The stateless contract is unchanged; the session profile is
-additive and shares one verification path.
-
-### MCP Enforcement Proxy (`@vizier/mcp-proxy`)
-
-`packages/mcp-proxy` is a standalone reverse proxy adapter that places any existing MCP server behind Vizier. The proxy:
-
-- exposes only the configured upstream tool names;
-- authenticates every MCP request with a proxy-specific Bearer token;
-- maps the exact tool name and arguments to one `mcp_tool_call` verification;
-- forwards the unchanged MCP request only after a verified `ALLOW`;
-- stops on `REVIEW`, `BLOCK`, timeout, invalid Vizier output, or upstream error;
-- replaces the incoming credential with a separate upstream credential; and
-- logs integration ID, request ID, tool name, decision, receipt ID, outcome, and
-  latency without logging arguments or secrets.
-
-Run directly via `npx`:
-
-```bash
-npx --no-install vizier-mcp-proxy \
-  --upstream http://127.0.0.1:8791/mcp \
-  --tools "write_file,query_db" \
-  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
-  --api-key $VIZIER_API_KEY
-```
-
-Or configure via environment variables:
-
-```bash
-export VIZIER_BASE_URL="http://127.0.0.1:8787"
-export VIZIER_API_KEY="local-development-key"
-export VIZIER_PROXY_INTEGRATION_ID="pilot-acme"
-export VIZIER_PROXY_CLIENT_TOKEN="replace-with-a-random-client-token"
-export VIZIER_PROXY_AGENT_ID="coding-agent-01"
-export VIZIER_PROXY_AGENT_OWNER="acme"
-export VIZIER_PROXY_PRINCIPAL_ID="platform-team"
-export VIZIER_PROXY_UPSTREAM_ID="filesystem"
-export VIZIER_PROXY_UPSTREAM_URL="http://127.0.0.1:8791/mcp"
-export VIZIER_PROXY_UPSTREAM_BEARER_TOKEN="replace-with-upstream-token"
-export VIZIER_PROXY_ALLOWED_TOOLS="write_file"
-npm exec --workspace @vizier/mcp-proxy -- vizier-mcp-proxy
-```
-
-Point the pilot MCP client at `http://127.0.0.1:8790/mcp`, use
-`VIZIER_PROXY_CLIENT_TOKEN` as its Bearer credential, and remove its direct
-access to the upstream URL and credential. The proxy is not an enforcement
-boundary if the agent can still reach the upstream server, read either backend
-credential, or use a shell with equivalent authority.
-
-## Connect an MCP client
-
-The credential is optional at connect time. An anonymous `tools/call` runs in
-evaluation mode: the decision is real but the supplied authority is untrusted, so
-it can never return `ALLOW`. The credential unlocks enforcement results, and a
-credential that is supplied and wrong is rejected with `-32001`.
-
-Anonymous calls share a budget of 60 requests per minute per client IP. Past it
-the endpoint answers `429` with JSON-RPC error `-32029` and a `Retry-After`
-header. Attaching a wrong credential does not leave that budget; a valid one
-does.
-
-An anonymous call leaves no receipt, so the only record of it is a counter: one
-row per UTC day per surface per outcome, bumped in place. It holds no client IP,
-no arguments, and nothing else about the caller, and it is swept by the same
-30-day retention as the rest of the audit store. `GET /v1/insights` reads it
-back. Counts are best-effort instrumentation, not proof of adoption, and each
-deploy adds exactly four to `mcp` / `served`: the live check below probes the
-credential-free path on purpose.
-
-```bash
-claude mcp add --transport http vizier \
-  https://vizier.vassiliy-lakhonin.workers.dev/mcp
-```
-
-Add the header once you hold a credential:
-
-```bash
-claude mcp add --transport http vizier \
-  https://vizier.vassiliy-lakhonin.workers.dev/mcp \
-  --header "Authorization: Bearer <integration-credential>"
-```
-
-Any client that accepts a Streamable HTTP URL works the same way. Verify the
-handshake without a client:
-
-```bash
-curl -sS https://vizier.vassiliy-lakhonin.workers.dev/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
-```
-
-### Registry listing
-
-`server.json` at the repository root is the MCP Registry entry for
-`io.github.vassiliylakhonin/vizier`, published on 2026-09-02 and validated
-against the `2025-12-11` server schema. It carries no `repository` block: the
-source repository is private, and an entry pointing at a URL that answers 404 is
-worse than no link at all. The namespace is claimed through the GitHub account,
-not the repository.
-
-The deploy workflow republishes it. `scripts/publish-registry.mjs` compares
-`server.json` against the live entry and publishes only when the registry lacks
-that version, authenticating through GitHub Actions OIDC so no registry token is
-stored anywhere. The registry keys an entry on its version, so a manifest edit
-rides along with a version bump; an edit without one is reported and skipped
-rather than rejected by the registry.
-
-Check the decision without making it, using an existing `mcp-publisher login
-github` session:
-
-```bash
-node scripts/publish-registry.mjs --dry-run
-```
-
-Publishing by hand still works and takes the same path:
-
-```bash
-mcp-publisher login github
-node scripts/publish-registry.mjs
-```
-
-Read the live entry back:
-
-```bash
-curl -sS "https://registry.modelcontextprotocol.io/v0/servers?search=vizier"
-```
-
-An unrelated `io.github.pipeworx-io/vizier` is listed in the same registry. The
-namespace is what separates them, so a search by bare name returns both.
-
-`tests/discovery-contracts.test.ts` holds `server.json` and the served
-`/.well-known/mcp.json` to the same content, so a registry listing cannot drift
-away from the endpoint the Worker serves.
-
-## Receipts
-
-Each successful verification returns a receipt ID, creation time, request hash,
-decision, risk score, rule IDs, and reason codes. Object keys are sorted before
-SHA-256 hashing. This canonicalization is documented and tested, but it is not
-an RFC 8785 claim.
-
-Legacy `/v1/verify` receipts remain unsigned and caller-held for compatibility.
-The SDK validates the complete response, checks decision-to-receipt consistency,
-and recomputes the request hash before returning a decision.
-
-Action Covenant authorization and outcome receipts are compact ES256 JWS values.
-They use a dedicated receipt key and protected `typ` values for domain
-separation. The SDK obtains the matching public key from
-`/.well-known/jwks.json`, verifies the signature, and recomputes the covenant,
-request, action, evidence, signal, authorization-token, and outcome bindings
-before returning. Signed does not mean independently timestamped or
-principal-issued. Vizier persists only selected receipt metadata and hashes; the
-complete signed receipt and token remain caller-held.
-
-`GET /v1/insights` exposes authenticated decision counts, lifecycle totals,
-average legacy risk score, and reported failure/violation count. These are
-best-effort operational aggregates: asynchronous audit writes can fail, and the
-numbers are not proof of production adoption or complete execution history.
-Metadata is retained for 30 days and pruned daily by a scheduled Worker handler.
+Vizier is an application-level authorization service. The integration enforces
+its decision. An agent or administrator with direct tool credentials can bypass
+that integration. Short-lived grants are not single-use execution reservations.
+Supplied evidence is not independently verified, and authorization does not
+establish factual truth, legal clearance, payment settlement, or customer demand.
 
 ## Development
 
-```bash
-npm run typecheck
-npm test
-npm run build
+Node.js 24+ is required for the Worker and TypeScript packages.
+
+```sh
+npm ci
 npm run check
 ```
 
-`npm run build` compiles `@vizier/sdk`, compiles the private gated-deploy tool,
-and runs a Cloudflare deployment dry run. It does not deploy the Worker.
+`check` runs package builds, type checks, migration checks, lint, tests and a
+Worker deployment dry run. It does not publish or deploy. Networked checks are
+separate: `npm run check:deployed` checks the production bundle digest;
+`npm run check:live` checks deployed service and discovery contracts.
 
-Two checks describe production rather than a commit, so they are separate from
-`npm run check` and need the network:
+[Architecture](docs/ARCHITECTURE.md) · [Claims](docs/CLAIMS.md) ·
+[Security review](docs/SECURITY_REVIEW.md) · [Pilot scope](docs/PILOT.md) ·
+[Issues and integration feedback](https://github.com/vassiliylakhonin/vizier/issues)
 
-```bash
-npm run check:deployed
-npm run check:live
-```
-
-`check:deployed` compares the current bundle digest against the newest
-deployment: is production running this code? `check:live` calls the deployed
-Worker and asserts what it answers — health, the released version on the service
-index and the MCP manifest, a signed agent card, both JWKS keys, the MCP session
-handshake, `tools/list`, an anonymous `tools/call` that returns a receipt and
-cannot grant `ALLOW`, and the stateless `server/discover`. A digest can match
-while the endpoint is broken, which is why both exist. Point it elsewhere with
-`VIZIER_ORIGIN`. The deploy workflow runs it after the deploy and before the
-registry publish, so a Worker that stopped answering is never advertised as a
-new version.
-
-To prepare an enforcement deployment after reviewing the threat model:
-
-```bash
-npx wrangler whoami
-npx wrangler secret put VIZIER_API_KEY
-npx wrangler secret put AGENT_CARD_SIGNING_KEY
-npx wrangler secret put RECEIPT_SIGNING_KEY
-npx wrangler deploy
-```
-
-`AGENT_CARD_SIGNING_KEY` and `RECEIPT_SIGNING_KEY` are separate private P-256
-JWKs with distinct `kid` values, `alg: "ES256"`, `use: "sig"`, and stable key
-identifiers. Wrangler stores them as secrets; they must not be committed. A
-malformed configured key fails the affected signed surface instead of silently
-downgrading it.
-
-The public Worker completed its one-time v0.1-to-v0.2 bootstrap on 2026-08-24.
-After the integration credential has been stored in macOS Keychain under service
-`com.vizier.gated-deploy` and account `VIZIER_API_KEY`, normal deployments use:
-
-```bash
-npm run deploy:gated
-```
-
-The private tool accepts no command arguments. It drafts and accepts a five-minute
-covenant for the current commit, the fixed `deploy_worker` action, and the fixed
-`worker:vizier` target. A worktree snapshot is freshness evidence and a dirty
-worktree is an invalidation signal. It runs `wrangler deploy --strict` only after
-the SDK verifies a signed `ALLOW` receipt, then records a signed success or
-failure outcome. If outcome recording fails after execution, the command returns
-`outcome_unrecorded` and a non-zero exit code instead of reporting a complete lifecycle.
-
-A new Worker name or fresh environment that does not expose the covenant
-endpoints needs one explicit bootstrap deployment through its existing v0.1
-gate:
-
-```bash
-VIZIER_V0_2_BOOTSTRAP=1 npm run deploy:gated
-```
-
-This bypass is only for the deployment that introduces the covenant endpoints
-and receipt key. Do not set `VIZIER_V0_2_BOOTSTRAP` for normal deployments of the
-public Vizier Worker; they use the covenant lifecycle.
-
-This wrapper is an integration test, not an operating-system security boundary.
-An agent with unrestricted shell access and Cloudflare credentials can bypass it
-by invoking Wrangler directly. A production integration must expose only the
-wrapper capability and keep both Cloudflare and Vizier credentials outside the
-action-taking agent.
-
-The deployment command is intentionally not part of `npm run build`. Without
-the secret, a deployment remains evaluation-only and cannot return `ALLOW`.
-
-The Worker uses D1 only for an asynchronous, metadata-only operational audit
-trail. The authorization decision path does not depend on D1 availability. It
-uses no KV, Durable Object, queue, AI model, or outbound fetch. `npm run check`
-applies every D1 migration in order to an in-memory SQLite database and verifies
-that legacy payload-bearing columns are removed.
-The repository structure and protocol sources are documented in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
-[docs/ADR-0001-ACTION-COVENANTS.md](docs/ADR-0001-ACTION-COVENANTS.md),
-[docs/PILOT.md](docs/PILOT.md),
-[docs/CLAIMS.md](docs/CLAIMS.md), and
-[docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md).
-
-## What is deferred
-
-Independent principal authentication, durable policy/evidence/full-receipt storage,
-principal-signed delegation and acceptance, billing, dashboards, reputation
-models, payment settlement, and LLM policy evaluation inside the privileged kernel
-remain outside v0.3.0. See
-[FUTURE.md](FUTURE.md).
-
-
-## Human review queue
-
-`/reviews` is the operator UI. The administrative API is `/v1/reviews`.
-This is an explicit, single-operator workflow; tenant keys cannot access it.
-Set a separate optional Worker secret `VIZIER_REVIEWER_KEY` for the human
-reviewer. Never give it to the submitting agent. `VIZIER_API_KEY` can submit,
-read and claim requests, but cannot approve them. The reviewer credential can
-read and decide, but cannot submit or claim. Both secrets must be distinct.
-Review endpoints fail closed unless D1 and `RECEIPT_SIGNING_KEY` are configured.
-
-Apply migration `0006_human_reviews.sql` before deploying. Queue payloads and
-audit events are retained for **seven days**, then deleted by the daily cron;
-reads exclude expired retention immediately. This is an explicit exception to
-the metadata-only verification audit. Submit only necessary public evidence:
-never credentials, private keys, seed phrases, prompts or confidential documents.
-The UI uses memory only for credentials and renders submitted data as text.
-
-1. `POST /v1/reviews` with the integration credential and
-   `{audience, action, evidence, escalation_reason, expires_in_seconds}`.
-   `action` and `evidence` are JSON objects; expiration is 60–3600 seconds,
-   default 1800. Canonical payload size is limited to 32 KiB. The response binds
-   the whole normalized submission to SHA-256 `request_hash`.
-2. `GET /v1/reviews` lists the latest 100 requests; `GET /v1/reviews/{id}`
-   returns the exact request and atomic audit trail. Evidence is **submitter
-   supplied**, not independently authenticated merely by inclusion here.
-3. The human reads the exact request and calls `POST /v1/reviews/{id}/decision`
-   using the separate reviewer credential and
-   `{request_hash, decision: "APPROVED" | "REJECTED", reason}`.
-   One pending decision wins. Expired requests cannot be decided.
-4. The decision includes an ES256 compact JWS with protected type
-   `VIZIER-HUMAN-REVIEW+JWS`, issuer (service origin), audience, request hash,
-   review ID (`jti`), decision, reviewer role, reason, issue and expiry timestamps
-   (Unix seconds). Maximum lifetime is five minutes and never beyond the request
-   deadline. The existing `/.well-known/jwks.json` publishes the verification key.
-5. Immediately before manual execution, the integration calls
-   `POST /v1/reviews/{id}/consume` with `{token, request_hash, audience}`.
-   The service verifies the signature and bindings and atomically claims the
-   approval. Exactly one caller succeeds, including concurrent calls. A lost
-   response must be reconciled via GET; never interpret a retry conflict as a
-   new permission. Rejections cannot be consumed. Signing key rotation invalidates
-   unclaimed attestations signed with an earlier key.
-
-Always compute the expected hash from the **actual intended action**, compare
-the audience, issuer and expiry, and claim through the server. Offline signature
-verification alone does not prevent replay. Tokens are proofs of an operator
-credential's decision, not proof of a particular person's physical interaction.
-Use a trusted HTTPS service origin; do not follow untrusted receipt URLs.
-
-For Base transfers include the chain ID, sender, recipient, token contract,
-amount as an exact base-unit **string**, and full calldata in `action`.
-A review does not supply missing ledger/sanctions evidence, change a Financial
-Guard verdict, reserve funds, enforce a wallet, broadcast a transaction or sign
-with Brave Wallet. Those checks and the final wallet confirmation remain separate.
-Legacy KV quorum routes are unchanged; use this D1 queue for atomic claims.
-
-
-The TypeScript SDK exposes `submitHumanReview(request)` and
-`claimHumanReview(request, id, token)`. Pass the original locally intended request
-to the claim method: it recomputes the normalized hash, verifies the JWS using
-JWKS from the configured service, checks issuer/audience/expiry and then performs
-the atomic server claim. Neither method automatically approves or signs.
-These methods are source additions; installing an older published SDK will not
-provide them until its next package release.
-
-
-### Installing the review SDK release archives
-
-Version 0.5.6 is distributed as GitHub Release archives. The `@vizier` npm scope
-is not currently published; do not assume `npm install @vizier/sdk` succeeds.
-
-```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz
-```
-
-For the proxy, install both archives together so its SDK dependency is satisfied:
-
-```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-mcp-proxy-0.5.6.tgz
-```
-
-Release assets include `SHA256SUMS`. Imports remain `@vizier/sdk`. Release CI
-builds/tests both archives and publishes them to GitHub. npm and PyPI publication
-require separately configured registry credentials; missing credentials produce
-explicit warnings and summary entries, not a claim of successful registry publication.
-
-### Financial workflow reservations
-
-Base native-USDC reviews require a reviewer-configured workflow budget. Concurrent requests reserve budget atomically; claimed holds persist until finalized Base reconciliation. No default limits are activated and wallet signing remains manual. See [the contract and limitations](docs/FINANCIAL_RESERVATIONS.md).
-
-### Protected delegation profile
-
-v0.5.6 adds operator-controlled mandatory delegation and rotating grant files
-for the MCP proxy. Set `VIZIER_SIGNED_GRANT_MODE=required` only after migrating
-all callers on that deployment; unset remains compatible with existing trusted
-integrations. Invalid configured modes fail closed. The strict proxy also
-requires signed-grant provenance, correct identities, expiry and request binding
-before forwarding an allowed call. See [mandatory delegation and proxy setup](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056).
-
-This is an opt-in protected profile, not a claim that every current production
-caller has migrated. Downstream credentials and configuration must remain
-operator-controlled, and the agent's direct upstream route must be removed.
+[MIT License](LICENSE).
