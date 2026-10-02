@@ -13,7 +13,11 @@ const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 // Never shorten an incomplete day.
 const LOOKBACK_BLOCKS = 45000n;
 const LOG_SPAN = 1024n;
+// Public RPC rejects rapid six-request bursts from Workers with JSON-RPC
+// -32000 rate limits. Pace single-request batches without spending more subrequests.
 const LOG_FETCH_CONCURRENCY = 6;
+const RPC_PAUSE_MS = 2000;
+function pause(): Promise<void> { return new Promise(resolve => setTimeout(resolve, RPC_PAUSE_MS)); }
 
 export interface WalletHistory {
   outgoing: number;
@@ -24,8 +28,9 @@ export interface WalletHistory {
 }
 
 /** Conservative finalized native-USDC history; never a spending authorization. */
-export async function collectWalletHistory(wallet: string): Promise<WalletHistory> {
+export async function collectWalletHistory(wallet: string, options: { paceRpc?: boolean } = {}): Promise<WalletHistory> {
   const started = Date.now();
+  const concurrency = options.paceRpc ? 1 : LOG_FETCH_CONCURRENCY;
   let spareCalls = 2;
   async function historyRpc(method: string, params: unknown[]): Promise<unknown> {
     for (;;) {
@@ -34,6 +39,7 @@ export async function collectWalletHistory(wallet: string): Promise<WalletHistor
         const message = error instanceof Error ? error.message : "";
         if (spareCalls === 0 || !/^(Invalid Base RPC envelope|Base RPC HTTP (429|5\d\d))$/.test(message)) throw error;
         spareCalls--;
+        if (options.paceRpc) await pause();
       }
     }
   }
@@ -60,9 +66,10 @@ export async function collectWalletHistory(wallet: string): Promise<WalletHistor
   for (let from = first; from <= end; from += LOG_SPAN) {
     ranges.push({ from, to: from + LOG_SPAN - 1n < end ? from + LOG_SPAN - 1n : end });
   }
-  for (let offset = 0; offset < ranges.length; offset += LOG_FETCH_CONCURRENCY) {
+  for (let offset = 0; offset < ranges.length; offset += concurrency) {
+    if (options.paceRpc && offset > 0) await pause();
     if (Date.now() - started > 120000) throw new Error("Base history timed out");
-    const batch = ranges.slice(offset, offset + LOG_FETCH_CONCURRENCY);
+    const batch = ranges.slice(offset, offset + concurrency);
     const responses = await Promise.all(batch.map(({ from, to }) =>
       historyRpc("eth_getLogs", [{ address: USDC, fromBlock: "0x" + from.toString(16),
         toBlock: "0x" + to.toString(16), topics: [TRANSFER, sender] }])));

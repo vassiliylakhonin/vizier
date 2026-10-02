@@ -51,7 +51,8 @@ export default {
         .then((history) => console.log(JSON.stringify({ event: "vizier.wallet_history.monitor", state: "OK",
           observed_at: history.observedAt, end_block: history.endBlock })))
         .catch((error: unknown) => console.error(JSON.stringify({ event: "vizier.wallet_history.monitor", state: "FAILED",
-          reason: error instanceof Error ? error.message : "UNKNOWN" }))));
+          reason: error instanceof Error ? error.message : "UNKNOWN",
+          diagnostic: error instanceof Error && typeof error.cause === "string" ? error.cause : null }))));
     } else {
       console.error(JSON.stringify({ event: "vizier.wallet_history.monitor", state: "FAILED", reason: "MONITOR_WALLET_NOT_CONFIGURED" }));
     }
