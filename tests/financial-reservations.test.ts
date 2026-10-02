@@ -87,6 +87,8 @@ function mockHistory(outgoing = 0, overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(async () => {
+  // Advance only collector delays; RPC fixtures stay deterministic and offline.
+  vi.stubGlobal("setTimeout", vi.fn((callback: () => void) => { queueMicrotask(callback); return 0; }));
   const pair = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
   options = { apiKey: "integration", reviewerApiKey: "reviewer", db: fakeD1(),
     receiptSigningKey: JSON.stringify({ ...await webcrypto.subtle.exportKey("jwk", pair.privateKey), alg: "ES256", kid: "test", use: "sig" }) };
@@ -150,7 +152,7 @@ describe("financial reservations", () => {
     mockHistory(0, { eth_getLogs: new Response(null, { status: 429 }) });
     await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
     expect(mem.prepare("SELECT state,observed_outgoing,reason FROM wallet_history_monitor WHERE id=1").get())
-      .toMatchObject({ state: "FAILED", observed_outgoing: null, reason: "MONITOR_HISTORY_UNAVAILABLE" });
+      .toMatchObject({ state: "FAILED", observed_outgoing: null, reason: "MONITOR_HISTORY_UNAVAILABLE:RPC_HTTP_429" });
     await policy({ enabled: true });
     vi.mocked(fetch).mockClear();
     await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_POLICY_ENABLED");
@@ -187,11 +189,40 @@ describe("financial reservations", () => {
       return stableFetch(url, init);
     }));
     await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
-    // The first six-range batch is already in flight when the third transient
+    // The first single-range batch is already in flight when the third transient
     // failure exhausts the two-call retry reserve.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(11);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(6);
     expect(mem.prepare("SELECT state FROM wallet_history_monitor WHERE id=1").get()).toMatchObject({ state: "FAILED" });
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
+  });
+  it("persists a safe failure category without provider text or credentials", async () => {
+    await policy({ enabled: false });
+    for (const [error, code] of [
+      [new Error("Base RPC HTTP 429"), "RPC_HTTP_429"],
+      [new DOMException("secret URL", "TimeoutError"), "RPC_TIMEOUT"],
+      [new Error("Too many subrequests."), "SUBREQUEST_LIMIT"],
+      [new Error("private provider message and credentials"), "UNKNOWN"],
+    ] as const) {
+      mockHistory(0, { eth_getLogs: error });
+      await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
+      expect(mem.prepare("SELECT state,reason FROM wallet_history_monitor WHERE id=1").get())
+        .toMatchObject({ state: "FAILED", reason: `MONITOR_HISTORY_UNAVAILABLE:${code}` });
+    }
+  });
+  it("retains the RPC method and numeric provider code without the provider message", async () => {
+    await policy({ enabled: false });
+    const fixtureFetch = fetch;
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => {
+      const { method } = JSON.parse(init.body as string) as { method: string };
+      if (method === "eth_getLogs") return Promise.resolve(Response.json({ jsonrpc: "2.0", id: 1,
+        error: { code: -32000, message: "private rate-limit text or credentials" } }));
+      return fixtureFetch(url, init);
+    }));
+    await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
+    expect(mem.prepare("SELECT state,reason FROM wallet_history_monitor WHERE id=1").get())
+      .toMatchObject({ state: "FAILED", reason: "MONITOR_HISTORY_UNAVAILABLE:RPC_ENVELOPE_eth_getLogs_CODE_-32000" });
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(6);
+    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 1000)).toHaveLength(2);
   });
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();
@@ -280,7 +311,8 @@ describe("financial reservations", () => {
     }));
 
     await collectWalletHistory(wallet);
-    expect(peakLogs).toBe(6);
+    expect(peakLogs).toBe(1);
+    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 1000)).toHaveLength(43);
   });
   it("keeps an owner-disabled policy closed without consulting the RPC", async () => {
     await policy({ enabled: false });

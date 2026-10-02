@@ -59,7 +59,13 @@ export async function rpc(method: string, params: unknown[]): Promise<unknown> {
   const bytes = new Uint8Array(size); let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
   const data = JSON.parse(new TextDecoder().decode(bytes)) as { jsonrpc?: unknown; id?: unknown; error?: unknown; result?: unknown };
-  if (data.jsonrpc !== "2.0" || data.id !== 1 || data.error || !("result" in data)) throw new Error("Invalid Base RPC envelope");
+  if (data.jsonrpc !== "2.0" || data.id !== 1 || data.error || !("result" in data)) {
+    const providerCode = data.error && typeof data.error === "object" && "code" in data.error ? data.error.code : null;
+    throw new Error("Invalid Base RPC envelope", { cause: {
+      method: ["eth_chainId", "eth_getBlockByNumber", "eth_getLogs", "eth_getTransactionByHash", "eth_getTransactionReceipt"].includes(method) ? method : "unknown",
+      providerCode: typeof providerCode === "number" && Number.isSafeInteger(providerCode) ? providerCode : null,
+    } });
+  }
   return data.result;
 }
 const hex = z.string().regex(/^0x(?:0|[1-9a-f][0-9a-f]*)$/);

@@ -137,6 +137,20 @@ fails if the observation is missing, older than 18 hours, failed, or the
 wallet's financial policy is enabled. The monitoring secret contains only the
 public address; the reviewer key is not stored in GitHub Actions.
 
+History failures store `MONITOR_HISTORY_UNAVAILABLE:<category>` in the monitor
+row and emit the same fixed category in the scheduled log's `diagnostic` field.
+Categories distinguish RPC HTTP status, timeout, invalid envelope/schema,
+incomplete history/logs, finality changes and subrequest exhaustion; unrecognized
+errors become `UNKNOWN`. Provider messages, URLs and credentials are never
+persisted. The check remains failed until a complete fresh observation succeeds;
+diagnostics never enable the wallet policy or authorize spending.
+
+Log reads use single-request batches separated by 1 s pauses; transient retries
+also pause before consuming one of the two spare requests. This adds at least
+43 seconds to a successful scan but reduces bursts against the public RPC.
+The full finalized day and fail-closed behavior are unchanged. Public-provider
+availability is not guaranteed; persistent rate limits still fail the check.
+
 ## Retention and safe operation
 
 Normal reviews retain the seven-day policy. Unresolved CLAIMED financial
