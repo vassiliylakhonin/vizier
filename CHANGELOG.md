@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Pace finalized Base wallet-history scans in single-request batches with 1 s pauses, including bounded transient retries, after Worker requests reproduced BlockPI rate limiting. Preserve the complete day, 48-request baseline and two-call reserve. Persist only fixed failure categories and safe RPC method/numeric error codes for daily monitor diagnosis.
+- Pace scheduled finalized Base wallet-history scans in single-request batches with 2 s pauses, including bounded transient retries, after Worker requests reproduced BlockPI rate limiting. Preserve the complete day, 48-request baseline and two-call reserve; retain interactive request concurrency. Persist only fixed failure categories and safe RPC method/numeric error codes for daily monitor diagnosis.
 
 - Publish a complete MCP outputSchema for vizier_verify_action, including policy results, authority provenance and optional signed-grant receipt fields. Validate real verification output and malformed response controls.
 

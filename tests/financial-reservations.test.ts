@@ -222,7 +222,7 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT state,reason FROM wallet_history_monitor WHERE id=1").get())
       .toMatchObject({ state: "FAILED", reason: "MONITOR_HISTORY_UNAVAILABLE:RPC_ENVELOPE_eth_getLogs_CODE_-32000" });
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(6);
-    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 1000)).toHaveLength(2);
+    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 2000)).toHaveLength(2);
   });
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();
@@ -288,7 +288,7 @@ describe("financial reservations", () => {
       expect(BigInt(request.params[0].toBlock) - BigInt(request.params[0].fromBlock)).toBeLessThan(1024n);
     }
   });
-  it("runs Base log reads with bounded concurrency", async () => {
+  it.each([false, true])("bounds log concurrency and applies scheduled pacing=%s", async (paceRpc) => {
     const now = Math.floor(Date.now() / 1000);
     let activeLogs = 0;
     let peakLogs = 0;
@@ -310,9 +310,9 @@ describe("financial reservations", () => {
       return Response.json({ jsonrpc: "2.0", id: 1, result });
     }));
 
-    await collectWalletHistory(wallet);
-    expect(peakLogs).toBe(1);
-    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 1000)).toHaveLength(43);
+    await collectWalletHistory(wallet, { paceRpc });
+    expect(peakLogs).toBe(paceRpc ? 1 : 6);
+    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 2000)).toHaveLength(paceRpc ? 43 : 0);
   });
   it("keeps an owner-disabled policy closed without consulting the RPC", async () => {
     await policy({ enabled: false });

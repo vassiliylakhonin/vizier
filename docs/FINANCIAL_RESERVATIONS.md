@@ -145,11 +145,13 @@ errors become `UNKNOWN`. Provider messages, URLs and credentials are never
 persisted. The check remains failed until a complete fresh observation succeeds;
 diagnostics never enable the wallet policy or authorize spending.
 
-Log reads use single-request batches separated by 1 s pauses; transient retries
+Scheduled monitor log reads use single-request batches separated by 2 s pauses; transient retries
 also pause before consuming one of the two spare requests. This adds at least
-43 seconds to a successful scan but reduces bursts against the public RPC.
+86 seconds to a successful scan but reduces bursts against the public RPC.
 The full finalized day and fail-closed behavior are unchanged. Public-provider
 availability is not guaranteed; persistent rate limits still fail the check.
+Interactive review/history requests retain their existing concurrency and latency;
+the pacing option is selected internally by the monitor, not by request input.
 
 ## Retention and safe operation
 
