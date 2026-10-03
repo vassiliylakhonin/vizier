@@ -64,3 +64,24 @@ export async function runWalletHistoryMonitor(db: D1Database, wallet: string): P
     .bind(wallet, history.observedAt, history.outgoing, history.startBlock, history.endBlock, history.endBlockHash).run();
   return history;
 }
+
+/** Retry only when today's primary scan has not produced a complete observation. */
+export async function retryWalletHistoryMonitor(db: D1Database, wallet: string, scheduledTime: number): Promise<WalletHistory | null> {
+  if (!walletAddress.test(wallet) || wallet === '0x' + '0'.repeat(40)) throw new Error('INVALID_MONITOR_WALLET');
+  if (!Number.isSafeInteger(scheduledTime) || scheduledTime < 0) throw new Error('INVALID_MONITOR_SCHEDULE');
+  const row = await db.prepare(`SELECT m.state,m.checked_at,m.observed_outgoing,m.start_block,m.end_block,m.end_block_hash,m.reason,p.enabled
+    FROM wallet_history_monitor m LEFT JOIN financial_policies p ON p.wallet=m.wallet
+    WHERE m.id=1 AND m.wallet=?`).bind(wallet).first<{
+      state: string; checked_at: number; observed_outgoing: number; start_block: number; end_block: number;
+      end_block_hash: string; reason: string | null; enabled: number;
+    }>();
+  const primaryTime = Math.floor(scheduledTime / 86400000) * 86400 + 3 * 3600 + 17 * 60;
+  const now = Math.floor(Date.now() / 1000);
+  if (row?.state === 'OK' && row.enabled === 0 && row.reason === null
+    && Number.isSafeInteger(row.checked_at) && row.checked_at >= primaryTime
+    && row.checked_at <= now + 60 && now - row.checked_at <= 3 * 3600
+    && Number.isSafeInteger(row.observed_outgoing) && row.observed_outgoing >= 0 && row.observed_outgoing <= 1000000000000
+    && Number.isSafeInteger(row.start_block) && row.start_block >= 0 && Number.isSafeInteger(row.end_block)
+    && row.end_block - row.start_block === 45000 && /^0x[0-9a-f]{64}$/.test(row.end_block_hash)) return null;
+  return runWalletHistoryMonitor(db, wallet);
+}

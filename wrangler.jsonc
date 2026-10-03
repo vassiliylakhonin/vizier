@@ -20,7 +20,7 @@
     "head_sampling_rate": 1
   },
   "triggers": {
-    "crons": ["17 3 * * *"]
+    "crons": ["17 3 * * *", "47 3 * * *", "7 4 * * *"]
   },
   // Two endpoints answer without a credential: evaluation-only A2A, and
   // evaluation-only MCP since the registry listing made /mcp discoverable by

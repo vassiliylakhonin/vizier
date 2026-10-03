@@ -9,7 +9,7 @@ import type { TransportOptions } from "../src/transport/shared";
 import { FINANCIAL_AUDIENCE, USDC, verifyFinancialOutcome, type FinancialAction } from "../src/reviews/financial";
 import { OFAC_SOURCE } from "../src/reviews/ofac";
 import { collectWalletHistory } from "../src/reviews/wallet-history";
-import { runWalletHistoryMonitor } from "../src/reviews/wallet-monitor";
+import { runWalletHistoryMonitor, retryWalletHistoryMonitor } from "../src/reviews/wallet-monitor";
 
 let mem: DatabaseSync;
 let options: TransportOptions;
@@ -95,7 +95,7 @@ beforeEach(async () => {
   setSnapshot(snapshot());
   mockHistory();
 });
-afterEach(() => { vi.unstubAllGlobals(); mem.close(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); mem.close(); });
 
 describe("financial reservations", () => {
   it("observes a configured wallet with reviewer authority and no policy or review mutation", async () => {
@@ -159,6 +159,43 @@ describe("financial reservations", () => {
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
+  });
+  it("retries a failed observation but skips a complete disabled-policy observation from today", async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 3, 4, 7));
+    await policy({ enabled: false });
+    mockHistory(0, { eth_getLogs: new Response(null, { status: 429 }) });
+    await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow('MONITOR_HISTORY_UNAVAILABLE');
+    mockHistory(750000);
+    const scheduledTime = Date.now() + 60000;
+    expect(await retryWalletHistoryMonitor(options.db!, wallet, scheduledTime)).toMatchObject({ outgoing: 750000 });
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(48);
+    vi.mocked(fetch).mockClear();
+    expect(await retryWalletHistoryMonitor(options.db!, wallet, scheduledTime)).toBeNull();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(mem.prepare('SELECT enabled FROM financial_policies WHERE wallet=?').get(wallet)!.enabled).toBe(0);
+    expect(mem.prepare('SELECT count(*) AS n FROM financial_reservations').get()!.n).toBe(0);
+  });
+  it("never skips stale, incomplete or enabled-policy observations", async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 3, 4, 7));
+    await policy({ enabled: false });
+    mockHistory();
+    await runWalletHistoryMonitor(options.db!, wallet);
+    const complete = mem.prepare('SELECT * FROM wallet_history_monitor WHERE id=1').get()!;
+    for (const updates of [
+      'checked_at=checked_at-86400', 'end_block=start_block+1',
+    ]) {
+      mem.prepare(`UPDATE wallet_history_monitor SET ${updates} WHERE id=1`).run();
+      vi.mocked(fetch).mockClear();
+      expect(await retryWalletHistoryMonitor(options.db!, wallet, Date.now() + 60000)).not.toBeNull();
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(48);
+      mem.prepare('UPDATE wallet_history_monitor SET checked_at=?,start_block=?,end_block=?,observed_outgoing=?,end_block_hash=?,reason=NULL WHERE id=1')
+        .run(complete.checked_at!, complete.start_block!, complete.end_block!, complete.observed_outgoing!, complete.end_block_hash!);
+    }
+    await policy({ enabled: true });
+    vi.mocked(fetch).mockClear();
+    await expect(retryWalletHistoryMonitor(options.db!, wallet, Date.now() + 60000)).rejects.toThrow('MONITOR_POLICY_ENABLED');
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(mem.prepare('SELECT state FROM wallet_history_monitor WHERE id=1').get()!.state).toBe('FAILED');
   });
   it("uses only the two spare RPC calls for transient provider envelopes", async () => {
     await policy({ enabled: false });

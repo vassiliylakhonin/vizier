@@ -153,6 +153,16 @@ availability is not guaranteed; persistent rate limits still fail the check.
 Interactive review/history requests retain their existing concurrency and latency;
 the pacing option is selected internally by the monitor, not by request input.
 
+The primary scan runs at 03:17 UTC. Two bounded retry crons at 03:47 and 04:07
+UTC run only the observation, before the GitHub check at 04:17. They do not
+repeat pruning or touch financial policies/reservations. A complete observation
+from today's primary window, no older than three hours, skips the retry after
+checking that the policy remains disabled. Stale, failed or incomplete rows do
+not suppress a fresh scan. Each attempted scan retains the same full window,
+50-subrequest ceiling and two in-scan retry slots. A primary success incurs no
+extra RPC calls; at most three scans run per day. Persistent provider failures
+still leave the check failed. Public RPC availability is not guaranteed.
+
 ## Retention and safe operation
 
 Normal reviews retain the seven-day policy. Unresolved CLAIMED financial
