@@ -4,8 +4,11 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.3.x   | :white_check_mark: |
-| < 0.3.0 | :x:                |
+| 0.5.x   | :white_check_mark: |
+| < 0.5.0 | :x:                |
+
+This table describes the current Worker/service release line. SDK packages have
+independent version numbers; for example, the Python SDK is currently 0.3.x.
 
 ## Security Invariants
 
