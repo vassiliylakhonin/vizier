@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Patch development-tool dependencies: pin Miniflare's sharp to 0.35.5 and
+  refresh brace-expansion 5.0.12 and source-map-js 1.2.2 in the lockfile.
+  Keep Wrangler and Miniflare versions unchanged; no authorization policy change.
+
 - Retry failed daily wallet observations at 03:47 and 04:07 UTC before the
   scheduled check; skip complete observations from today's primary window.
   Extra crons do not prune, enable financial policy or authorize spending.
