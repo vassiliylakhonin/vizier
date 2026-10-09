@@ -7,7 +7,14 @@ describe("playground guidance in required grant mode", () => {
     const html = await (await handleHttpRequest(new Request("https://vizier.example/playground"))).text();
     const elements = Object.fromEntries(["requestJson", "snippetBox"].map(id => [id, {value:"",innerText:""}]));
     const context = {document:{getElementById:(id:string) => elements[id]}};
-    for (const [, script] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) vm.runInNewContext(script!, context);
+    // The trusted renderer emits exactly one inline script. This extracts that
+    // fixture for execution; it is not an HTML sanitizer or an untrusted parser.
+    const start = html.indexOf("<script>");
+    const end = html.indexOf("</script>", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(html.indexOf("<script>", start + 8)).toBe(-1);
+    vm.runInNewContext(html.slice(start + 8, end), context);
     expect(JSON.parse(elements.requestJson!.value).action.parameters.amount).toBe(820);
     expect(elements.snippetBox!.innerText).toContain("VizierClient");
   });
