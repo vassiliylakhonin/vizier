@@ -1268,6 +1268,16 @@ export async function handleHttpRequest(
     if (request.method === "GET" && url.pathname === "/health") {
       return jsonResponse({ status: "ok" });
     }
+    // Public ownership proof for the remote MCP listing. Keep this until the
+    // mcprush reviewer has decided the claim; it is not an API credential.
+    if ((request.method === "GET" || request.method === "HEAD") &&
+        url.pathname === "/.well-known/mcprush.com-claim.txt") {
+      return new Response(request.method === "HEAD" ? null :
+        "mcprush.com-claim-vassiliylakhonin-vizier-mcp-3a0466a42bb7182a82fe6cf0\n", {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
     if (request.method === "GET" && url.pathname === "/robots.txt") {
       return new Response(createVizierRobotsTxt(url.origin), {
         status: 200,
