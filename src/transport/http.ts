@@ -1,3 +1,4 @@
+import { grantReadiness } from "./onboarding";
 import { canonicalize, sha256 } from "../core/receipts";
 import { createReviewConsole } from "../reviews/console";
 import { handleReviews } from "../reviews/api";
@@ -1100,6 +1101,7 @@ function docsDocument(options: TransportOptions): Response {
         "VIZIER_PRINCIPAL_KEYS configured: a principal-signed grant is verified against a registered key, and the receipt records it",
     },
     delegation: {
+      onboarding: grantReadiness(options),
       mode: resolveSignedGrantMode(options),
       grant_required: resolveSignedGrantMode(options) !== "optional",
       grant_field: "grant",

@@ -3,7 +3,7 @@
   "name": "io.github.vassiliylakhonin/vizier",
   "title": "Vizier",
   "description": "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "websiteUrl": "https://vizier.vassiliy-lakhonin.workers.dev/docs",
   "remotes": [
     {
@@ -12,7 +12,7 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer <integration credential>. Optional: an anonymous call returns an evaluation-only decision that never grants ALLOW, and the credential unlocks enforcement results.",
+          "description": "Bearer <integration credential>. Optional: an anonymous call returns an evaluation-only decision that never grants ALLOW, and enforcement requires the server delegation policy, including a signed principal grant in required mode.",
           "isRequired": false,
           "isSecret": true
         }

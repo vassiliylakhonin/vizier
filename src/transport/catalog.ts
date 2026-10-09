@@ -64,7 +64,7 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
         type: `application/json;profile=${MCP_SERVER_SCHEMA}`,
         url: `${origin}/.well-known/mcp.json`,
         description:
-          "MCP server manifest for the Streamable HTTP endpoint at /mcp, which exposes one tool, vizier_verify_action. Anonymous callers receive evaluation-only decisions; an integration credential unlocks enforcement results.",
+          "MCP server manifest for the Streamable HTTP endpoint at /mcp, which exposes one tool, vizier_verify_action. Anonymous callers receive evaluation-only decisions; enforcement also requires the server’s delegation policy, including a signed principal grant in required mode.",
         capabilities: [
           "verify-agent-action",
           "mcp-streamable-http",
@@ -117,7 +117,7 @@ export function createMcpServerManifest(
           {
             name: "Authorization",
             description:
-              "Bearer <integration credential>. Optional: an anonymous call returns an evaluation-only decision that never grants ALLOW, and the credential unlocks enforcement results.",
+              "Bearer <integration credential>. Optional: an anonymous call returns an evaluation-only decision that never grants ALLOW, and enforcement requires the server delegation policy, including a signed principal grant in required mode.",
             isRequired: false,
             isSecret: true,
           },

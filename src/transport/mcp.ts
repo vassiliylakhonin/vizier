@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { grantReadiness, grantInstructions } from "./onboarding";
+
 import { verificationRequestSchema, verificationResponseSchema, verifyAction } from "../core/index";
 import {
   jsonResponse,
@@ -34,8 +36,6 @@ const SERVER_INFO = Object.freeze({
   version: SERVICE_VERSION,
   description: "Deterministic authorization checks for actions proposed by AI agents.",
 });
-const SERVER_INSTRUCTIONS =
-  "Call vizier_verify_action immediately before an AI agent executes an external action.";
 
 const requestMetaSchema = z.looseObject({
   "io.modelcontextprotocol/protocolVersion": z.string(),
@@ -84,6 +84,14 @@ const verifyTool = Object.freeze({
     openWorldHint: false,
   },
 });
+
+function verifyToolForOptions(options: TransportOptions) {
+  return {
+    ...verifyTool,
+    description: `${verifyTool.description} ${grantInstructions(options)} Synthetic example arguments (not authority): ${JSON.stringify(grantReadiness(options).example_arguments)}`,
+    _meta: { "com.vizier/readiness": grantReadiness(options) },
+  };
+}
 
 function responseMeta(): Readonly<Record<string, unknown>> {
   return { "io.modelcontextprotocol/serverInfo": SERVER_INFO };
@@ -346,13 +354,13 @@ async function handleStatelessRequest(
       return mcpResult(parsed.data.id, {
         supportedVersions: [MCP_PROTOCOL_VERSION],
         capabilities: { tools: { listChanged: false } },
-        instructions: SERVER_INSTRUCTIONS,
+        instructions: grantInstructions(options),
         ttlMs: 300_000,
         cacheScope: "public",
       });
     case "tools/list":
       return mcpResult(parsed.data.id, {
-        tools: [verifyTool],
+        tools: [verifyToolForOptions(options)],
         ttlMs: 300_000,
         cacheScope: "public",
       });
@@ -426,12 +434,12 @@ async function handleSessionRequest(
           title: SERVER_INFO.title,
           version: SERVER_INFO.version,
         },
-        instructions: SERVER_INSTRUCTIONS,
+        instructions: grantInstructions(options),
       });
     case "ping":
       return sessionResult(message.id, {});
     case "tools/list":
-      return sessionResult(message.id, { tools: [verifyTool] });
+      return sessionResult(message.id, { tools: [verifyToolForOptions(options)] });
     case "tools/call": {
       const outcome = await runVerifyTool(
         request,

@@ -78,12 +78,12 @@ to the archive integration; they are not general replay guarantees from Vizier.
 
 ## Start with signed delegation
 
-**Experimental v0.5.6.** TypeScript SDK and MCP proxy packages are available as
-[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.6),
+**Experimental v0.5.7.** TypeScript SDK and MCP proxy packages are available as
+[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.7),
 with `SHA256SUMS`. The `@vizier` npm scope is not currently published.
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.7/vizier-sdk-0.5.7.tgz
 ```
 
 First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up)
@@ -159,7 +159,7 @@ cover the full operator procedure.
 For an MCP boundary, install both release archives:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-sdk-0.5.6.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.6/vizier-mcp-proxy-0.5.6.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.7/vizier-sdk-0.5.7.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.7/vizier-mcp-proxy-0.5.7.tgz
 ```
 
 Use the [mandatory proxy profile](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056)
