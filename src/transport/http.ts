@@ -1244,7 +1244,7 @@ export async function handleHttpRequest(
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/playground")) {
       const accept = request.headers.get("accept") ?? "";
       if (url.pathname === "/playground" || accept.includes("text/html")) {
-        return new Response(createPlaygroundHtml(url.origin), {
+        return new Response(createPlaygroundHtml(url.origin, resolveSignedGrantMode(options)), {
           status: 200,
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });

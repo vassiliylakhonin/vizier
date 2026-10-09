@@ -36,7 +36,10 @@ const SIGNED_EXPLANATIONS: Readonly<Record<Decision, string>> = Object.freeze({
   BLOCK: "The proposed action violates authority the principal signed for this agent.",
 });
 
-function explain(decision: Decision, provenance: AuthorityProvenance): string {
+function explain(decision: Decision, provenance: AuthorityProvenance, reasonCodes: readonly string[]): string {
+  if (decision === "BLOCK" && reasonCodes.includes("GRANT_REQUIRED")) {
+    return "A valid principal-signed delegation grant is required before this action can be authorized. Caller-declared limits or an API key do not replace the grant; inspect all policy checks for additional failures.";
+  }
   return provenance === "principal_signed"
     ? SIGNED_EXPLANATIONS[decision]
     : EXPLANATIONS[decision];
@@ -118,7 +121,7 @@ export async function verifyAction(
     decision,
     risk_score: riskScore,
     reason_codes: reasonCodes,
-    explanation: explain(decision, authorityProvenance),
+    explanation: explain(decision, authorityProvenance, reasonCodes),
     policy_results: policyResults,
     receipt,
   });

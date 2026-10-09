@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Make playground guidance reflect required, optional or invalid signed-grant policy. Explain GRANT_REQUIRED without implying that an amount within caller-declared limits authorizes an action; preserve every policy result, decision and receipt.
+- Repair a JavaScript interpolation in the LangChain Python example that prevented the initial editable preset and snippets from loading. Exercise the served browser script and anonymous strict-mode response.
+
 - Patch development-tool dependencies: pin Miniflare's sharp to 0.35.5 and
   refresh brace-expansion 5.0.12 and source-map-js 1.2.2 in the lockfile.
   Keep Wrangler and Miniflare versions unchanged; no authorization policy change.
