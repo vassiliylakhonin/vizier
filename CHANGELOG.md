@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.7 — 2026-10-09
+
+- Publish the actual signed-grant policy in both MCP discovery profiles, tool metadata and public /docs, with synthetic inputs and owner setup steps. Explain anonymous evaluation, integration credentials and principal delegation separately; invalid operator policy stays fail-closed.
+- Correct registry credential guidance; an API key does not substitute for a signed principal grant. No authorization decisions, grants, receipts or enforcement rules change.
+
 ## Unreleased
 
 - Make playground guidance reflect required, optional or invalid signed-grant policy. Explain GRANT_REQUIRED without implying that an amount within caller-declared limits authorizes an action; preserve every policy result, decision and receipt.

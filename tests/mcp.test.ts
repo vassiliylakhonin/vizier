@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { handleMcpRequest } from "../src/transport/mcp";
 import { handleHttpRequest } from "../src/transport/http";
-import { verificationResponseSchema } from "../src/core/index";
+import { verificationRequestSchema, verificationResponseSchema } from "../src/core/index";
 import { SERVICE_VERSION } from "../src/version";
 
 const MCP_VERSION = "2026-07-28";
@@ -480,4 +480,28 @@ describe("MCP session profile for shipping clients", () => {
       error: { code: -32601 },
     });
   });
+});
+
+it.each(['required', 'optional', 'invalid'] as const)('publishes actual grant policy in both MCP discovery profiles: %s', async (mode) => {
+  const options = { apiKey: TEST_API_KEY, signedGrantModeSource: mode };
+  for (const body of [requestBody('tools/list', 'policy'), {jsonrpc:'2.0',id:'policy',method:'tools/list'}]) {
+    const request = 'params' in body ? mcpRequest(body) : sessionRequest(body);
+    const response = await handleMcpRequest(request, options);
+    const payload = await response.json() as {result:{tools:Array<{description:string;_meta:Record<string,unknown>}>}};
+    const tool = payload.result.tools[0];
+    if (tool === undefined) throw new Error("Missing published tool");
+    expect(tool._meta['com.vizier/readiness']).toMatchObject({ signed_grant_mode: mode,
+      grant_required: mode !== 'optional', credential_is_delegation: false });
+    const readiness = tool._meta["com.vizier/readiness"] as { example_arguments: unknown };
+    expect(verificationRequestSchema.safeParse(readiness.example_arguments).success).toBe(true);
+    expect(tool.description).toContain('/docs');
+    expect(tool.description).toContain('evaluation-only');
+    if (mode === 'required') expect(tool.description).toContain('GRANT_REQUIRED');
+    if (mode === 'invalid') expect(tool.description).toContain('GRANT_POLICY_MISCONFIGURED');
+  }
+  for (const body of [requestBody('server/discover', 'policy'), {jsonrpc:'2.0',id:'policy',method:'initialize'}]) {
+    const response = await handleMcpRequest('params' in body ? mcpRequest(body) : sessionRequest(body), options);
+    const payload = await response.json() as {result:{instructions:string}};
+    expect(payload.result.instructions).toContain(`Signed grant mode: ${mode}`);
+  }
 });

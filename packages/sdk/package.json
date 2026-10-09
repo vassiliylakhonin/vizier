@@ -1,6 +1,6 @@
 {
   "name": "@vizier/sdk",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Thin TypeScript client for the Vizier verification API.",
   "license": "MIT",
   "author": "Vassiliy Lakhonin",
