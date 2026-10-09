@@ -1,4 +1,9 @@
-export function createPlaygroundHtml(origin: string): string {
+export function createPlaygroundHtml(origin: string, grantMode: "optional" | "required" | "invalid" = "optional"): string {
+  const grantNotice = grantMode === "required"
+    ? "This deployment requires a valid principal-signed delegation grant. Requests without it return BLOCK with GRANT_REQUIRED, including anonymous evaluations and requests within the declared limit. An API key alone does not replace the grant."
+    : grantMode === "invalid"
+      ? "The deployment's grant policy is misconfigured. Evaluations fail closed; the operator must repair the configuration."
+      : "Anonymous caller-supplied authority cannot authorize ALLOW. Other failed checks can produce BLOCK; unresolved authority or risk requires REVIEW.";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -199,7 +204,7 @@ export function createPlaygroundHtml(origin: string): string {
     </div>
   </div>
 
-  <p>Evaluation playground: caller-supplied authority is unverified and produces REVIEW. No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
+  <p>Evaluation playground: caller-supplied authority is unverified. ${grantNotice} No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
   <div class="container">
     <!-- Left: Request Simulator -->
     <div class="card">
@@ -210,7 +215,7 @@ export function createPlaygroundHtml(origin: string): string {
         <button class="preset-btn" onclick="loadPreset('allow')">🟡 Evaluate: Purchase $820</button>
         <button class="preset-btn" onclick="loadPreset('block_amount')">🔴 Block: Exceeds Limit ($12,000)</button>
         <button class="preset-btn" onclick="loadPreset('block_target')">🔴 Block: Target Denied</button>
-        <button class="preset-btn" onclick="loadPreset('review_sensitive')">🟡 Review: Deploy Worker</button>
+        <button class="preset-btn" onclick="loadPreset('review_sensitive')">🟡 Evaluate: Deploy Worker</button>
       </div>
       <div style="display: flex; gap: 8px; align-items: center; background: #111827; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
         <input id="apiKeyInput" type="password" placeholder="Optional vz_live_... or master key (in-memory only; evaluates freely if empty)" style="flex: 1; background: transparent; border: none; color: #38bdf8; font-size: 0.75rem; font-family: monospace; outline: none;" autocomplete="off" />
@@ -236,6 +241,11 @@ export function createPlaygroundHtml(origin: string): string {
         <span>Reason Codes:</span>
         <span id="reasonCodes" class="meta-val">[]</span>
       </div>
+      <div class="meta-row">
+        <span>Next step:</span>
+        <span id="nextStep" class="meta-val">Inspect the returned policy checks. A demo never executes the action.</span>
+      </div>
+      <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/DELEGATION_GRANTS.md">How principal-signed delegation grants work</a>
       <div class="meta-row">
         <span>Receipt Hash (SHA-256):</span>
         <span id="receiptHash" class="meta-val" style="font-family: monospace; font-size: 0.75rem;">--</span>
@@ -328,6 +338,7 @@ export function createPlaygroundHtml(origin: string): string {
       const reasons = document.getElementById('reasonCodes');
       const receiptHash = document.getElementById('receiptHash');
       const raw = document.getElementById('rawResponse');
+      const nextStep = document.getElementById('nextStep');
 
       let parsed;
       try {
@@ -339,6 +350,11 @@ export function createPlaygroundHtml(origin: string): string {
 
       btn.disabled = true;
       btn.innerText = "Evaluating...";
+      badge.className = 'decision-badge badge-IDLE';
+      badge.innerText = 'EVALUATING';
+      reasons.innerText = '[]';
+      receiptHash.innerText = '--';
+      nextStep.innerText = 'Waiting for this evaluation.';
       const t0 = performance.now();
 
       const apiKey = (document.getElementById('apiKeyInput')?.value || '').trim();
@@ -365,6 +381,9 @@ export function createPlaygroundHtml(origin: string): string {
           badge.innerText = data.decision;
           explanation.innerText = data.explanation || '--';
           reasons.innerText = JSON.stringify(data.reason_codes || []);
+          nextStep.innerText = (data.reason_codes || []).includes('GRANT_REQUIRED')
+            ? 'Ask the principal to sign the exact agent and authority, register their public key with the operator, and include the compact JWS as grant. Do not paste private signing keys. Other failed checks must also be resolved.'
+            : 'Inspect failed or unresolved policy checks with the action owner before any execution. This playground does not execute or authorize an external action.';
           receiptHash.innerText = data.receipt?.request_hash || '--';
         } else if (data.error) {
           badge.className = 'decision-badge badge-BLOCK';
@@ -372,12 +391,14 @@ export function createPlaygroundHtml(origin: string): string {
           explanation.innerText = data.error.message || 'Request failed';
           reasons.innerText = JSON.stringify(data.error.details || []);
           receiptHash.innerText = '--';
+          nextStep.innerText = 'Correct the reported request or service error and evaluate again.';
         }
       } catch (err) {
         badge.className = 'decision-badge badge-BLOCK';
         badge.innerText = 'ERROR';
         explanation.innerText = err.message;
         raw.innerText = err.stack || err.message;
+        nextStep.innerText = 'The evaluation did not complete. Resolve the connection or request error before retrying.';
       } finally {
         btn.disabled = false;
         btn.innerText = "⚡ Verify Action via Kernel";
@@ -405,7 +426,7 @@ client = VizierClient(base_url="${origin}", api_key="vz_live_...")
 @tool
 def transfer_funds(amount: float, recipient: str) -> str:
     """Transfer funds to recipient."""
-    return f"Transferred \${amount} to {recipient}"
+    return f"Transferred {amount} to {recipient}"
 
 guarded_tool = create_guarded_tool(
     tool=transfer_funds,
