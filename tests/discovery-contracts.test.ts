@@ -11,7 +11,7 @@ import { verificationResponseContractSchema } from "../src/transport/contracts";
 import { SERVICE_VERSION } from "../src/version";
 
 const ORIGIN = "https://vizier.example";
-const PUBLISHED_ORIGIN = "https://vizier.vassiliy-lakhonin.workers.dev";
+const PUBLISHED_ORIGIN = "https://vizier.agendamcp.dpdns.org";
 
 function readJson(relativePath: string): Record<string, unknown> {
   return JSON.parse(

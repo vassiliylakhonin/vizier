@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- Move the hosted MCP Registry remote and public website metadata to vizier.agendamcp.dpdns.org. Publish a registry-only revision while keeping service/package versions, signing keys, authorization and workers.dev compatibility.
+
 - Make playground guidance reflect required, optional or invalid signed-grant policy. Explain GRANT_REQUIRED without implying that an amount within caller-declared limits authorizes an action; preserve every policy result, decision and receipt.
 - Repair a JavaScript interpolation in the LangChain Python example that prevented the initial editable preset and snippets from loading. Exercise the served browser script and anonymous strict-mode response.
 

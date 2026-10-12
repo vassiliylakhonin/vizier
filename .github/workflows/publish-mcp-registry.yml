@@ -27,11 +27,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
 
       - name: Prepare manifest
+        env:
+          TARGET: ${{ inputs.target }}
+          VERSION: ${{ inputs.version }}
         run: |
-          TARGET="${{ inputs.target }}"
-          VERSION="${{ inputs.version }}"
+          [[ "$TARGET" = 'vizier' || "$TARGET" = 'vizier-guard' ]] || exit 1
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-registry\.[1-9][0-9]*)?$ ]] || exit 1
           echo "Publishing MCP registry entry for $TARGET version $VERSION"
           if [ "$TARGET" = "vizier-guard" ]; then
             cp packages/python-sdk/server.json server.json
@@ -82,3 +87,33 @@ jobs:
 
       - name: Publish server to MCP Registry
         run: mcp-publisher publish
+
+      - name: Verify exact latest Registry metadata
+        run: |
+          python - <<'PYTHON'
+          import json, time, urllib.request
+          from pathlib import Path
+          from urllib.parse import quote
+          manifest = json.loads(Path('server.json').read_text())
+          url = 'https://registry.modelcontextprotocol.io/v0.1/servers/' + quote(manifest['name'], safe='') + '/versions/latest'
+          def normalized(remotes):
+              remotes = json.loads(json.dumps(remotes))
+              for remote in remotes:
+                  for header in remote.get('headers', []):
+                      header.setdefault('isRequired', False)
+              return remotes
+          for attempt in range(12):
+              with urllib.request.urlopen(url, timeout=30) as response:
+                  entry = json.load(response)
+              latest = entry.get('server', {})
+              official = entry.get('_meta', {}).get('io.modelcontextprotocol.registry/official', {})
+              if latest.get('version') == manifest['version'] and official.get('isLatest') is True:
+                  for field in ('name', 'websiteUrl', 'packages'):
+                      assert latest.get(field) == manifest.get(field), field + ' drift'
+                  assert normalized(latest.get('remotes', [])) == normalized(manifest.get('remotes', [])), 'remotes drift'
+                  print('Verified exact latest Registry metadata')
+                  break
+              if attempt == 11:
+                  raise SystemExit('Registry latest version did not converge')
+              time.sleep(5)
+          PYTHON
