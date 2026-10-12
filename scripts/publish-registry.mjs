@@ -29,6 +29,7 @@
 
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 
 const REGISTRY = process.env.MCP_REGISTRY_URL ?? "https://registry.modelcontextprotocol.io";
 const dryRun = process.argv.includes("--dry-run");
@@ -60,31 +61,27 @@ function runCaptured(command, args) {
   });
 }
 
-// `?search=` is the only filter this API honours: `?name=` is accepted and
-// silently ignored, returning the unfiltered first page. Measured 2026-09-02.
-// So the exact name is matched here rather than trusted from the query.
-//
-// `ok` separates "the registry says nothing is listed" from "the registry did
-// not answer". The pre-flight must fail on the second; the confirmation after a
-// duplicate rejection must not read it as success.
+// Use the exact v0.1 latest record. The legacy v0 search can retain stale
+// results after a metadata revision, and must not decide whether to publish.
+// `ok` separates an absent record from an unavailable Registry.
 async function registryVersion(serverName) {
   try {
     const response = await fetch(
-      `${REGISTRY}/v0/servers?search=${encodeURIComponent(serverName)}`,
+      `${REGISTRY}/v0.1/servers/${encodeURIComponent(serverName)}/versions/latest`,
       { headers: { Accept: "application/json" } },
     );
+    if (response.status === 404) {
+      return { ok: true, version: null, reason: null };
+    }
     if (!response.ok) {
       return { ok: false, version: null, reason: `status ${response.status}` };
     }
-    const body = await response.json();
-    const entry = (body.servers ?? [])
-      .filter((item) => item?.server?.name === serverName)
-      .find(
-        (item) =>
-          item?._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest ===
-          true,
-      );
-    return { ok: true, version: entry?.server?.version ?? null, reason: null };
+    const entry = await response.json();
+    if (entry?.server?.name !== serverName ||
+        entry?._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest !== true) {
+      return { ok: false, version: null, reason: "invalid latest record" };
+    }
+    return { ok: true, version: entry?.server?.version ?? null, server: entry?.server, reason: null };
   } catch (error) {
     return {
       ok: false,
@@ -113,8 +110,29 @@ const live = lookup.version;
 console.log(`server.json ${name} ${version}`);
 console.log(`registry    ${live === null ? "not listed" : `${name} ${live}`}`);
 
-if (live === version) {
-  console.log("\nAlready published at this version; nothing to do.");
+// Registry-only revisions retain the service version. Accept one only when
+// its complete metadata matches this source, including authentication headers.
+function matchesRegistryRevision(server) {
+  if (!server) return false;
+  const [major, minor, patch] = version.split(".").map(Number);
+  const prefix = `${major}.${minor}.${patch + 1}-registry.`;
+  if (!server.version?.startsWith(prefix) ||
+      !/^[1-9][0-9]*$/.test(server.version.slice(prefix.length))) return false;
+  function normalized(value) {
+    const copy = JSON.parse(JSON.stringify(value));
+    delete copy.version;
+    for (const remote of copy.remotes ?? []) {
+      for (const header of remote.headers ?? []) {
+        header.isRequired ??= false;
+      }
+    }
+    return copy;
+  }
+  return isDeepStrictEqual(normalized(server), normalized(manifest));
+}
+
+if (live === version || matchesRegistryRevision(lookup.server)) {
+  console.log("\nAlready published; nothing to do.");
   process.exit(0);
 }
 if (dryRun) {
@@ -136,7 +154,7 @@ if (code !== 0) {
   }
   // Another run of the same commit got there first. Confirm rather than assume.
   const confirmation = await registryVersion(name);
-  if (!confirmation.ok || confirmation.version !== version) {
+  if (!confirmation.ok || (confirmation.version !== version && !matchesRegistryRevision(confirmation.server))) {
     console.error(
       `\nRegistry rejected ${version} as a duplicate but reports ${
         confirmation.ok ? (confirmation.version ?? "nothing") : "no answer"
