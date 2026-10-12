@@ -29,6 +29,7 @@
 
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 
 const REGISTRY = process.env.MCP_REGISTRY_URL ?? "https://registry.modelcontextprotocol.io";
 const dryRun = process.argv.includes("--dry-run");
@@ -84,7 +85,7 @@ async function registryVersion(serverName) {
           item?._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest ===
           true,
       );
-    return { ok: true, version: entry?.server?.version ?? null, reason: null };
+    return { ok: true, version: entry?.server?.version ?? null, server: entry?.server, reason: null };
   } catch (error) {
     return {
       ok: false,
@@ -113,7 +114,28 @@ const live = lookup.version;
 console.log(`server.json ${name} ${version}`);
 console.log(`registry    ${live === null ? "not listed" : `${name} ${live}`}`);
 
-if (live === version) {
+// Registry-only revisions retain the service version. Accept one only when
+// its complete metadata matches this source, including authentication headers.
+function matchesRegistryRevision(server) {
+  if (!server) return false;
+  const [major, minor, patch] = version.split(".").map(Number);
+  const prefix = `${major}.${minor}.${patch + 1}-registry.`;
+  if (!server.version?.startsWith(prefix) ||
+      !/^[1-9][0-9]*$/.test(server.version.slice(prefix.length))) return false;
+  function normalized(value) {
+    const copy = JSON.parse(JSON.stringify(value));
+    delete copy.version;
+    for (const remote of copy.remotes ?? []) {
+      for (const header of remote.headers ?? []) {
+        header.isRequired ??= false;
+      }
+    }
+    return copy;
+  }
+  return isDeepStrictEqual(normalized(server), normalized(manifest));
+}
+
+if (live === version || matchesRegistryRevision(lookup.server)) {
   console.log("\nAlready published at this version; nothing to do.");
   process.exit(0);
 }
@@ -136,7 +158,7 @@ if (code !== 0) {
   }
   // Another run of the same commit got there first. Confirm rather than assume.
   const confirmation = await registryVersion(name);
-  if (!confirmation.ok || confirmation.version !== version) {
+  if (!confirmation.ok || (confirmation.version !== version && !matchesRegistryRevision(confirmation.server))) {
     console.error(
       `\nRegistry rejected ${version} as a duplicate but reports ${
         confirmation.ok ? (confirmation.version ?? "nothing") : "no answer"

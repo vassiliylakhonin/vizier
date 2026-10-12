@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- Recognize an already-published registry-only revision during automatic deployment only when its complete metadata matches the source manifest, including endpoint and authorization header semantics. Keep mismatched metadata and Registry outages distinct from success.
+
 - Move the hosted MCP Registry remote and public website metadata to vizier.agendamcp.dpdns.org. Publish a registry-only revision while keeping service/package versions, signing keys, authorization and workers.dev compatibility.
 
 - Make playground guidance reflect required, optional or invalid signed-grant policy. Explain GRANT_REQUIRED without implying that an amount within caller-declared limits authorizes an action; preserve every policy result, decision and receipt.
