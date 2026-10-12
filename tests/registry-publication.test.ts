@@ -6,7 +6,7 @@ const root = new URL("../", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("server.json", root), "utf8"));
 
 function run(server: unknown, status = 200) {
-  const body = { servers: [{ server, _meta: { "io.modelcontextprotocol.registry/official": { isLatest: true } } }] };
+  const body = { server, _meta: { "io.modelcontextprotocol.registry/official": { isLatest: true } } };
   const stub = `globalThis.fetch = async () => new Response(${JSON.stringify(JSON.stringify(body))}, {status: ${status}});`;
   return spawnSync(process.execPath, ["--import", `data:text/javascript,${encodeURIComponent(stub)}`, "scripts/publish-registry.mjs", "--dry-run"], { cwd: root, encoding: "utf8", timeout: 10000 });
 }

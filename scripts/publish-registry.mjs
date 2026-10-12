@@ -61,30 +61,26 @@ function runCaptured(command, args) {
   });
 }
 
-// `?search=` is the only filter this API honours: `?name=` is accepted and
-// silently ignored, returning the unfiltered first page. Measured 2026-09-02.
-// So the exact name is matched here rather than trusted from the query.
-//
-// `ok` separates "the registry says nothing is listed" from "the registry did
-// not answer". The pre-flight must fail on the second; the confirmation after a
-// duplicate rejection must not read it as success.
+// Use the exact v0.1 latest record. The legacy v0 search can retain stale
+// results after a metadata revision, and must not decide whether to publish.
+// `ok` separates an absent record from an unavailable Registry.
 async function registryVersion(serverName) {
   try {
     const response = await fetch(
-      `${REGISTRY}/v0/servers?search=${encodeURIComponent(serverName)}`,
+      `${REGISTRY}/v0.1/servers/${encodeURIComponent(serverName)}/versions/latest`,
       { headers: { Accept: "application/json" } },
     );
+    if (response.status === 404) {
+      return { ok: true, version: null, reason: null };
+    }
     if (!response.ok) {
       return { ok: false, version: null, reason: `status ${response.status}` };
     }
-    const body = await response.json();
-    const entry = (body.servers ?? [])
-      .filter((item) => item?.server?.name === serverName)
-      .find(
-        (item) =>
-          item?._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest ===
-          true,
-      );
+    const entry = await response.json();
+    if (entry?.server?.name !== serverName ||
+        entry?._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest !== true) {
+      return { ok: false, version: null, reason: "invalid latest record" };
+    }
     return { ok: true, version: entry?.server?.version ?? null, server: entry?.server, reason: null };
   } catch (error) {
     return {
@@ -136,7 +132,7 @@ function matchesRegistryRevision(server) {
 }
 
 if (live === version || matchesRegistryRevision(lookup.server)) {
-  console.log("\nAlready published at this version; nothing to do.");
+  console.log("\nAlready published; nothing to do.");
   process.exit(0);
 }
 if (dryRun) {
