@@ -4,11 +4,11 @@
   "title": "Vizier",
   "description": "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
   "version": "0.5.7",
-  "websiteUrl": "https://vizier.vassiliy-lakhonin.workers.dev/docs",
+  "websiteUrl": "https://vizier.agendamcp.dpdns.org/docs",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://vizier.vassiliy-lakhonin.workers.dev/mcp",
+      "url": "https://vizier.agendamcp.dpdns.org/mcp",
       "headers": [
         {
           "name": "Authorization",
