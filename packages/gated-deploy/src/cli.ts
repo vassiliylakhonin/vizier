@@ -10,7 +10,7 @@ import {
   type DeployMetadata,
 } from "./index.js";
 
-const VIZIER_BASE_URL = "https://vizier.vassiliy-lakhonin.workers.dev";
+const VIZIER_BASE_URL = "https://vizier.agendamcp.dpdns.org";
 const KEYCHAIN_ACCOUNT = "VIZIER_API_KEY";
 const KEYCHAIN_SERVICE = "com.vizier.gated-deploy";
 const VERIFY_TIMEOUT_MS = 10_000;

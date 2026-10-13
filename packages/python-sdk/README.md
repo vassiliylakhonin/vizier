@@ -39,7 +39,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
       "command": "uvx",
       "args": ["vizier-guard", "mcp"],
       "env": {
-        "VIZIER_BASE_URL": "https://vizier.vassiliy-lakhonin.workers.dev",
+        "VIZIER_BASE_URL": "https://vizier.agendamcp.dpdns.org",
         "VIZIER_API_KEY": "your-vizier-api-key"
       }
     }
@@ -56,7 +56,7 @@ Or using an existing Python environment:
       "command": "python",
       "args": ["-m", "vizier.mcp"],
       "env": {
-        "VIZIER_BASE_URL": "https://vizier.vassiliy-lakhonin.workers.dev",
+        "VIZIER_BASE_URL": "https://vizier.agendamcp.dpdns.org",
         "VIZIER_API_KEY": "your-vizier-api-key"
       }
     }
@@ -87,7 +87,7 @@ Wrap any dangerous tool or Python function with deterministic policy rules:
 from vizier import VizierClient, vizier_guard
 
 client = VizierClient(
-    base_url="https://vizier.vassiliy-lakhonin.workers.dev",
+    base_url="https://vizier.agendamcp.dpdns.org",
     api_key="your-vizier-api-key"
 )
 
@@ -181,7 +181,7 @@ For asynchronous agent runtimes (FastAPI, LangGraph, AutoGen):
 from vizier import AsyncVizierClient, vizier_guard
 
 client = AsyncVizierClient(
-    base_url="https://vizier.vassiliy-lakhonin.workers.dev",
+    base_url="https://vizier.agendamcp.dpdns.org",
     api_key="your-api-key"
 )
 

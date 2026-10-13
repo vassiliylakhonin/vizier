@@ -11,7 +11,7 @@ Vizier verifies proposed agent actions (purchases, database queries, deployments
 ## 📦 Installation
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.3/vizier-sdk-0.5.3.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz
 ```
 
 ---
@@ -22,7 +22,7 @@ npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.3/
 import { Vizier } from "@vizier/sdk";
 
 const vizier = new Vizier({
-  baseUrl: "https://vizier.vassiliy-lakhonin.workers.dev",
+  baseUrl: "https://vizier.agendamcp.dpdns.org",
   apiKey: process.env.VIZIER_API_KEY,
 });
 
@@ -67,9 +67,9 @@ if (decision.decision === "ALLOW") {
 
 ## 🌐 Links
 
-* **Live Interactive Playground**: [https://vizier.vassiliy-lakhonin.workers.dev/playground](https://vizier.vassiliy-lakhonin.workers.dev/playground)
+* **Live Interactive Playground**: [https://vizier.agendamcp.dpdns.org/playground](https://vizier.agendamcp.dpdns.org/playground)
 * **GitHub Repository**: [https://github.com/vassiliylakhonin/vizier](https://github.com/vassiliylakhonin/vizier)
-* **OpenAPI 3.1 Contract**: [https://vizier.vassiliy-lakhonin.workers.dev/openapi.json](https://vizier.vassiliy-lakhonin.workers.dev/openapi.json)
+* **OpenAPI 3.1 Contract**: [https://vizier.agendamcp.dpdns.org/openapi.json](https://vizier.agendamcp.dpdns.org/openapi.json)
 
 
 ## Explicit human reviews

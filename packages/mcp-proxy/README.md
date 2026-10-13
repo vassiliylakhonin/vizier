@@ -2,7 +2,10 @@
 
 Deterministic authorization proxy for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers and AI agents.
 
-Place any existing local or remote MCP server behind Vizier to enforce strict deterministic authority limits, tool allowlists, target restrictions, and tamper-proof SHA-256 audit receipts before actions execute.
+Place a supported HTTP MCP server behind Vizier to check owner-signed authority,
+tool allowlists and target restrictions before actions execute. Request-bound
+verification receipts are unsigned; they are not independently authenticated
+audit evidence. The operator must remove the agent's direct upstream route.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
@@ -13,15 +16,23 @@ Place any existing local or remote MCP server behind Vizier to enforce strict de
 Install both GitHub Release archives, then run the installed proxy:
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.3/vizier-sdk-0.5.3.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.3/vizier-mcp-proxy-0.5.3.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-mcp-proxy-0.5.8.tgz
 npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \
-  --vizier https://vizier.vassiliy-lakhonin.workers.dev \
+  --vizier https://vizier.agendamcp.dpdns.org \
+  --grant-mode required --grant-file /operator/grant.jws \
+  --agent-id release-agent --principal-id platform-owner \
   --api-key $VIZIER_API_KEY
 ```
 
 Your AI agent (Claude Desktop, Cursor, LangChain, etc.) now connects to `http://127.0.0.1:8790/mcp` instead of the raw upstream MCP server.
+
+Before running, register the owner's public key and issue a matching short-lived
+grant using the [mandatory proxy setup](https://github.com/vassiliylakhonin/vizier/blob/main/docs/DELEGATION_GRANTS.md#protected-mcp-proxy).
+The grant must match the configured agent, principal, upstream ID and allowed
+tools. Keep the private signer and upstream credentials outside the agent.
+An API key alone does not permit forwarding in required-grant mode.
 
 ---
 
@@ -85,7 +96,7 @@ const proxy = createMcpEnforcementProxy({
 | --- | --- | --- | --- |
 | `--upstream <url>` | `VIZIER_PROXY_UPSTREAM_URL` | *(required)* | Upstream MCP server URL |
 | `--tools <list>` | `VIZIER_PROXY_ALLOWED_TOOLS` | *(required)* | Comma-separated list of allowed tools |
-| `--vizier <url>` | `VIZIER_BASE_URL` | `https://vizier.vassiliy-lakhonin.workers.dev` | Vizier authorization kernel URL |
+| `--vizier <url>` | `VIZIER_BASE_URL` | `https://vizier.agendamcp.dpdns.org` | Vizier authorization kernel URL |
 | `--api-key <key>` | `VIZIER_API_KEY` | *(required)* | Vizier integration API key |
 | `--port <port>` | `VIZIER_PROXY_PORT` | `8790` | Proxy listen port |
 | `--host <host>` | `VIZIER_PROXY_HOST` | `127.0.0.1` | Proxy listen host (`127.0.0.1` or `localhost`) |
@@ -107,5 +118,5 @@ const proxy = createMcpEnforcementProxy({
 
 ## 🌐 Links
 
-* **Live Action Playground**: [https://vizier.vassiliy-lakhonin.workers.dev/playground](https://vizier.vassiliy-lakhonin.workers.dev/playground)
+* **Live Action Playground**: [https://vizier.agendamcp.dpdns.org/playground](https://vizier.agendamcp.dpdns.org/playground)
 * **GitHub Repository**: [https://github.com/vassiliylakhonin/vizier](https://github.com/vassiliylakhonin/vizier)

@@ -1,13 +1,30 @@
 # Control one infrastructure action before an agent executes it
 
-This source-checkout pilot promotes one **already uploaded version of an existing
+This pilot promotes one **already uploaded version of an existing
 Cloudflare Worker** to 100% traffic. The operator pins the account, Worker,
 principal and agent. Every execution requires both a valid owner-signed scope
 grant and a signed human approval of the exact version and identities.
 
-The adapter is in `@vizier/gated-deploy` source. It is not included in the
-previous v0.5.7 release archives. No new hosted endpoint or automatic production
-workflow is enabled by adding this adapter.
+The v0.5.8 GitHub Release includes `@vizier/gated-deploy` and its
+`vizier-worker-deploy` CLI, alongside the matching SDK. The previous v0.5.7
+archives do not include this adapter. Installing it adds no hosted deployment
+endpoint and does not switch a production workflow.
+
+## Install without a repository checkout
+
+Use Node 24+ and install both archives (the npm scope is not published):
+
+```sh
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-gated-deploy-0.5.8.tgz
+npx --no-install vizier-worker-deploy prepare \
+  --scope node_modules/@vizier/gated-deploy/examples/scope.json \
+  --plan node_modules/@vizier/gated-deploy/examples/plan.json
+```
+
+Download the release archives and `SHA256SUMS` and verify the checksums before
+installing when working in a controlled environment. Use `vizier-worker-deploy`
+for the same prepare/submit/execute modes described below. The source-checkout
+wrapper `node scripts/worker-deploy-pilot.mjs` calls the same compiled CLI.
 
 ## Run the offline demonstration
 
@@ -18,8 +35,8 @@ npm ci
 npm run pilot:worker-deploy
 npm run build:packages
 node scripts/worker-deploy-pilot.mjs prepare \
-  --scope examples/worker-deploy-pilot/scope.json \
-  --plan examples/worker-deploy-pilot/plan.json
+  --scope packages/gated-deploy/examples/scope.json \
+  --plan packages/gated-deploy/examples/plan.json
 ```
 
 `pilot:worker-deploy` uses real SDK verification, HTTP handlers, P-256 signatures

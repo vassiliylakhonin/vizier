@@ -14,7 +14,7 @@ import { createMcpEnforcementProxy } from "./index.js";
 const MAX_BODY_BYTES = 64 * 1024;
 
 const helpText = `
-Vizier MCP Enforcement Proxy (v0.5.7)
+Vizier MCP Enforcement Proxy (v0.5.8)
 Deterministic authorization firewall for MCP servers and AI agents.
 
 Usage:
@@ -23,7 +23,7 @@ Usage:
 Options:
   --upstream <url>          Upstream MCP server URL (e.g. http://localhost:3000/mcp)
   --tools <list>            Comma-separated list of allowed tool names (e.g. "search,query_db")
-  --vizier <url>            Vizier base URL (default: https://vizier.vassiliy-lakhonin.workers.dev)
+  --vizier <url>            Vizier base URL (default: https://vizier.agendamcp.dpdns.org)
   --api-key <key>           Vizier API key (or env VIZIER_API_KEY)
   --port <port>             Proxy listen port (default: 8790)
   --host <host>             Proxy listen host (default: 127.0.0.1)
@@ -44,7 +44,7 @@ Environment Variables:
 const configSchema = z.strictObject({
   host: z.enum(["127.0.0.1", "localhost"]).default("127.0.0.1"),
   port: z.coerce.number().int().min(1).max(65_535).default(8_790),
-  vizierBaseUrl: z.string().url().default("https://vizier.vassiliy-lakhonin.workers.dev"),
+  vizierBaseUrl: z.string().url().default("https://vizier.agendamcp.dpdns.org"),
   vizierApiKey: z.string().min(1),
   integrationId: z.string().trim().min(1).max(256).default("mcp-proxy-integration"),
   clientBearerToken: z.string().min(16),
@@ -92,7 +92,7 @@ function loadConfig(): z.infer<typeof configSchema> {
   const config = configSchema.parse({
     host: values.host ?? process.env.VIZIER_PROXY_HOST ?? "127.0.0.1",
     port: values.port ?? process.env.VIZIER_PROXY_PORT ?? 8790,
-    vizierBaseUrl: values.vizier ?? process.env.VIZIER_BASE_URL ?? "https://vizier.vassiliy-lakhonin.workers.dev",
+    vizierBaseUrl: values.vizier ?? process.env.VIZIER_BASE_URL ?? "https://vizier.agendamcp.dpdns.org",
     vizierApiKey: values["api-key"] ?? process.env.VIZIER_API_KEY,
     integrationId: process.env.VIZIER_PROXY_INTEGRATION_ID ?? "mcp-proxy-integration",
     clientBearerToken: values.token ?? process.env.VIZIER_PROXY_CLIENT_TOKEN ?? generatedToken,

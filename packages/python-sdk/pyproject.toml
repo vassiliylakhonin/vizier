@@ -39,7 +39,7 @@ test = [
 
 [project.urls]
 Homepage = "https://github.com/vassiliylakhonin/vizier"
-Documentation = "https://vizier.vassiliy-lakhonin.workers.dev/docs"
+Documentation = "https://vizier.agendamcp.dpdns.org/docs"
 Repository = "https://github.com/vassiliylakhonin/vizier"
 
 [project.scripts]

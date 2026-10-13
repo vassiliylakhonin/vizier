@@ -1,0 +1,37 @@
+name: Agent deployment integration
+description: Discuss an assisted integration for one existing Worker deployment workflow.
+title: "[Integration] "
+body:
+  - type: markdown
+    attributes:
+      value: "This issue is public. Describe the workflow using redacted examples. Do not include credentials, tokens, private logs or source code. Pricing and scope are agreed separately."
+  - type: textarea
+    id: action
+    attributes:
+      label: What action does your agent execute?
+      description: Describe the deployment workflow and the person or role responsible for it.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What concrete problem are you trying to solve?
+      description: Include your existing control and the event, release or review that made this important.
+    validations:
+      required: true
+  - type: dropdown
+    id: sandbox
+    attributes:
+      label: Can you provide an existing isolated Worker sandbox?
+      options:
+        - "Yes, with a reviewed uploaded version"
+        - "Not yet"
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: How will deployment credentials stay outside the agent's control?
+      description: Describe the execution boundary and expected frequency without sharing secrets.
+    validations:
+      required: true

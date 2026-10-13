@@ -18,7 +18,7 @@
 import { readFileSync } from "node:fs";
 
 const ORIGIN =
-  process.env.VIZIER_ORIGIN ?? "https://vizier.vassiliy-lakhonin.workers.dev";
+  process.env.VIZIER_ORIGIN ?? "https://vizier.agendamcp.dpdns.org";
 const SESSION_VERSION = "2025-06-18";
 const STATELESS_VERSION = "2026-07-28";
 
