@@ -44,9 +44,13 @@ npx --no-install vizier-worker-deploy prepare \
 
 Preparation is local, uses synthetic IDs and needs no keys. Check `SHA256SUMS`
 on the release; follow the [integration and recovery guide](docs/WORKER_DEPLOY_PILOT.md)
-before submitting a real review or executing anything. This adapter is installed
+before submitting a real review or executing anything. The
+[live sandbox trace](docs/WORKER_DEPLOY_DEMO.md) shows eight scenarios against
+production Vizier and a disposable Cloudflare Worker, including a real API
+response mismatch fixed in v0.5.9. This adapter is installed
 in the operator's executor; the hosted MCP endpoint exposes verification, not
-cloud deployment. The offline demonstration simulates Cloudflare.
+cloud deployment. The automated offline suite simulates Cloudflare; the linked
+maintainer sandbox trace used the real API and is not external adoption.
 
 [Request a scoped integration](https://github.com/vassiliylakhonin/vizier/issues/new?template=worker-deploy-pilot.yml) ·
 [What an assisted pilot includes](docs/INTEGRATION_OFFER.md)

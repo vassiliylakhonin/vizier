@@ -1,0 +1,174 @@
+{
+  "started_at": "2026-10-13T11:37:51.731Z",
+  "finished_at": "2026-10-13T11:38:25.379Z",
+  "status": "passed",
+  "worker": "vizier-deploy-pilot-20261013",
+  "adapter_commit": "a376c9f975f5e405d511a93f45004ae5698c63a0",
+  "adapter_version": "0.5.9",
+  "adapter_compiled_sha256": "f0f3552a68d7ae7fd6ede5e370e18a6710974bbc857b524c23f6c41878f8918f",
+  "production_vizier": {
+    "origin": "https://vizier.agendamcp.dpdns.org",
+    "version": "v0.5.8",
+    "grant_mode": "required"
+  },
+  "reviewer_actor": "owner-authorized automated synthetic QA in separate reviewer process",
+  "scope_note": "Maintainer-controlled path test. Operator retains administrator bypass; not external adoption or adversarial OS containment.",
+  "versions": {
+    "A": "d8f5ddef-8a2c-4b28-884e-87e4be38b527",
+    "B": "0432c8fc-5b45-4177-a7ab-11aa1de2a584"
+  },
+  "source_sha256": {
+    "A": "bd32559263683ef897833c7be13b5daee35d60db8ea7c946851403d19589fe1f",
+    "B": "85340a585fe8ad5d2e1a009792bef4a174bac941300a105685eb1a791c53b871"
+  },
+  "client_restrictions": {
+    "filesystem_read_of_cloud_credentials_denied": true,
+    "direct_network_denied": true,
+    "secret_environment_absent": true,
+    "qualification": "Observed restrictions of this synthetic Node client, not a general sandbox guarantee."
+  },
+  "prior_v058_reconciliation": {
+    "source": "Captured real ID-only response and independently matched history; no automatic POST retry",
+    "prior_deployment_count": 2,
+    "prior_side_effects": "B deployed, then separately approved rollback to A; both were reported unknown by v0.5.8 and reconciled through history"
+  },
+  "cases": [
+    {
+      "name": "changed_version_after_approval",
+      "started_at": "2026-10-13T11:37:55.642Z",
+      "finished_at": "2026-10-13T11:37:57.502Z",
+      "result": {
+        "status": "stopped",
+        "reason": "AUTHORIZATION_FAILED_RECONCILE_APPROVAL",
+        "execution": "not_performed"
+      },
+      "cloud_deployment_requests": 0,
+      "cloud_history_unchanged": true
+    },
+    {
+      "name": "outside_worker_scope",
+      "started_at": "2026-10-13T11:37:58.465Z",
+      "finished_at": "2026-10-13T11:37:59.498Z",
+      "result": {
+        "status": "stopped",
+        "reason": "PLAN_OUTSIDE_SCOPE_OR_INVALID",
+        "execution": "not_performed"
+      },
+      "cloud_deployment_requests": 0,
+      "cloud_history_unchanged": true
+    },
+    {
+      "name": "create_resource_not_supported",
+      "started_at": "2026-10-13T11:38:00.507Z",
+      "finished_at": "2026-10-13T11:38:01.574Z",
+      "result": {
+        "status": "stopped",
+        "reason": "PLAN_OUTSIDE_SCOPE_OR_INVALID",
+        "execution": "not_performed"
+      },
+      "cloud_deployment_requests": 0,
+      "cloud_history_unchanged": true
+    },
+    {
+      "name": "expired_signed_grant",
+      "started_at": "2026-10-13T11:38:02.630Z",
+      "finished_at": "2026-10-13T11:38:04.105Z",
+      "result": {
+        "status": "stopped",
+        "reason": "POLICY_BLOCK",
+        "execution": "not_performed"
+      },
+      "cloud_deployment_requests": 0,
+      "cloud_history_unchanged": true
+    },
+    {
+      "name": "human_approval_missing",
+      "started_at": "2026-10-13T11:38:05.214Z",
+      "finished_at": "2026-10-13T11:38:06.217Z",
+      "result": {
+        "status": "stopped",
+        "reason": "AUTHORIZATION_REQUIRED",
+        "execution": "not_performed"
+      },
+      "cloud_deployment_requests": 0,
+      "cloud_history_unchanged": true
+    },
+    {
+      "name": "exact_approved_version",
+      "started_at": "2026-10-13T11:38:07.173Z",
+      "finished_at": "2026-10-13T11:38:16.126Z",
+      "result": {
+        "status": "deployment_created",
+        "execution": "acknowledged",
+        "deploymentId": "7b81df07-a4ae-4e61-9974-c4b526fba842",
+        "receiptId": "vrf_b5cb00ea-dc03-4b37-97b1-43d6f27afd87",
+        "approvalId": "rev_837df588-4e78-4b99-94eb-18ee4c69bd46"
+      },
+      "cloud_deployment_requests": 1,
+      "cloud_history_matches_acknowledgement": true,
+      "deployment": {
+        "id": "7b81df07-a4ae-4e61-9974-c4b526fba842",
+        "created_on": "2026-10-13T11:38:09.073291Z",
+        "strategy": "percentage",
+        "versions": [
+          {
+            "version_id": "0432c8fc-5b45-4177-a7ab-11aa1de2a584",
+            "percentage": 100
+          }
+        ]
+      },
+      "served_revision": {
+        "status": 200,
+        "revision": "B"
+      },
+      "review_hash": "c92be1c1d7c05bb4d828ef998c0ab9a1701f1f062fd7b809269970948d2ab979"
+    },
+    {
+      "name": "replayed_consumed_approval",
+      "started_at": "2026-10-13T11:38:17.223Z",
+      "finished_at": "2026-10-13T11:38:18.935Z",
+      "result": {
+        "status": "stopped",
+        "reason": "AUTHORIZATION_FAILED_RECONCILE_APPROVAL",
+        "execution": "not_performed"
+      },
+      "cloud_deployment_requests": 0,
+      "cloud_history_unchanged": true
+    },
+    {
+      "name": "concurrent_same_approval",
+      "started_at": "2026-10-13T11:38:20.868Z",
+      "finished_at": "2026-10-13T11:38:25.316Z",
+      "results": [
+        {
+          "status": "deployment_created",
+          "execution": "acknowledged",
+          "deploymentId": "3bc43ea8-566b-4ff5-ad92-16c0c0bf8a38",
+          "receiptId": "vrf_eca07724-0700-4319-9eba-5ada7d539dbb",
+          "approvalId": "rev_478d28e9-af49-46c0-94a6-52dcab02726c"
+        },
+        {
+          "status": "stopped",
+          "reason": "AUTHORIZATION_FAILED_RECONCILE_APPROVAL",
+          "execution": "not_performed"
+        }
+      ],
+      "cloud_deployment_requests": 1,
+      "new_cloud_deployments": 1,
+      "review_hash": "c92be1c1d7c05bb4d828ef998c0ab9a1701f1f062fd7b809269970948d2ab979"
+    }
+  ],
+  "total_adapter_cloud_requests": 2,
+  "total_adapter_history_reads": 2,
+  "final_probe": {
+    "status": 200,
+    "revision": "B"
+  },
+  "cleanup": {
+    "deleted_at": "2026-10-13T11:39:27.561Z",
+    "sandbox_deleted": true,
+    "inventory_restored_exactly": true,
+    "worker_count_before": 14,
+    "worker_count_after": 14
+  }
+}
