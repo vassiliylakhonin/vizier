@@ -169,6 +169,12 @@ Vizier as an optional MCP tool alone does not enforce a tool boundary.
 
 ## Interfaces and capabilities
 
+For a bounded infrastructure pilot, see [Worker version deployment](docs/WORKER_DEPLOY_PILOT.md).
+The source adapter pins one existing Worker and requires owner-signed scope plus
+human approval of the exact version before calling Cloudflare. The offline demo
+uses real authorization/review handlers and a simulated Cloudflare response;
+it creates no infrastructure and is not evidence of external adoption.
+
 | Surface | Role |
 | --- | --- |
 | REST `/v1/verify` | Action checks with deterministic policies, delegation provenance and request-bound receipts |

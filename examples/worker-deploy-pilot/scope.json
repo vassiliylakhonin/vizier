@@ -1,0 +1,6 @@
+{
+  "account_id": "0123456789abcdef0123456789abcdef",
+  "worker_name": "pilot-existing-worker",
+  "principal_id": "platform-owner",
+  "agent_id": "release-agent"
+}

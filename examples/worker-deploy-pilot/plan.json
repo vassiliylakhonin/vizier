@@ -1,0 +1,7 @@
+{
+  "operation": "deploy_worker_version",
+  "account_id": "0123456789abcdef0123456789abcdef",
+  "worker_name": "pilot-existing-worker",
+  "version_id": "023e105f-2a42-4f8b-a1c1-73f6a2a30c0f",
+  "percentage": 100
+}
