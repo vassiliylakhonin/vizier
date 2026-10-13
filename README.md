@@ -32,11 +32,11 @@ exact uploaded version before changing its traffic. Changed versions, out-of-sco
 targets, expired permissions and repeated approval claims stop before execution.
 Keep cloud credentials and the executor outside the agent's control.
 
-Install the **v0.5.8** SDK and deployment adapter from GitHub Release archives
+Install the **v0.5.9** SDK and deployment adapter from GitHub Release archives
 (Node 24+; the `@vizier` npm scope is not published):
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-gated-deploy-0.5.8.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-gated-deploy-0.5.9.tgz
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@vizier/gated-deploy/examples/scope.json \
   --plan node_modules/@vizier/gated-deploy/examples/plan.json
@@ -44,9 +44,13 @@ npx --no-install vizier-worker-deploy prepare \
 
 Preparation is local, uses synthetic IDs and needs no keys. Check `SHA256SUMS`
 on the release; follow the [integration and recovery guide](docs/WORKER_DEPLOY_PILOT.md)
-before submitting a real review or executing anything. This adapter is installed
+before submitting a real review or executing anything. The
+[live sandbox trace](docs/WORKER_DEPLOY_DEMO.md) shows eight scenarios against
+production Vizier and a disposable Cloudflare Worker, including a real API
+response mismatch fixed in v0.5.9. This adapter is installed
 in the operator's executor; the hosted MCP endpoint exposes verification, not
-cloud deployment. The offline demonstration simulates Cloudflare.
+cloud deployment. The automated offline suite simulates Cloudflare; the linked
+maintainer sandbox trace used the real API and is not external adoption.
 
 [Request a scoped integration](https://github.com/vassiliylakhonin/vizier/issues/new?template=worker-deploy-pilot.yml) ·
 [What an assisted pilot includes](docs/INTEGRATION_OFFER.md)
@@ -110,12 +114,12 @@ to the archive integration; they are not general replay guarantees from Vizier.
 
 ## Start with signed delegation
 
-**Experimental v0.5.8.** TypeScript SDK, deployment adapter and MCP proxy packages are available as
-[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.8),
+**Experimental v0.5.9.** TypeScript SDK, deployment adapter and MCP proxy packages are available as
+[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.9),
 with `SHA256SUMS`. The `@vizier` npm scope is not currently published.
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz
 ```
 
 First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up)
@@ -191,7 +195,7 @@ cover the full operator procedure.
 For an MCP boundary, install both release archives:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-mcp-proxy-0.5.8.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-mcp-proxy-0.5.9.tgz
 ```
 
 Use the [mandatory proxy profile](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056)

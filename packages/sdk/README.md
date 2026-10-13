@@ -11,7 +11,7 @@ Vizier verifies proposed agent actions (purchases, database queries, deployments
 ## 📦 Installation
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz
 ```
 
 ---

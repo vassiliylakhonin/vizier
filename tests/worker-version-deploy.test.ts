@@ -255,6 +255,42 @@ describe("Worker version deployment pilot — offline execution boundary", () =>
     expect(cloud).toHaveBeenCalledTimes(1);
   });
 
+  it("confirms the real ID-only Cloudflare acknowledgement through deployment history without a second POST", async () => {
+    const captured = JSON.parse(readFileSync(new URL("./fixtures/cloudflare-deployment-create-2026-10-13.json", import.meta.url), "utf8"));
+    const id = captured.result.id as string;
+    cloud.mockImplementation(async (_url, init) => init?.method === "GET"
+      ? Response.json({ success: true, errors: [], result: { deployments: [
+        { id, strategy: "percentage", versions: [{ version_id: plan.version_id, percentage: 100 }] },
+      ] } })
+      : Response.json(captured));
+    const result = await deployer()({ plan, grant, approval: await approvalFor() });
+    expect(result).toMatchObject({ status: "deployment_created", deploymentId: id });
+    expect(cloud.mock.calls.map(call => call[1]?.method)).toEqual(["POST", "GET"]);
+    expect(cloud.mock.calls[1]![0]).toBe(cloud.mock.calls[0]![0]);
+    expect(cloud.mock.calls[1]![1]!.body).toBeUndefined();
+    expect(cloud.mock.calls[1]![1]!.redirect).toBe("error");
+    expect(cloud.mock.calls[1]![1]!.signal).toBe(cloud.mock.calls[0]![1]!.signal);
+  });
+
+  it.each(["missing ID", "wrong ID", "wrong version", "wrong percentage", "duplicate ID", "HTTP failure", "non-JSON", "response loss"])("keeps an ID-only acknowledgement unresolved after history %s", async kind => {
+    const id = deploymentId;
+    cloud.mockImplementation(async (_url, init) => {
+      if (init?.method === "POST") return Response.json({ success: true, errors: [], result: { id } });
+      if (kind === "response loss") throw new Error("Synthetic history response loss");
+      if (kind === "HTTP failure") return Response.json({ success: false }, { status: 503 });
+      if (kind === "non-JSON") return new Response("invalid");
+      const row = { id: kind === "wrong ID" ? "123e105f-2a42-4f8b-a1c1-73f6a2a30c0f" : id,
+        strategy: "percentage", versions: [{ version_id: kind === "wrong version" ? otherVersion : plan.version_id,
+          percentage: kind === "wrong percentage" ? 50 : 100 }] };
+      return Response.json({ success: true, errors: [], result: { deployments:
+        kind === "missing ID" ? [] : kind === "duplicate ID" ? [row, row] : [row] } });
+    });
+    const input = { plan, grant, approval: await approvalFor() };
+    expect(await deployer()(input)).toMatchObject({ status: "reconcile_required", execution: "unknown", deploymentId: id });
+    expect(await deployer()(input)).toMatchObject({ status: "stopped" });
+    expect(cloud.mock.calls.map(call => call[1]?.method)).toEqual(["POST", "GET"]);
+  });
+
   it("admits one of two concurrent claimants through separate executors", async () => {
     const input = { plan, grant, approval: await approvalFor() };
     const results = await Promise.all([deployer()(input), deployer()(input)]);

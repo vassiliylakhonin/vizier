@@ -95,16 +95,27 @@ export type WorkerVersionDeploymentResult =
       readonly execution: "unknown";
       readonly receiptId: string;
       readonly approvalId: string;
+      readonly deploymentId?: string;
     };
 
-const cloudflareResponse = z.object({
+const deploymentSchema = z.object({
+  id: z.string().uuid(),
+  strategy: z.literal("percentage"),
+  versions: z.array(z.object({ version_id: versionId, percentage: z.literal(100) })).length(1),
+});
+const acknowledgementSchema = z.object({
   success: z.literal(true),
   errors: z.array(z.unknown()).length(0),
   result: z.object({
     id: z.string().uuid(),
-    strategy: z.literal("percentage"),
-    versions: z.array(z.object({ version_id: versionId, percentage: z.literal(100) })).length(1),
+    strategy: z.unknown().optional(),
+    versions: z.unknown().optional(),
   }),
+});
+const historySchema = z.object({
+  success: z.literal(true),
+  errors: z.array(z.unknown()).length(0),
+  result: z.object({ deployments: z.array(z.unknown()).max(1000) }),
 });
 
 /**
@@ -159,25 +170,47 @@ export function createWorkerVersionDeployer(options: WorkerVersionDeploymentOpti
       // A failed/lost claim may have consumed approval. Never auto-retry it.
       return stop("AUTHORIZATION_FAILED_RECONCILE_APPROVAL");
     }
+    let acknowledgedId: string | undefined;
     try {
+      const signal = AbortSignal.timeout(15_000);
+      const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
       const response = await cloudflareFetch(url, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers,
         body,
         redirect: "error",
-        signal: AbortSignal.timeout(15_000),
+        signal,
       });
-      const result = cloudflareResponse.safeParse(await response.json());
-      if (response.ok && result.success && result.data.result.versions[0]?.version_id === plan.version_id) {
+      const result = acknowledgementSchema.safeParse(await response.json());
+      let deployment: unknown;
+      if (response.ok && result.success) {
+        acknowledgedId = result.data.result.id;
+        deployment = result.data.result;
+        // The real API may acknowledge only {id}. Confirm it by reading history;
+        // do not infer the version or issue another deployment request.
+        if (result.data.result.strategy === undefined && result.data.result.versions === undefined) {
+          const historyResponse = await cloudflareFetch(url, { method: "GET", headers, redirect: "error", signal });
+          const history = historySchema.safeParse(await historyResponse.json());
+          if (historyResponse.ok && history.success) {
+            const matching = history.data.result.deployments.filter(row =>
+              typeof row === "object" && row !== null && "id" in row && row.id === acknowledgedId,
+            );
+            if (matching.length === 1) deployment = matching[0];
+          }
+        }
+      }
+      const confirmed = deploymentSchema.safeParse(deployment);
+      if (confirmed.success && confirmed.data.id === acknowledgedId && confirmed.data.versions[0]?.version_id === plan.version_id) {
         return {
           status: "deployment_created", execution: "acknowledged",
-          deploymentId: result.data.result.id, receiptId: receipt.id, approvalId: approval.id,
+          deploymentId: confirmed.data.id, receiptId: receipt.id, approvalId: approval.id,
         };
       }
     } catch { /* The cloud may have committed the request before response loss. */ }
     return {
       status: "reconcile_required", execution: "unknown",
       receiptId: receipt.id, approvalId: approval.id,
+      ...(acknowledgedId === undefined ? {} : { deploymentId: acknowledgedId }),
     };
   };
 }
