@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.9 — 2026-10-13
+
+- Fix the live Cloudflare deployment response boundary: its POST can return only
+  `{id}`, so confirm that ID against one exact version/percentage history row
+  through a read-only GET. Keep uncertain/mismatched history unresolved and never
+  repeat the deployment POST automatically.
+- Return a known deployment ID with an unresolved outcome for reconciliation.
+- Capture the real response shape in a regression fixture and cover missing,
+  mismatched, ambiguous and unavailable history with real authorization/review
+  handlers. The published example response had incorrectly suggested that the
+  POST always returned the full deployment.
+
 ## 0.5.8 — 2026-10-13
 
 - Add an operator-owned Worker version-deployment adapter with owner-signed scope,

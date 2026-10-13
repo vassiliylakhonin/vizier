@@ -5,7 +5,7 @@ Cloudflare Worker** to 100% traffic. The operator pins the account, Worker,
 principal and agent. Every execution requires both a valid owner-signed scope
 grant and a signed human approval of the exact version and identities.
 
-The v0.5.8 GitHub Release includes `@vizier/gated-deploy` and its
+The v0.5.9 GitHub Release includes `@vizier/gated-deploy` and its
 `vizier-worker-deploy` CLI, alongside the matching SDK. The previous v0.5.7
 archives do not include this adapter. Installing it adds no hosted deployment
 endpoint and does not switch a production workflow.
@@ -15,7 +15,7 @@ endpoint and does not switch a production workflow.
 Use Node 24+ and install both archives (the npm scope is not published):
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-gated-deploy-0.5.8.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-gated-deploy-0.5.9.tgz
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@vizier/gated-deploy/examples/scope.json \
   --plan node_modules/@vizier/gated-deploy/examples/plan.json
@@ -117,6 +117,13 @@ Execution proceeds as follows:
    uploads, resource creation or API-key creation are supported. Bound waits
    are 10 seconds for authorization steps and 15 seconds for Cloudflare.
 
+Cloudflare may acknowledge the POST with only a deployment ID. In that case,
+the adapter makes one GET to the same fixed deployments endpoint and requires
+exactly one history row with that ID, the intended version and 100% traffic.
+POST and GET share the same 15-second deadline. Missing, ambiguous, mismatched
+or unavailable history remains `reconcile_required`; no second POST is sent.
+When known, the returned deployment ID helps the operator reconcile the outcome.
+
 The code snapshots the plan and scope before awaiting network responses. The
 Cloudflare credential is sent only to the fixed Cloudflare origin. Output
 contains decision/outcome IDs, never credentials, grants or approval tokens.
@@ -150,7 +157,7 @@ the identity assumption, even though exact human approval is still required.
 | Result | Meaning | Operator action |
 | --- | --- | --- |
 | `stopped / not_performed` | No Cloudflare request was issued by this invocation. A failed claim may nevertheless have consumed the approval. | Inspect the reason and review state. Do not assume an approval is reusable. |
-| `deployment_created / acknowledged` | Cloudflare returned success and the exact requested version/percentage with a deployment ID. | Record the IDs and independently check runtime/health. This is not proof of healthy application behavior. |
+| `deployment_created / acknowledged` | Cloudflare returned success and the exact version/percentage in the response or in history matched to its acknowledged ID. | Record the IDs and independently check runtime/health. This is not proof of healthy application behavior. |
 | `reconcile_required / unknown` | A cloud request was attempted but the exact outcome was not confirmed. | Inspect Cloudflare deployment history before any new approval or execution. Never automatically retry. |
 
 Approval consumption and the Cloudflare request are not one atomic transaction.
