@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.vassiliylakhonin/vizier",
   "title": "Vizier",
-  "description": "Check owner-signed permissions before AI agent actions; ALLOW/BLOCK/REVIEW and request-bound receipts.",
+  "description": "Owner-signed permissions for AI agent actions; ALLOW/BLOCK/REVIEW with request-bound receipts.",
   "version": "0.5.8",
   "websiteUrl": "https://vizier.agendamcp.dpdns.org/docs",
   "remotes": [

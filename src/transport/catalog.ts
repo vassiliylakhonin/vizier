@@ -106,7 +106,7 @@ export function createMcpServerManifest(
     name: "io.github.vassiliylakhonin/vizier",
     title: "Vizier",
     description:
-      "Check owner-signed permissions before AI agent actions; ALLOW/BLOCK/REVIEW and request-bound receipts.",
+      "Owner-signed permissions for AI agent actions; ALLOW/BLOCK/REVIEW with request-bound receipts.",
     version: SERVICE_VERSION,
     websiteUrl: `${origin}/docs`,
     remotes: [
