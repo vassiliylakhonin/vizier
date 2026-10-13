@@ -18,11 +18,43 @@ deployment, repository write, database change, message, or payment API call.
 A continuously running agent can receive short-lived permissions for specific
 actions and targets while the owner keeps control of the signing key.
 
-[Playground](https://vizier.vassiliy-lakhonin.workers.dev/playground) ·
-[Live API reference](https://vizier.vassiliy-lakhonin.workers.dev/docs) ·
-[OpenAPI](https://vizier.vassiliy-lakhonin.workers.dev/openapi.json) ·
+[Playground](https://vizier.agendamcp.dpdns.org/playground) ·
+[Live API reference](https://vizier.agendamcp.dpdns.org/docs) ·
+[OpenAPI](https://vizier.agendamcp.dpdns.org/openapi.json) ·
 [Delegation setup](docs/DELEGATION_GRANTS.md) ·
 [Threat model](docs/THREAT_MODEL.md)
+
+## Control an agent's infrastructure deployment
+
+For platform and security teams operating a DevOps agent: pin one existing
+Cloudflare Worker and require owner-signed scope plus human approval of the
+exact uploaded version before changing its traffic. Changed versions, out-of-scope
+targets, expired permissions and repeated approval claims stop before execution.
+Keep cloud credentials and the executor outside the agent's control.
+
+Install the **v0.5.8** SDK and deployment adapter from GitHub Release archives
+(Node 24+; the `@vizier` npm scope is not published):
+
+```sh
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-gated-deploy-0.5.8.tgz
+npx --no-install vizier-worker-deploy prepare \
+  --scope node_modules/@vizier/gated-deploy/examples/scope.json \
+  --plan node_modules/@vizier/gated-deploy/examples/plan.json
+```
+
+Preparation is local, uses synthetic IDs and needs no keys. Check `SHA256SUMS`
+on the release; follow the [integration and recovery guide](docs/WORKER_DEPLOY_PILOT.md)
+before submitting a real review or executing anything. This adapter is installed
+in the operator's executor; the hosted MCP endpoint exposes verification, not
+cloud deployment. The offline demonstration simulates Cloudflare.
+
+[Request a scoped integration](https://github.com/vassiliylakhonin/vizier/issues/new?template=worker-deploy-pilot.yml) ·
+[What an assisted pilot includes](docs/INTEGRATION_OFFER.md)
+
+The paid offer is an assisted integration for one agreed workflow. Hosted
+subscription and ongoing support are follow-up options to scope with the buyer;
+there is no automated checkout or self-service paid plan. Code remains MIT.
+No external customer adoption or IoT malware protection is claimed.
 
 ## How it works
 
@@ -78,12 +110,12 @@ to the archive integration; they are not general replay guarantees from Vizier.
 
 ## Start with signed delegation
 
-**Experimental v0.5.7.** TypeScript SDK and MCP proxy packages are available as
-[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.7),
+**Experimental v0.5.8.** TypeScript SDK, deployment adapter and MCP proxy packages are available as
+[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.8),
 with `SHA256SUMS`. The `@vizier` npm scope is not currently published.
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.7/vizier-sdk-0.5.7.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz
 ```
 
 First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up)
@@ -108,7 +140,7 @@ import { readFile } from "node:fs/promises";
 import { Vizier } from "@vizier/sdk";
 
 const client = new Vizier({
-  baseUrl: "https://vizier.vassiliy-lakhonin.workers.dev",
+  baseUrl: "https://vizier.agendamcp.dpdns.org",
   apiKey: process.env.VIZIER_API_KEY,
 });
 
@@ -159,7 +191,7 @@ cover the full operator procedure.
 For an MCP boundary, install both release archives:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.7/vizier-sdk-0.5.7.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.7/vizier-mcp-proxy-0.5.7.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-sdk-0.5.8.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.8/vizier-mcp-proxy-0.5.8.tgz
 ```
 
 Use the [mandatory proxy profile](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056)
@@ -169,21 +201,27 @@ Vizier as an optional MCP tool alone does not enforce a tool boundary.
 
 ## Interfaces and capabilities
 
+For a bounded infrastructure pilot, see [Worker version deployment](docs/WORKER_DEPLOY_PILOT.md).
+The installable adapter pins one existing Worker and requires owner-signed scope plus
+human approval of the exact version before calling Cloudflare. The offline demo
+uses real authorization/review handlers and a simulated Cloudflare response;
+it creates no infrastructure and is not evidence of external adoption.
+
 | Surface | Role |
 | --- | --- |
 | REST `/v1/verify` | Action checks with deterministic policies, delegation provenance and request-bound receipts |
 | TypeScript SDK | Validates response contracts and bindings; includes explicit human-review helpers |
 | [Python SDK](packages/python-sdk) | Standard-library client, function guards and framework adapters |
-| MCP service | Discover and call verification tools; [manifest](https://vizier.vassiliy-lakhonin.workers.dev/.well-known/mcp.json) |
+| MCP service | Discover and call verification tools; [manifest](https://vizier.agendamcp.dpdns.org/.well-known/mcp.json) |
 | MCP enforcement proxy | Intercepts configured tool calls, validates authorization, and forwards permitted calls |
-| A2A | Verification adapter and [agent card](https://vizier.vassiliy-lakhonin.workers.dev/.well-known/agent-card.json) |
+| A2A | Verification adapter and [agent card](https://vizier.agendamcp.dpdns.org/.well-known/agent-card.json) |
 | Human review queue | Separate reviewer credential, signed approval tokens and atomic server claims |
 
 Policies cover permitted actions, targets, amount constraints, sensitive
 operations and configured review requirements. SDK/proxy circuit breakers can
 limit repeated tool calls and session budgets. Additional review workflows and
 financial reservations have their own contracts and deployment requirements;
-see [the live reference](https://vizier.vassiliy-lakhonin.workers.dev/docs) and
+see [the live reference](https://vizier.agendamcp.dpdns.org/docs) and
 [financial reservation limitations](docs/FINANCIAL_RESERVATIONS.md).
 
 ## Receipts and trust boundary

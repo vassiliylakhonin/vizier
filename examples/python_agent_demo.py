@@ -19,7 +19,7 @@ def main():
     print("=================================================================\n")
 
     # In local testing or against production edge
-    vizier_url = os.environ.get("VIZIER_BASE_URL", "https://vizier.vassiliy-lakhonin.workers.dev")
+    vizier_url = os.environ.get("VIZIER_BASE_URL", "https://vizier.agendamcp.dpdns.org")
     api_key = os.environ.get("VIZIER_API_KEY")
 
     client = VizierClient(base_url=vizier_url, api_key=api_key)

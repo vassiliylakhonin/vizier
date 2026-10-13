@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.8 — 2026-10-13
+
+- Add an operator-owned Worker version-deployment adapter with owner-signed scope,
+  exact human approval, transactional claim, fixed Cloudflare endpoint and
+  explicit recovery after uncertain execution outcomes.
+- Ship the deployment adapter, CLI and synthetic preparation fixtures as a
+  third installable GitHub Release archive alongside SDK and MCP proxy.
+- Publish the integration guide and scoped paid-integration offer in the README
+  and machine-readable guidance. Update onboarding links to the custom domain
+  and distinguish unsigned verification receipts from signed review tokens.
+- Exercise real SDK/HTTP authorization and local review storage in 44 offline
+  cases; Cloudflare is simulated. No external adoption or live pilot is claimed.
+
 ## 0.5.7 — 2026-10-09
 
 - Publish the actual signed-grant policy in both MCP discovery profiles, tool metadata and public /docs, with synthetic inputs and owner setup steps. Explain anonymous evaluation, integration credentials and principal delegation separately; invalid operator policy stays fail-closed.

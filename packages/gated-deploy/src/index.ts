@@ -15,6 +15,8 @@ import {
   hashCanonicalJson,
 } from "@vizier/sdk";
 
+export * from "./worker-version.js";
+
 export interface DeployMetadata {
   readonly commit: string;
   readonly dirty: boolean;

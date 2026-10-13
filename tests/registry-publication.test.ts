@@ -13,7 +13,8 @@ function run(server: unknown, status = 200) {
 
 function revision() {
   const server = structuredClone(manifest);
-  server.version = "0.5.8-registry.1";
+  const [major, minor, patch] = manifest.version.split(".").map(Number);
+  server.version = `${major}.${minor}.${patch + 1}-registry.1`;
   // Registry omits the optional false value.
   delete server.remotes[0].headers[0].isRequired;
   return server;
@@ -35,6 +36,12 @@ describe("automatic Registry publication after metadata-only migration", () => {
     const result = run(server);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("would publish");
+  });
+
+  it("publishes the new stable service version rather than accepting its earlier prerelease", () => {
+    const server = revision();
+    server.version = `${manifest.version}-registry.1`;
+    expect(run(server).stdout).toContain("would publish");
   });
 
   it("fails when Registry is unavailable", () => {

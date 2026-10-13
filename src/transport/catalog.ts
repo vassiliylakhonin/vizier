@@ -96,8 +96,8 @@ export function createAiCatalog(origin: string): Readonly<Record<string, unknown
 // The same document `mcp-publisher` uploads from server.json at the repository
 // root, served from the origin so a client that reached the Worker first can
 // learn how to connect without going through the registry. Tests keep the two
-// copies identical. No `repository` block: the source repository is private, and
-// a registry entry pointing at a URL that answers 404 is worse than none.
+// copies identical. The Worker deployment pilot is a separately installed
+// operator-side adapter, not another hosted MCP tool.
 export function createMcpServerManifest(
   origin: string,
 ): Readonly<Record<string, unknown>> {
@@ -106,7 +106,7 @@ export function createMcpServerManifest(
     name: "io.github.vassiliylakhonin/vizier",
     title: "Vizier",
     description:
-      "Deterministic authorization for one proposed AI agent action, returned with a signed receipt.",
+      "Owner-signed permissions for AI agent actions; ALLOW/BLOCK/REVIEW with request-bound receipts.",
     version: SERVICE_VERSION,
     websiteUrl: `${origin}/docs`,
     remotes: [
@@ -130,7 +130,11 @@ export function createMcpServerManifest(
 export function createVizierLlmsTxt(origin: string): string {
   return `# Vizier
 
-> Deterministic authorization for proposed AI agent actions, with an authenticated Action Covenant lifecycle and signed authorization and reported-outcome receipts.
+> Check owner-signed permissions before AI agent tool calls. ALLOW/BLOCK/REVIEW responses bind the exact request; the ordinary verification receipt is unsigned. The operator's integration enforces the decision.
+
+## Infrastructure deployment pilot
+- [Worker version deployment](https://github.com/vassiliylakhonin/vizier/blob/main/docs/WORKER_DEPLOY_PILOT.md): installable operator-side adapter for one existing Cloudflare Worker, owner-signed scope and human approval of the exact version. It is not a hosted deployment tool.
+- [Scoped integration offer](https://github.com/vassiliylakhonin/vizier/blob/main/docs/INTEGRATION_OFFER.md): assisted setup for one real workflow, by agreement. No self-service subscription or customer adoption is claimed.
 
 ## Discovery & Standards
 - [ARD (Agent Resource Discovery)](${origin}/.well-known/ard.json): Machine-readable resource catalog.
@@ -150,7 +154,7 @@ export function createVizierLlmsTxt(origin: string): string {
 - [verify-agent-action](${origin}/docs): deterministic allow/block verdicts before tool execution.
 - [activate-action-covenant](${origin}/docs): bind delegated authority, evidence, and scope to action sessions.
 - [record-action-outcome](${origin}/docs): post-execution receipt binding for audit trails.
-- [signed-receipts](${origin}/docs): ECDSA/Ed25519 compact JWS receipts for cryptographic integrity and verifiable action provenance.
+- [signed-receipts](${origin}/docs): ES256 human-review and legacy covenant tokens; legacy covenant authorization is unavailable in required-grant mode. Ordinary verification receipts are unsigned.
 `;
 }
 

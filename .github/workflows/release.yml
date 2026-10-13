@@ -44,20 +44,19 @@ jobs:
         run: |
           npm pack --dry-run --workspace @vizier/sdk
           npm pack --dry-run --workspace @vizier/mcp-proxy
+          npm pack --dry-run --workspace @vizier/gated-deploy
 
       - name: Build installable release archives
         run: |
           mkdir -p release-archives
           npm pack --workspace @vizier/sdk --pack-destination release-archives
           npm pack --workspace @vizier/mcp-proxy --pack-destination release-archives
+          npm pack --workspace @vizier/gated-deploy --pack-destination release-archives
           cd release-archives
           sha256sum *.tgz > SHA256SUMS
 
       - name: Verify archives install without a published Vizier scope
-        run: |
-          npm install --prefix "$RUNNER_TEMP/vizier-archive-smoke" --ignore-scripts "$GITHUB_WORKSPACE"/release-archives/*.tgz
-          cd "$RUNNER_TEMP/vizier-archive-smoke"
-          node --input-type=module -e 'import {Vizier} from "@vizier/sdk"; if(typeof Vizier.prototype.submitHumanReview !== "function" || typeof Vizier.prototype.claimHumanReview !== "function" || typeof Vizier.prototype.reconcileFinancialTransaction !== "function") process.exit(1);'
+        run: node scripts/check-release-archives.mjs release-archives
 
       - name: Publish archives to GitHub Release
         if: github.event_name == 'push'
@@ -65,7 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release view "$RELEASE_TAG" || gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Installable SDK archives; see SHA256SUMS. Registry publication is reported separately."
+          gh release view "$RELEASE_TAG" || gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Installable SDK, MCP proxy and Worker deployment adapter/CLI archives; see SHA256SUMS. Registry publication is reported separately."
           gh release upload "$RELEASE_TAG" release-archives/* --clobber
 
       - name: Report archive-only distribution
@@ -85,6 +84,7 @@ jobs:
           else
             npm publish --workspace @vizier/sdk --access public
             npm publish --workspace @vizier/mcp-proxy --access public
+            npm publish --workspace @vizier/gated-deploy --access public
           fi
 
       - name: Verify published npm packages install cleanly
@@ -95,7 +95,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/npm-install-test"
           cd "$RUNNER_TEMP/npm-install-test"
           for attempt in {1..8}; do
-            if npm install --no-save --registry https://registry.npmjs.org "@vizier/sdk@${TARGET_VERSION}" "@vizier/mcp-proxy@${TARGET_VERSION}"; then
+            if npm install --no-save --registry https://registry.npmjs.org "@vizier/sdk@${TARGET_VERSION}" "@vizier/mcp-proxy@${TARGET_VERSION}" "@vizier/gated-deploy@${TARGET_VERSION}"; then
               echo "npm packages installed successfully at version ${TARGET_VERSION}."
               exit 0
             fi

@@ -116,7 +116,7 @@ node scripts/mint-grant.mjs sign --key principal.jwk.json --grant grant.json --t
 ### 4. The agent presents it
 
 ```bash
-curl -sS https://vizier.vassiliy-lakhonin.workers.dev/v1/verify \
+curl -sS https://vizier.agendamcp.dpdns.org/v1/verify \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $VIZIER_API_KEY" \
   -d '{ "agent": {"id":"procurement-agent-01","owner":"acme-corp"},

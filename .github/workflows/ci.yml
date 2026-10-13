@@ -33,6 +33,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Verify installable release archives
+        run: |
+          mkdir -p release-archives
+          npm pack --workspace @vizier/sdk --pack-destination release-archives
+          npm pack --workspace @vizier/mcp-proxy --pack-destination release-archives
+          npm pack --workspace @vizier/gated-deploy --pack-destination release-archives
+          node scripts/check-release-archives.mjs release-archives
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
