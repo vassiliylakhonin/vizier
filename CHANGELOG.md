@@ -32,6 +32,8 @@
 
 ## Unreleased
 
+- Add explicit hosted MCP and pinned stdio-bridge connection guidance, distinguish the Python helper catalog and receipt limitations, and declare the Glama maintainer. Runtime authorization and package versions are unchanged.
+
 - Recognize an already-published registry-only revision during automatic deployment only when its complete metadata matches the source manifest, including endpoint and authorization header semantics. Keep mismatched metadata and Registry outages distinct from success.
 
 - Move the hosted MCP Registry remote and public website metadata to vizier.agendamcp.dpdns.org. Publish a registry-only revision while keeping service/package versions, signing keys, authorization and workers.dev compatibility.
