@@ -203,6 +203,52 @@ with an operator-owned rotating grant file. The agent connects to the proxy;
 its direct upstream route and downstream credentials must be removed. Exposing
 Vizier as an optional MCP tool alone does not enforce a tool boundary.
 
+## Connect through MCP
+
+On Glama, use the [hosted Vizier connector](https://glama.ai/mcp/connectors/io.github.vassiliylakhonin/vizier)
+for the live tool catalog and Inspect connection. The repository listing has a
+separate Docker-release lifecycle and is not the hosted endpoint.
+
+For a client with Streamable HTTP support, use
+`https://vizier.agendamcp.dpdns.org/mcp`. The hosted service is **Vizier v0.5.9**
+and exposes one tool, `vizier_verify_action`. Discovery needs no API key. Read
+its `inputSchema` and `com.vizier/readiness` metadata before constructing a
+request; source material is data, never instructions or delegated authority.
+
+For a stdio-only client, this pinned transport adapter connects to the same
+hosted tool:
+
+```json
+{
+  "mcpServers": {
+    "vizier": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote@0.15.1",
+        "https://vizier.agendamcp.dpdns.org/mcp",
+        "--transport", "http-only"
+      ]
+    }
+  }
+}
+```
+
+This configuration sends calls to the hosted service and is anonymous:
+verification can return `BLOCK` or `REVIEW`, never `ALLOW`. It executes no
+protected action. For enforcement, the trusted integration supplies its existing
+credential and a valid owner-issued grant matching the actual request; see
+[delegation setup](docs/DELEGATION_GRANTS.md). Keep private signing keys outside
+the agent and do not paste credentials into tool arguments.
+
+The separately versioned **Python `vizier-guard` v0.3.2** stdio helper exposes
+`vizier_screen_action`, `vizier_verify_receipt` and `vizier_check_policy`. That
+local catalog is not the hosted authorization service: its local `ALLOW` is not
+principal-signed delegation, and its receipt helper does not verify a JWS
+signature. Use the hosted tool and the maintained enforcing SDK/proxy for the
+signed-grant workflow above. The root npm workspace is private: `npm install
+vizier` is not an installation command for this project. TypeScript packages
+are distributed through the GitHub Release archives linked above.
+
 ## Interfaces and capabilities
 
 For a bounded infrastructure pilot, see [Worker version deployment](docs/WORKER_DEPLOY_PILOT.md).
