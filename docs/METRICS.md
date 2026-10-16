@@ -66,3 +66,7 @@ The private telemetry vault collects this stream and the existing authenticated
 including internal use; they must not be presented as daily external demand or
 added to request counts. Console observations are lower bounds and can be lost
 before collection. Existing operational audit and legacy logs are separate.
+
+The category is emitted as `access_mode`: the provider transforms the reserved
+`authorization` field. Historical transformed labels are unknown, not proof of
+accepted authentication.

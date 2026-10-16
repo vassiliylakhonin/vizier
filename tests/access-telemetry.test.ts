@@ -16,7 +16,8 @@ describe('content-free standalone access telemetry', () => {
         const events=log.mock.calls.map(c=>{try{return typeof c[0]==='string'?JSON.parse(c[0]):c[0]}catch{return null}})
           .filter(e=>e?.event==='agenda_service_access');
         expect(events).toHaveLength(1);
-        expect(events[0]).toMatchObject({service:'vizier',operation:method,outcome:expected,caller_kind:'owner_synthetic'});
+        expect(events[0]).toMatchObject({service:'vizier',operation:method,outcome:expected,caller_kind:'owner_synthetic',access_mode:'unverified'});
+        expect(events[0]).not.toHaveProperty('authorization');
         expect(JSON.stringify(events)).not.toMatch(/private-query|private-user-agent|private-path|private-id|private-tool|private-secret/);
       }
       log.mockClear();
