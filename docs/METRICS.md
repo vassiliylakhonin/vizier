@@ -50,3 +50,19 @@ On 2026-08-09, the first gated deployment completed from Git commit `6fbf77d`.
 Vizier returned `ALLOW`, and Cloudflare created Worker version
 `954622cc-7251-4fa7-b820-0a5293f1066d`. This is internal dogfood. It is not an
 independent integration, customer pilot, or market validation.
+
+## Content-free access observations
+
+Hosted access emits `agenda_service_access` v1 with service, a random event ID,
+UTC timestamp, finite operation/outcome labels and HTTP status. MCP discovery is
+separate from `tools/call`; a JSON-RPC error in HTTP 200 is not success. The new
+stream contains no input, document, URL/query, raw header, caller fingerprint,
+API key, receipt or agent identifier. `credential_present` means only that a
+header was supplied, not that authentication succeeded. Owner/probe labels are
+self-declared heuristics and do not grant permission or establish identity.
+
+The private telemetry vault collects this stream and the existing authenticated
+`/v1/insights` aggregates. Insights remain a rolling 30-day operational snapshot
+including internal use; they must not be presented as daily external demand or
+added to request counts. Console observations are lower bounds and can be lost
+before collection. Existing operational audit and legacy logs are separate.
