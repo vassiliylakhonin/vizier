@@ -329,7 +329,7 @@ describe("MCP session profile for shipping clients", () => {
     );
 
     await expect(response.json()).resolves.toMatchObject({
-      result: { protocolVersion: "2025-06-18" },
+      result: { protocolVersion: "2025-11-25" },
     });
   });
 
@@ -464,7 +464,7 @@ describe("MCP session profile for shipping clients", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: -32022,
-        data: { supported: [MCP_VERSION, "2025-06-18", "2025-03-26", "2024-11-05"] },
+        data: { supported: [MCP_VERSION, "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] },
       },
     });
   });
