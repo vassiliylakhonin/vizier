@@ -124,9 +124,16 @@ docs/            # architecture, threat model, API docs
   `initialize` handshake.
 - MCP client reachability, measured 2026-09-02: no shipping client speaks the
   stateless profile yet, so `/mcp` additionally answers the `initialize` session
-  handshake for `2025-06-18`, `2025-03-26`, and `2024-11-05`. The request body
+  handshake for `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`.
+  November 2025 support was added on 2026-10-16 after reproducing a rejected
+  revision header ([lifecycle specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)). The request body
   selects the profile and both share one verification path, so the stateless
   contract is unchanged.
+- Connection errors include a fixed, server-authored `connection_hint`; access
+  telemetry records only the finite `mcp_rejection` category, never the rejected
+  headers, request text or client identity. Historical 400/404 rows do not gain
+  inferred causes. Protocol negotiation, public discovery and enforcement
+  authentication remain separate; no malformed request is silently executed.
 - Cloudflare Worker: current compatibility date, `nodejs_compat`, generated
   binding types after configuration changes, structured observability, no
   request-scoped global state, and Web Crypto for IDs and hashes.

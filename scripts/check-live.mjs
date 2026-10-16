@@ -19,8 +19,9 @@ import { readFileSync } from "node:fs";
 
 const ORIGIN =
   process.env.VIZIER_ORIGIN ?? "https://vizier.agendamcp.dpdns.org";
-const SESSION_VERSION = "2025-06-18";
+const SESSION_VERSION = "2025-11-25";
 const STATELESS_VERSION = "2026-07-28";
+const OWNER_HEADERS = { "X-Client-Id": "agenda-owner-vizier-live-smoke", "User-Agent": "vizier-live-smoke/1" };
 
 const manifest = JSON.parse(
   readFileSync(new URL("../server.json", import.meta.url), "utf8"),
@@ -40,7 +41,7 @@ function check(name, condition, detail) {
 
 async function getJson(path) {
   const response = await fetch(`${ORIGIN}${path}`, {
-    headers: { Accept: "application/json" },
+    headers: { ...OWNER_HEADERS, Accept: "application/json" },
   });
   return { status: response.status, body: await response.json() };
 }
@@ -49,6 +50,7 @@ async function mcp(body, headers = {}) {
   const response = await fetch(`${ORIGIN}/mcp`, {
     method: "POST",
     headers: {
+      ...OWNER_HEADERS,
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
       ...headers,

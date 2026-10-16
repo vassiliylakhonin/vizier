@@ -1,4 +1,5 @@
 import { SERVICE_VERSION } from "../version";
+import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS } from "./mcp-profiles";
 
 export const MCP_SERVER_SCHEMA =
   "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
@@ -259,10 +260,8 @@ export function createMcpCapabilityDocument(
     },
     supports_sse_get: false,
     supported_protocol_versions: [
-      "2026-07-28",
-      "2025-06-18",
-      "2025-03-26",
-      "2024-11-05",
+      MCP_PROTOCOL_VERSION,
+      ...SESSION_PROTOCOL_VERSIONS,
     ],
     server_card: `${origin}/.well-known/mcp.json`,
     tools: ["vizier_verify_action"],

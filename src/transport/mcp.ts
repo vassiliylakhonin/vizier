@@ -14,8 +14,7 @@ import {
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
-
-const MCP_PROTOCOL_VERSION = "2026-07-28";
+import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, type McpRejection } from "./mcp-profiles";
 
 // Revisions that predate the stateless 2026-07-28 handshake. Shipping clients
 // (Claude Code, Cursor, the MCP Inspector) still open a session with
@@ -24,12 +23,7 @@ const MCP_PROTOCOL_VERSION = "2026-07-28";
 // stateless schema requires the 2026-07-28 `_meta` block, so the endpoint was
 // unreachable from every off-the-shelf client. Both profiles are served from
 // the same handler; the request body selects which one applies.
-const SESSION_PROTOCOL_VERSIONS = Object.freeze([
-  "2025-06-18",
-  "2025-03-26",
-  "2024-11-05",
-]);
-const DEFAULT_SESSION_PROTOCOL_VERSION = "2025-06-18";
+const connectionRejections = new WeakMap<Response, McpRejection>();
 
 const SERVER_INFO = Object.freeze({
   name: "vizier",
@@ -104,15 +98,22 @@ function mcpError(
   message: string,
   status: number,
   data?: unknown,
+  rejection?: McpRejection,
 ): Response {
-  return jsonResponse(
+  const errorData = rejection === undefined ? data : {
+    ...(typeof data === "object" && data !== null ? data : {}),
+    connection_hint: connectionHint(rejection),
+  };
+  const response = jsonResponse(
     {
       jsonrpc: "2.0",
       ...(id === undefined ? {} : { id }),
-      error: { code, message, ...(data === undefined ? {} : { data }) },
+      error: { code, message, ...(errorData === undefined ? {} : { data: errorData }) },
     },
     status,
   );
+  if (rejection !== undefined) connectionRejections.set(response, rejection);
+  return response;
 }
 
 function mcpResult(id: string | number, result: Record<string, unknown>): Response {
@@ -202,6 +203,8 @@ function validateHeaders(request: Request, body: McpRequest): Response | null {
       -32020,
       "Required MCP headers are missing or do not match the request body.",
       400,
+      undefined,
+      "header_mismatch",
     );
   }
 
@@ -212,6 +215,7 @@ function validateHeaders(request: Request, body: McpRequest): Response | null {
       "The requested MCP protocol version is not supported.",
       400,
       { supported: [MCP_PROTOCOL_VERSION], requested: bodyVersion },
+      "unsupported_version",
     );
   }
 
@@ -224,6 +228,8 @@ function validateHeaders(request: Request, body: McpRequest): Response | null {
         -32020,
         "Mcp-Name is missing or does not match params.name.",
         400,
+        undefined,
+        "header_mismatch",
       );
     }
   }
@@ -338,12 +344,14 @@ async function handleStatelessRequest(
       -32020,
       "Accept must include application/json and text/event-stream.",
       400,
+      undefined,
+      "accept_mismatch",
     );
   }
 
   const parsed = requestSchema.safeParse(input);
   if (!parsed.success) {
-    return mcpError(undefined, -32600, "Invalid MCP request.", 400);
+    return mcpError(undefined, -32600, "Invalid MCP request.", 400, undefined, "invalid_request");
   }
   const headerError = validateHeaders(request, parsed.data);
   if (headerError !== null) {
@@ -368,7 +376,9 @@ async function handleStatelessRequest(
     case "tools/call":
       return callVerifyTool(request, parsed.data, options);
     default:
-      return mcpError(parsed.data.id, -32601, "Method not found.", 404);
+      return mcpError(parsed.data.id, -32601, "Method not found.", 404, undefined,
+        parsed.data.method === "initialize" || parsed.data.method === "notifications/initialized"
+          ? "profile_method_mismatch" : "method_not_found");
   }
 }
 
@@ -391,12 +401,14 @@ async function handleSessionRequest(
       -32020,
       "Accept must include application/json or text/event-stream.",
       400,
+      undefined,
+      "accept_mismatch",
     );
   }
 
   const parsed = sessionMessageSchema.safeParse(input);
   if (!parsed.success) {
-    return mcpError(undefined, -32600, "Invalid MCP request.", 400);
+    return mcpError(undefined, -32600, "Invalid MCP request.", 400, undefined, "invalid_request");
   }
   const message: SessionMessage = parsed.data;
 
@@ -417,6 +429,7 @@ async function handleSessionRequest(
         supported: [MCP_PROTOCOL_VERSION, ...SESSION_PROTOCOL_VERSIONS],
         requested: headerVersion,
       },
+      "unsupported_version",
     );
   }
 
@@ -459,7 +472,8 @@ async function handleSessionRequest(
         : sessionResult(message.id, outcome.result);
     }
     default:
-      return mcpError(message.id, -32601, "Method not found.", 200);
+      return mcpError(message.id, -32601, "Method not found.", 200, undefined,
+        message.method === "server/discover" ? "profile_method_mismatch" : "method_not_found");
   }
 }
 
@@ -474,6 +488,8 @@ async function handleMcpRequestInner(
       -32020,
       "Origin is not allowed for this MCP endpoint.",
       403,
+      undefined,
+      "origin_rejected",
     );
   }
 
@@ -485,7 +501,10 @@ async function handleMcpRequestInner(
   } catch (error) {
     if (error instanceof TransportRequestError) {
       const code = error.code === "INVALID_JSON" ? -32700 : -32600;
-      return mcpError(undefined, code, error.message, error.status);
+      const reason = error.code === "INVALID_JSON" ? "invalid_json"
+        : error.code === "PAYLOAD_TOO_LARGE" ? "body_too_large"
+        : error.code === "UNSUPPORTED_MEDIA_TYPE" ? "content_type_mismatch" : "invalid_request";
+      return mcpError(undefined, code, error.message, error.status, undefined, reason);
     }
     return mcpError(undefined, -32603, "Internal error.", 500);
   }
@@ -503,6 +522,6 @@ export async function handleMcpRequest(request: Request, options: TransportOptio
     const body = await response.clone().json() as { error?: unknown; result?: { isError?: boolean } };
     rpcError = body.error !== undefined || body.result?.isError === true;
   } catch { /* Notifications have no JSON body. */ }
-  logServiceAccess(request, observation.operation, response, rpcError);
+  logServiceAccess(request, observation.operation, response, rpcError, connectionRejections.get(response));
   return response;
 }
