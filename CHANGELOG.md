@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Emit bounded content-free access observations for MCP discovery, tool calls, HTTP refusals and protocol errors. Keep existing audit storage, authorization and review contracts unchanged.
+
 ## 0.5.9 — 2026-10-13
 
 - Fix the live Cloudflare deployment response boundary: its POST can return only

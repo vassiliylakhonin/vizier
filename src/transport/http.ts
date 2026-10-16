@@ -1,3 +1,4 @@
+import { logServiceAccess, hasAccessObservation } from "./access-telemetry";
 import { grantReadiness } from "./onboarding";
 import { canonicalize, sha256 } from "../core/receipts";
 import { createReviewConsole } from "../reviews/console";
@@ -1212,7 +1213,7 @@ function rateLimitedResponse(): Response {
   );
 }
 
-export async function handleHttpRequest(
+async function handleHttpRequestInner(
   request: Request,
   options: TransportOptions = {},
 ): Promise<Response> {
@@ -1686,4 +1687,15 @@ export async function handleHttpRequest(
       ),
     );
   }
+}
+
+export async function handleHttpRequest(request: Request, options: TransportOptions = {}): Promise<Response> {
+  const response = await handleHttpRequestInner(request, options);
+  const url = new URL(request.url);
+  // MCP observations include the parsed method and RPC error. Do not count twice.
+  if (!hasAccessObservation(response)) {
+    const step = trafficStep(url.pathname);
+    logServiceAccess(request, url.pathname === "/health" ? "health" : step === "action" || step === "api" ? "action" : step === "other" ? "other" : "metadata", response);
+  }
+  return response;
 }

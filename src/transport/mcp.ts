@@ -1,3 +1,4 @@
+import { logServiceAccess, ACCESS_OPERATIONS } from "./access-telemetry";
 import { z } from "zod";
 
 import { grantReadiness, grantInstructions } from "./onboarding";
@@ -462,9 +463,10 @@ async function handleSessionRequest(
   }
 }
 
-export async function handleMcpRequest(
+async function handleMcpRequestInner(
   request: Request,
-  options: TransportOptions = {},
+  options: TransportOptions,
+  observation: { operation: string },
 ): Promise<Response> {
   if (!validateOrigin(request)) {
     return mcpError(
@@ -478,6 +480,8 @@ export async function handleMcpRequest(
   let input: unknown;
   try {
     input = await readLimitedJson(request);
+    const method = typeof input === "object" && input !== null && "method" in input ? input.method : undefined;
+    observation.operation = typeof method === "string" && ACCESS_OPERATIONS.has(method) ? method : "other";
   } catch (error) {
     if (error instanceof TransportRequestError) {
       const code = error.code === "INVALID_JSON" ? -32700 : -32600;
@@ -489,4 +493,16 @@ export async function handleMcpRequest(
   return usesStatelessProfile(input)
     ? handleStatelessRequest(request, input, options)
     : handleSessionRequest(request, input, options);
+}
+
+export async function handleMcpRequest(request: Request, options: TransportOptions = {}): Promise<Response> {
+  const observation = { operation: "other" };
+  const response = await handleMcpRequestInner(request, options, observation);
+  let rpcError = false;
+  try {
+    const body = await response.clone().json() as { error?: unknown; result?: { isError?: boolean } };
+    rpcError = body.error !== undefined || body.result?.isError === true;
+  } catch { /* Notifications have no JSON body. */ }
+  logServiceAccess(request, observation.operation, response, rpcError);
+  return response;
 }
