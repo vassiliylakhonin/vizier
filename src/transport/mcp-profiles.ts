@@ -28,3 +28,16 @@ export function connectionHint(reason: McpRejection) {
     },
   };
 }
+
+/** Only public revisions and finite categories survive the observation boundary. */
+export type McpRevision = typeof MCP_PROTOCOL_VERSION | "2025-11-25" | "2025-06-18" | "2025-03-26" | "2024-11-05" | "missing" | "other" | "invalid" | "unmeasured";
+export type McpConnectionObservation = {
+  mcp_profile: "session" | "stateless" | "unmeasured";
+  mcp_header_revision: McpRevision;
+  mcp_body_revision: McpRevision;
+};
+export function observedRevision(value: unknown): McpRevision {
+  if (value === undefined || value === null) return "missing";
+  if (typeof value !== "string") return "invalid";
+  return value === MCP_PROTOCOL_VERSION || SESSION_PROTOCOL_VERSIONS.includes(value) ? value as McpRevision : "other";
+}

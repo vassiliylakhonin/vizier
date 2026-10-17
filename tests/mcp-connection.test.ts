@@ -82,3 +82,36 @@ describe("MCP connection recovery", () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('bounded MCP negotiation observations', () => {
+  it('distinguishes a mixed stateless profile from an unknown session revision without client strings', async () => {
+    const log=vi.spyOn(console,'log').mockImplementation(()=>{});
+    try {
+      for (const [params,headers,expected] of [
+        [{_meta:{...meta,'io.modelcontextprotocol/protocolVersion':VERSION}}, {'MCP-Protocol-Version':VERSION,'Mcp-Method':'tools/list'},
+          {mcp_profile:'stateless',mcp_header_revision:VERSION,mcp_body_revision:VERSION}],
+        [{private:'private-prompt'}, {'MCP-Protocol-Version':'private-revision'},
+          {mcp_profile:'session',mcp_header_revision:'other',mcp_body_revision:'missing'}],
+        [{_meta:meta}, {'MCP-Protocol-Version':VERSION,'Mcp-Method':'tools/list'},
+          {mcp_profile:'stateless',mcp_header_revision:VERSION,mcp_body_revision:STATELESS}],
+      ] as const) {
+        log.mockClear();
+        const response=await handleHttpRequest(post('tools/list',params,headers));
+        expect(response.status).toBe(400);
+        const rows=log.mock.calls.map(c=>typeof c[0]==='string'?JSON.parse(c[0]):c[0]).filter(e=>e.event==='agenda_service_access');
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject(expected);
+        expect(JSON.stringify(rows)).not.toContain('private-');
+      }
+    } finally {log.mockRestore()}
+  });
+  it('does not infer a profile from an unreadable or origin-refused request', async()=>{
+    const log=vi.spyOn(console,'log').mockImplementation(()=>{});
+    try {
+      await handleHttpRequest(new Request('https://vizier.example/mcp',{method:'POST',headers:{Origin:'https://foreign.example','MCP-Protocol-Version':'private-revision'},body:'private-body'}));
+      const rows=log.mock.calls.map(c=>typeof c[0]==='string'?JSON.parse(c[0]):c[0]).filter(e=>e.event==='agenda_service_access');
+      expect(rows[0]).toMatchObject({mcp_profile:'unmeasured',mcp_header_revision:'unmeasured',mcp_body_revision:'unmeasured'});
+      expect(JSON.stringify(rows)).not.toContain('private-');
+    } finally {log.mockRestore()}
+  });
+});

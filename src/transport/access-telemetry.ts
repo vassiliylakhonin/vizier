@@ -1,5 +1,5 @@
 /** Content-free observations. Declared owner/probe labels are not authentication. */
-import type { McpRejection } from "./mcp-profiles";
+import type { McpRejection, McpConnectionObservation } from "./mcp-profiles";
 export const ACCESS_OPERATIONS = new Set([
   'initialize', 'server/discover', 'tools/list', 'tools/call', 'ping',
   'notifications/initialized', 'metadata', 'health', 'action', 'other',
@@ -8,7 +8,7 @@ export const ACCESS_OPERATIONS = new Set([
 const observed = new WeakSet<Response>();
 export const hasAccessObservation = (response: Response): boolean => observed.has(response);
 
-export function logServiceAccess(request: Request, operation: string, response: Response, rpcError = false, mcpRejection?: McpRejection): void {
+export function logServiceAccess(request: Request, operation: string, response: Response, rpcError = false, mcpRejection?: McpRejection, connection?: McpConnectionObservation): void {
   observed.add(response);
   try {
     const client = (request.headers.get('x-client-id') ?? '').toLowerCase();
@@ -27,6 +27,7 @@ export function logServiceAccess(request: Request, operation: string, response: 
         : status >= 400 ? 'input_rejected' : rpcError ? 'protocol_error' : 'success',
       caller_kind: caller, origin_verification: 'unverified',
       ...(mcpRejection === undefined ? {} : { mcp_rejection: mcpRejection }),
+      ...(connection ?? {}),
     }));
   } catch { /* Observability must not change authorization or response handling. */ }
 }
