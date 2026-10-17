@@ -225,6 +225,11 @@ Connection errors include `error.data.connection_hint` with the supported
 profiles and header requirements. Correct a rejected connection request before
 retrying; a discovery response grants no enforcement authority.
 
+Connection observations contain only the server-selected profile and revision
+categories: the supported public dates, `missing`, `other`, `invalid`, or
+`unmeasured`. Raw client revisions, headers and request text are excluded.
+Older events cannot establish which revision or profile caused a refusal.
+
 For a stdio-only client, this pinned transport adapter connects to the same
 hosted tool:
 

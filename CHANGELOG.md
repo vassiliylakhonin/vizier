@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Measure the selected MCP profile and bounded header/body revision categories without retaining arbitrary client revisions or request text. Unknown protocols remain refused.
+
 - Use provider-safe `access_mode` for content-free access categories; historical transformed authorization labels remain unknown.
 
 - Emit bounded content-free access observations for MCP discovery, tool calls, HTTP refusals and protocol errors. Keep existing audit storage, authorization and review contracts unchanged.

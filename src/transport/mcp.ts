@@ -14,7 +14,7 @@ import {
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
-import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, type McpRejection } from "./mcp-profiles";
+import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, type McpRejection, type McpConnectionObservation, observedRevision } from "./mcp-profiles";
 
 // Revisions that predate the stateless 2026-07-28 handshake. Shipping clients
 // (Claude Code, Cursor, the MCP Inspector) still open a session with
@@ -480,7 +480,7 @@ async function handleSessionRequest(
 async function handleMcpRequestInner(
   request: Request,
   options: TransportOptions,
-  observation: { operation: string },
+  observation: { operation: string; connection: McpConnectionObservation },
 ): Promise<Response> {
   if (!validateOrigin(request)) {
     return mcpError(
@@ -509,19 +509,28 @@ async function handleMcpRequestInner(
     return mcpError(undefined, -32603, "Internal error.", 500);
   }
 
-  return usesStatelessProfile(input)
-    ? handleStatelessRequest(request, input, options)
-    : handleSessionRequest(request, input, options);
+  const stateless = usesStatelessProfile(input);
+  const params = typeof input === "object" && input !== null && "params" in input ? input.params : undefined;
+  const values = typeof params === "object" && params !== null ? params as Record<string, unknown> : {};
+  const meta = typeof values._meta === "object" && values._meta !== null ? values._meta as Record<string, unknown> : {};
+  observation.connection = {
+    mcp_profile: stateless ? "stateless" : "session",
+    mcp_header_revision: observedRevision(request.headers.get("MCP-Protocol-Version")),
+    mcp_body_revision: observedRevision(stateless ? meta["io.modelcontextprotocol/protocolVersion"] : values.protocolVersion),
+  };
+  return stateless ? handleStatelessRequest(request, input, options) : handleSessionRequest(request, input, options);
 }
 
 export async function handleMcpRequest(request: Request, options: TransportOptions = {}): Promise<Response> {
-  const observation = { operation: "other" };
+  const observation: { operation: string; connection: McpConnectionObservation } = {
+    operation: "other", connection: { mcp_profile: "unmeasured", mcp_header_revision: "unmeasured", mcp_body_revision: "unmeasured" },
+  };
   const response = await handleMcpRequestInner(request, options, observation);
   let rpcError = false;
   try {
     const body = await response.clone().json() as { error?: unknown; result?: { isError?: boolean } };
     rpcError = body.error !== undefined || body.result?.isError === true;
   } catch { /* Notifications have no JSON body. */ }
-  logServiceAccess(request, observation.operation, response, rpcError, connectionRejections.get(response));
+  logServiceAccess(request, observation.operation, response, rpcError, connectionRejections.get(response), observation.connection);
   return response;
 }
