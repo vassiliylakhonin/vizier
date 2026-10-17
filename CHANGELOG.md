@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Distinguish caller-asserted principals from integration assertions and signed delegation. Keep anonymous checks non-authorizing and preserve valid-grant/trusted-integration decisions. Publish action routing inside the existing policy details, preserving released SDK response validation.
+
 - Measure the selected MCP profile and bounded header/body revision categories without retaining arbitrary client revisions or request text. Unknown protocols remain refused.
 
 - Use provider-safe `access_mode` for content-free access categories; historical transformed authorization labels remain unknown.

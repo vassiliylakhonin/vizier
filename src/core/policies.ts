@@ -52,6 +52,7 @@ function result(
 function evaluatePrincipal(
   request: VerificationRequest,
   grant: GrantVerification | undefined,
+  trustedAuthority: boolean,
 ): PolicyResult {
   if (request.principal === null) {
     return result("principal.verified", "REVIEW", "PRINCIPAL_UNVERIFIED");
@@ -63,7 +64,9 @@ function evaluatePrincipal(
         verified_by: "delegation_grant",
         key_id: grant.grant.key_id,
       })
-    : result("principal.verified", "PASS", null);
+    : trustedAuthority
+      ? result("principal.verified", "PASS", null, {verification_status:"integration_asserted", signature_verified:false})
+      : result("principal.verified", "REVIEW", "PRINCIPAL_UNVERIFIED", {verification_status:"caller_asserted", signature_verified:false});
 }
 
 /**
@@ -215,7 +218,7 @@ export function evaluatePolicies(
   const { grantVerification } = options;
   const results: PolicyResult[] = [
     evaluateAuthorityProvenance(options.trustedAuthority ?? true),
-    evaluatePrincipal(request, grantVerification),
+    evaluatePrincipal(request, grantVerification, options.trustedAuthority ?? true),
     evaluateDelegatedAction(request),
     evaluateAmount(request),
     evaluateTarget(request),

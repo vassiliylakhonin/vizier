@@ -109,6 +109,8 @@ describe("delegation grants", () => {
     });
 
     expect(response.decision).toBe("ALLOW");
+    expect(response.policy_results.find(item => item.rule_id === "integration.authority.trusted")?.details.action_contract)
+      .toMatchObject({next_action: "allow", authorization_granted: true});
     expect(response.receipt.authority_provenance).toBe("principal_signed");
     expect(response.receipt.grant).toMatchObject({
       issuer: "acme-corp",
@@ -125,6 +127,8 @@ describe("delegation grants", () => {
     const response = await verifyAction(request(), { trustedAuthority: true });
 
     expect(response.decision).toBe("ALLOW");
+    expect(response.policy_results.find(item => item.rule_id === "integration.authority.trusted")?.details.action_contract)
+      .toMatchObject({next_action: "allow", authorization_granted: true});
     expect(response.receipt.authority_provenance).toBe("trusted_integration");
     expect(response.receipt.grant).toBeUndefined();
     expect(
@@ -523,5 +527,16 @@ describe("operator-required delegation", () => {
     });
     expect(response.decision).toBe("BLOCK");
     expect(response.reason_codes).toContain("GRANT_EXPIRED");
+  });
+});
+
+describe('principal identity diagnostics', () => {
+  it('does not call an anonymous caller-supplied principal verified', async () => {
+    const result=await verifyAction(request(),{trustedAuthority:false,signedGrantMode:'required'});
+    const principal=result.policy_results.find(r=>r.rule_id==='principal.verified');
+    expect(principal?.result).toBe('REVIEW');
+    expect(principal?.details).toMatchObject({verification_status:'caller_asserted',signature_verified:false});
+    expect(result.decision).toBe('BLOCK');
+    expect(result.policy_results.find(r=>r.rule_id==='integration.authority.trusted')?.details.action_contract).toMatchObject({next_action:'block',authorization_granted:false});
   });
 });
