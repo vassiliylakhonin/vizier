@@ -79,21 +79,38 @@ export async function verifyAction(
         ? await evaluateQuorum(request, undefined, options.now)
         : undefined;
 
-  const policyResults = evaluatePolicies(request, {
+  const rawPolicyResults = evaluatePolicies(request, {
     ...options,
     ...(grantVerification === undefined ? {} : { grantVerification }),
     ...(quorum === undefined ? {} : { quorum }),
   });
-  const decision = aggregateDecision(policyResults);
-  const riskScore = calculateRiskScore(policyResults);
+  const decision = aggregateDecision(rawPolicyResults);
+  const riskScore = calculateRiskScore(rawPolicyResults);
   const reasonCodes = Object.freeze(
-    policyResults.flatMap((item) =>
+    rawPolicyResults.flatMap((item) =>
       item.reason_code === null ? [] : [item.reason_code],
     ),
   );
   const authorityProvenance = resolveProvenance(
     grantVerification,
     options.trustedAuthority ?? true,
+  );
+  // Preserve the legacy top-level response accepted by released strict SDKs.
+  const policyResults = Object.freeze(
+    rawPolicyResults.map((item) => item.rule_id === "integration.authority.trusted"
+      ? Object.freeze({
+          ...item,
+          details: Object.freeze({
+            ...item.details,
+            action_contract: {
+              next_action: decision.toLowerCase(),
+              decision_kind: "authorization",
+              authorization_granted: decision === "ALLOW" && authorityProvenance !== "unverified",
+              score_kind: "risk",
+            },
+          }),
+        })
+      : item),
   );
   const receipt = await createReceipt(
     request,

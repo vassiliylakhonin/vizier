@@ -246,3 +246,16 @@ proxy forwarding. Legacy `/v1/verify` receipts are unsigned: this path trusts th
 configured verifier over HTTPS, not an offline receipt signature. Signature and
 receipt binding do not independently prove source truth or prevent direct tool
 access. External executors still need idempotency to prevent duplicate effects.
+
+
+### Machine-readable decision routing
+
+`policy_results` entry `integration.authority.trusted` includes
+`details.action_contract`: `next_action` (`allow`, `review`, `block`),
+`decision_kind: authorization`, `authorization_granted` and `score_kind: risk`.
+This is inside the existing extensible details object so released strict SDKs
+continue accepting the response. `authorization_granted` reflects only the
+returned scoped decision; enforcement still belongs to the integration.
+An anonymous caller's named principal is `caller_asserted`, never signature
+verified. A trusted integration assertion is `integration_asserted`; a valid
+principal grant records `verified_by: delegation_grant`.

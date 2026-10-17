@@ -126,7 +126,7 @@ describe("REST transport", () => {
 
     await expect(response.json()).resolves.toMatchObject({
       decision: "REVIEW",
-      reason_codes: ["AUTHORITY_SOURCE_UNTRUSTED"],
+      reason_codes: ["AUTHORITY_SOURCE_UNTRUSTED", "PRINCIPAL_UNVERIFIED"],
     });
   });
 
