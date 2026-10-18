@@ -7,7 +7,7 @@ exact version before calling Cloudflare. Node 24+.
 Install both matching GitHub Release archives; the npm scope is not published:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-gated-deploy-0.5.9.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-gated-deploy-0.5.10.tgz
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@vizier/gated-deploy/examples/scope.json \
   --plan node_modules/@vizier/gated-deploy/examples/plan.json

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.10 — 2026-10-18
 
 - Return executable read-only connection recovery requests for both MCP profiles. Record a bounded, self-declared software family for recurring profile mismatches; preserve protocol refusal, authentication and authorization.
 
