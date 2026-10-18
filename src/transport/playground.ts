@@ -435,12 +435,13 @@ guarded_tool = create_guarded_tool(
     target="bank_api"
 )\`,
 
-      mcp: \`# Run local MCP stdio enforcement proxy
-npx @vizier/mcp-proxy \\\\
-  --upstream-command "python" \\\\
-  --upstream-args "server.py" \\\\
-  --vizier-url "${origin}" \\\\
-  --vizier-key "vz_live_your_key"\`,
+      mcp: \`# Run the HTTP MCP enforcement proxy (Node 24+)
+npx @agenda-intelligence/vizier-mcp-proxy \\\\
+  --upstream "http://localhost:3000/mcp" \\\\
+  --tools "query_db" \\\\
+  --vizier "${origin}" \\\\
+  --grant-mode required --grant-file /operator/grant.jws
+# Set VIZIER_API_KEY in the executor environment before running.\`,
 
       curl: \`curl -X POST ${origin}/v1/verify \\\\
   -H "Content-Type: application/json" \\\\

@@ -33,7 +33,7 @@ async function allowResponse(): Promise<unknown> {
   });
 }
 
-describe("@vizier/sdk", () => {
+describe("@agenda-intelligence/vizier-sdk", () => {
   it("posts a typed request and validates the response", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(await allowResponse()),

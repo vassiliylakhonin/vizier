@@ -1,5 +1,5 @@
 {
-  "name": "@vizier/mcp-proxy",
+  "name": "@agenda-intelligence/vizier-mcp-proxy",
   "version": "0.5.10",
   "description": "Deterministic authorization proxy for MCP (Model Context Protocol) servers and AI agents.",
   "license": "MIT",
@@ -11,14 +11,11 @@
     "directory": "packages/mcp-proxy"
   },
   "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "ai",
-    "agents",
-    "security",
+    "vizier",
+    "ai-agents",
     "authorization",
-    "guardrails",
-    "proxy"
+    "signed-delegation",
+    "mcp"
   ],
   "publishConfig": {
     "access": "public"
@@ -33,7 +30,7 @@
     "dist"
   ],
   "dependencies": {
-    "@vizier/sdk": "0.5.10",
+    "@agenda-intelligence/vizier-sdk": "0.5.10",
     "zod": "4.4.3"
   },
   "scripts": {

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Vizier, type VerificationResponse } from "@vizier/sdk";
+import { Vizier, type VerificationResponse } from "@agenda-intelligence/vizier-sdk";
 import {
   createWorkerVersionDeployer,
   prepareWorkerDeploymentReview,

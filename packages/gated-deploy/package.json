@@ -1,21 +1,32 @@
 {
-  "name": "@vizier/gated-deploy",
+  "name": "@agenda-intelligence/vizier-gated-deploy",
   "version": "0.5.10",
   "description": "Operator-owned Worker version deployment with signed scope and exact human approval.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": { "vizier-worker-deploy": "./dist/worker-cli.js" },
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "examples", "README.md"],
+  "bin": {
+    "vizier-worker-deploy": "./dist/worker-cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "examples",
+    "README.md"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vassiliylakhonin/vizier.git",
     "directory": "packages/gated-deploy"
   },
   "dependencies": {
-    "@vizier/sdk": "0.5.10",
+    "@agenda-intelligence/vizier-sdk": "0.5.10",
     "zod": "4.4.3"
   },
   "scripts": {
@@ -23,5 +34,15 @@
   },
   "engines": {
     "node": ">=24"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "vizier",
+    "ai-agents",
+    "authorization",
+    "signed-delegation",
+    "human-approval"
+  ]
 }

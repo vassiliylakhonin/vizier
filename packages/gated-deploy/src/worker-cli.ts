@@ -3,7 +3,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import process from "node:process";
-import { Vizier, hashCanonicalJson } from "@vizier/sdk";
+import { Vizier, hashCanonicalJson } from "@agenda-intelligence/vizier-sdk";
 import {
   createWorkerVersionDeployer,
   prepareWorkerDeploymentReview,

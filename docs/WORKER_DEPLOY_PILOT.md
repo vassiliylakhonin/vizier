@@ -5,26 +5,24 @@ Cloudflare Worker** to 100% traffic. The operator pins the account, Worker,
 principal and agent. Every execution requires both a valid owner-signed scope
 grant and a signed human approval of the exact version and identities.
 
-The v0.5.9 GitHub Release includes `@vizier/gated-deploy` and its
-`vizier-worker-deploy` CLI, alongside the matching SDK. The previous v0.5.7
-archives do not include this adapter. Installing it adds no hosted deployment
-endpoint and does not switch a production workflow.
+The v0.5.10 npm packages include `@agenda-intelligence/vizier-gated-deploy` and its
+`vizier-worker-deploy` CLI, alongside the matching SDK. Earlier GitHub archives
+retain the original `@vizier/*` names. Installing the npm packages adds no hosted
+deployment endpoint and does not switch a production workflow.
 
 ## Install without a repository checkout
 
-Use Node 24+ and install both archives (the npm scope is not published):
+Use Node 24+:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-gated-deploy-0.5.9.tgz
+npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-gated-deploy@0.5.10
 npx --no-install vizier-worker-deploy prepare \
-  --scope node_modules/@vizier/gated-deploy/examples/scope.json \
-  --plan node_modules/@vizier/gated-deploy/examples/plan.json
+  --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
+  --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
 ```
 
-Download the release archives and `SHA256SUMS` and verify the checksums before
-installing when working in a controlled environment. Use `vizier-worker-deploy`
-for the same prepare/submit/execute modes described below. The source-checkout
-wrapper `node scripts/worker-deploy-pilot.mjs` calls the same compiled CLI.
+Use `vizier-worker-deploy` for the prepare/submit/execute modes described below.
+The source-checkout wrapper `node scripts/worker-deploy-pilot.mjs` calls the same compiled CLI.
 
 ## Run the offline demonstration
 
@@ -131,8 +129,8 @@ contains decision/outcome IDs, never credentials, grants or approval tokens.
 ## Integrate as the agent's sole deployment capability
 
 ```ts
-import { Vizier } from "@vizier/sdk";
-import { createWorkerVersionDeployer } from "@vizier/gated-deploy";
+import { Vizier } from "@agenda-intelligence/vizier-sdk";
+import { createWorkerVersionDeployer } from "@agenda-intelligence/vizier-gated-deploy";
 
 // All configuration below is supplied by the trusted operator, not the agent.
 const deploy = createWorkerVersionDeployer({

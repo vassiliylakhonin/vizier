@@ -1,5 +1,9 @@
 # Changelog
 
+## npm distribution — 2026-10-18
+
+- Publish the three Node packages under the owned `@agenda-intelligence` npm organization: `vizier-sdk`, `vizier-mcp-proxy`, and `vizier-gated-deploy`. The unavailable `@vizier` namespace remains only in historical GitHub release archives. Update imports, exact workspace dependencies, CLI examples and release checks together; executable names and hosted API behavior are unchanged.
+
 ## 0.5.10 — 2026-10-18
 
 - Return executable read-only connection recovery requests for both MCP profiles. Record a bounded, self-declared software family for recurring profile mismatches; preserve protocol refusal, authentication and authorization.

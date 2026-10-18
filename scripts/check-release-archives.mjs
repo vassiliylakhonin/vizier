@@ -6,14 +6,14 @@ import { join, resolve } from "node:path";
 
 const directory = resolve(process.argv[2] ?? "release-archives");
 const version = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
-const expected = ["sdk", "mcp-proxy", "gated-deploy"].map(name => `vizier-${name}-${version}.tgz`).sort();
+const expected = ["sdk", "mcp-proxy", "gated-deploy"].map(name => `agenda-intelligence-vizier-${name}-${version}.tgz`).sort();
 const actual = (await readdir(directory)).filter(name => name.endsWith(".tgz")).sort();
 if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("Unexpected release archive set");
 const installation = await mkdtemp(join(tmpdir(), "vizier-archive-install-"));
 try {
   execFileSync("npm", ["install", "--prefix", installation, "--ignore-scripts", "--no-audit", "--no-fund", ...actual.map(name => join(directory, name))], { stdio: "inherit" });
-  execFileSync(process.execPath, ["--input-type=module", "-e", 'import {Vizier} from "@vizier/sdk"; import {createWorkerVersionDeployer} from "@vizier/gated-deploy"; import {createMcpEnforcementProxy} from "@vizier/mcp-proxy"; if(typeof Vizier.prototype.claimHumanReview !== "function" || typeof createWorkerVersionDeployer !== "function" || typeof createMcpEnforcementProxy !== "function") process.exit(1);'], { cwd: installation, stdio: "inherit" });
-  const packagePath = join(installation, "node_modules/@vizier/gated-deploy");
+  execFileSync(process.execPath, ["--input-type=module", "-e", 'import {Vizier} from "@agenda-intelligence/vizier-sdk"; import {createWorkerVersionDeployer} from "@agenda-intelligence/vizier-gated-deploy"; import {createMcpEnforcementProxy} from "@agenda-intelligence/vizier-mcp-proxy"; if(typeof Vizier.prototype.claimHumanReview !== "function" || typeof createWorkerVersionDeployer !== "function" || typeof createMcpEnforcementProxy !== "function") process.exit(1);'], { cwd: installation, stdio: "inherit" });
+  const packagePath = join(installation, "node_modules/@agenda-intelligence/vizier-gated-deploy");
   const cli = join(installation, "node_modules/.bin/vizier-worker-deploy");
   const denyNetwork = join(installation, "deny-network.mjs");
   await writeFile(denyNetwork, 'globalThis.fetch = async () => { throw new Error("Network forbidden during CLI preparation"); };\n');

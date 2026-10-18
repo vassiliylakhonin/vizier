@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import process from "node:process";
 
-import { Vizier } from "@vizier/sdk";
+import { Vizier } from "@agenda-intelligence/vizier-sdk";
 
 import {
   assertCleanWorktree,

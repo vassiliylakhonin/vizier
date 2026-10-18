@@ -10,8 +10,8 @@
   "description": "Deterministic authorization checks for agent actions.",
   "scripts": {
     "build": "npm run build:packages && wrangler deploy --dry-run --outdir dist",
-    "build:packages": "npm run build --workspace @vizier/sdk && npm run build --workspace @vizier/gated-deploy && npm run build --workspace @vizier/mcp-proxy",
-    "check": "npm run build --workspace @vizier/sdk && npm run typecheck && npm run check:migrations && npm run lint && npm test && npm run build",
+    "build:packages": "npm run build --workspace @agenda-intelligence/vizier-sdk && npm run build --workspace @agenda-intelligence/vizier-gated-deploy && npm run build --workspace @agenda-intelligence/vizier-mcp-proxy",
+    "check": "npm run build --workspace @agenda-intelligence/vizier-sdk && npm run typecheck && npm run check:migrations && npm run lint && npm test && npm run build",
     "check:deployed": "node scripts/check-deployed.mjs",
     "check:live": "node scripts/check-live.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
@@ -21,7 +21,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pilot:worker-deploy": "npm run build --workspace @vizier/sdk && vitest run tests/worker-version-deploy.test.ts --reporter=verbose",
+    "pilot:worker-deploy": "npm run build --workspace @agenda-intelligence/vizier-sdk && vitest run tests/worker-version-deploy.test.ts --reporter=verbose",
     "typecheck": "wrangler types --check && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p packages/sdk/tsconfig.json --noEmit && tsc -p packages/gated-deploy/tsconfig.json --noEmit && tsc -p packages/mcp-proxy/tsconfig.json --noEmit"
   },
   "dependencies": {
