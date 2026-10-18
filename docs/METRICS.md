@@ -70,3 +70,11 @@ before collection. Existing operational audit and legacy logs are separate.
 The category is emitted as `access_mode`: the provider transforms the reserved
 `authorization` field. Historical transformed labels are unknown, not proof of
 accepted authentication.
+
+MCP observations optionally include `mcp_client_family`: a finite software label
+from declared clientInfo/User-Agent, never the raw name or version. It is not a
+verified client identity, owner marker or integration identifier. Historical
+events without this field remain unmeasured. Mixed-profile errors include two
+complete server-authored `connection_hint.recovery_requests`, one per profile;
+both perform discovery only. Clients must explicitly choose a profile rather
+than automatically replaying an action, credentials or an untrusted error URL.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Return executable read-only connection recovery requests for both MCP profiles. Record a bounded, self-declared software family for recurring profile mismatches; preserve protocol refusal, authentication and authorization.
+
 - Distinguish caller-asserted principals from integration assertions and signed delegation. Keep anonymous checks non-authorizing and preserve valid-grant/trusted-integration decisions. Publish action routing inside the existing policy details, preserving released SDK response validation.
 
 - Measure the selected MCP profile and bounded header/body revision categories without retaining arbitrary client revisions or request text. Unknown protocols remain refused.

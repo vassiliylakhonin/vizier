@@ -17,6 +17,28 @@ function post(method: string, params: Record<string, unknown> = {}, headers: Rec
 }
 
 describe("MCP connection recovery", () => {
+  it("provides executable read-only recovery requests for both mixed-profile failures", async () => {
+    for (const revision of ["2025-06-18", VERSION, STATELESS]) {
+      const response = await handleHttpRequest(post("initialize", {
+        _meta: { ...meta, "io.modelcontextprotocol/protocolVersion": revision },
+      }, { "MCP-Protocol-Version": revision, "Mcp-Method": "initialize" }));
+      expect(response.status).toBe(revision === STATELESS ? 404 : 400);
+      const body = await response.json() as { error: { data: { connection_hint: {
+        recovery_requests: { profile: string; headers: Record<string, string>; body: unknown }[];
+      } } } };
+      const requests = body.error.data.connection_hint.recovery_requests;
+      expect(requests).toHaveLength(2);
+      for (const recovery of requests) {
+        const recovered = await handleHttpRequest(new Request("https://vizier.example/mcp", {
+          method: "POST", headers: recovery.headers, body: JSON.stringify(recovery.body),
+        }));
+        expect(recovered.status).toBe(200);
+        expect(await recovered.json()).toHaveProperty("result");
+        expect(JSON.stringify(recovery)).not.toContain("tools/call");
+      }
+    }
+  });
+
   it("negotiates November 2025 and accepts its subsequent notification and tool listing", async () => {
     const init = await handleHttpRequest(post("initialize", {
       protocolVersion: VERSION, capabilities: {}, clientInfo: { name: "standard-client", version: "1" },
@@ -84,6 +106,19 @@ describe("MCP connection recovery", () => {
 });
 
 describe('bounded MCP negotiation observations', () => {
+  it('records only a finite self-declared software family and does not infer owner identity', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      for (const [name, family] of [['glama-client', 'glama'], ['private-client-name', 'other']]) {
+        log.mockClear();
+        await handleHttpRequest(post('initialize', {protocolVersion: VERSION, capabilities: {}, clientInfo: {name, version:'private-version'}}));
+        const events = log.mock.calls.map(c => {try {return JSON.parse(c[0]);} catch {return null;}}).filter(e => e?.event === 'agenda_service_access');
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({mcp_client_family: family, caller_kind:'unsigned_external'});
+        expect(JSON.stringify(events)).not.toContain('private-');
+      }
+    } finally {log.mockRestore();}
+  });
   it('distinguishes a mixed stateless profile from an unknown session revision without client strings', async () => {
     const log=vi.spyOn(console,'log').mockImplementation(()=>{});
     try {

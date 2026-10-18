@@ -10,12 +10,30 @@ export type McpRejection = "accept_mismatch" | "invalid_request" | "invalid_json
   | "method_not_found" | "origin_rejected" | "body_too_large" | "content_type_mismatch";
 
 export function connectionHint(reason: McpRejection) {
+  const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
   return {
     reason,
     endpoint: "/mcp",
     method: "POST",
     content_type: "application/json",
     accept: ["application/json", "text/event-stream"],
+    recovery_requests: [
+      {
+        profile: "session", method: "POST", endpoint: "/mcp", headers,
+        body: { jsonrpc: "2.0", id: "connect-session", method: "initialize", params: {
+          protocolVersion: DEFAULT_SESSION_PROTOCOL_VERSION, capabilities: {},
+          clientInfo: { name: "connection-recovery", version: "1" },
+        } },
+      },
+      {
+        profile: "stateless", method: "POST", endpoint: "/mcp",
+        headers: { ...headers, "MCP-Protocol-Version": MCP_PROTOCOL_VERSION, "Mcp-Method": "server/discover" },
+        body: { jsonrpc: "2.0", id: "connect-stateless", method: "server/discover", params: { _meta: {
+          "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+          "io.modelcontextprotocol/clientCapabilities": {},
+        } } },
+      },
+    ],
     session: { start_with: "initialize", protocol_versions: SESSION_PROTOCOL_VERSIONS },
     stateless: {
       start_with: "server/discover", protocol_version: MCP_PROTOCOL_VERSION,
@@ -35,7 +53,20 @@ export type McpConnectionObservation = {
   mcp_profile: "session" | "stateless" | "unmeasured";
   mcp_header_revision: McpRevision;
   mcp_body_revision: McpRevision;
+  mcp_client_family: McpClientFamily;
 };
+export type McpClientFamily = "glama" | "agenstry" | "claude" | "cursor" | "inspector" | "mcp_sdk" | "other" | "missing" | "unmeasured";
+
+/** Declared software only: never authenticated identity or raw client text. */
+export function observedClientFamily(name: unknown, userAgent: string | null): McpClientFamily {
+  const declared = typeof name === "string" ? name.slice(0, 128) : "";
+  const value = `${declared} ${(userAgent ?? "").slice(0, 256)}`.toLowerCase();
+  for (const family of ["glama", "agenstry", "claude", "cursor", "inspector"] as const) {
+    if (new RegExp(`(?:^|[^a-z])${family}(?:$|[^a-z])`).test(value)) return family;
+  }
+  if (/\bmcp[-_/ ]sdk\b|@modelcontextprotocol\/sdk/.test(value)) return "mcp_sdk";
+  return value.trim() ? "other" : "missing";
+}
 export function observedRevision(value: unknown): McpRevision {
   if (value === undefined || value === null) return "missing";
   if (typeof value !== "string") return "invalid";
