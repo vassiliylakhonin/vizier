@@ -172,6 +172,27 @@ try {
     discovered.body.result?.supportedVersions?.includes(STATELESS_VERSION) ===
       true,
   );
+  // Replay only server-authored read-only recovery, always on this same origin.
+  const mixed = await mcp({jsonrpc:"2.0", id:"live-recovery", method:"initialize", params:{_meta:{
+    "io.modelcontextprotocol/protocolVersion":"2025-06-18",
+    "io.modelcontextprotocol/clientCapabilities":{},
+  }}}, {"MCP-Protocol-Version":"2025-06-18", "Mcp-Method":"initialize"});
+  const recovery = mixed.body.error?.data?.connection_hint?.recovery_requests;
+  check("mixed MCP profile is refused with executable recovery", mixed.status === 400 && Array.isArray(recovery) && recovery.length === 2);
+  if (Array.isArray(recovery) && recovery.length === 2) {
+    for (const next of recovery) {
+      const expected = next.profile === "session" ? "initialize" : next.profile === "stateless" ? "server/discover" : null;
+      const safe = expected !== null && next.method === "POST" && next.endpoint === "/mcp" && next.body?.method === expected;
+      check(`recovery ${next.profile} is read-only`, safe);
+      if (!safe) continue;
+      const headers = {};
+      for (const key of ["MCP-Protocol-Version", "Mcp-Method"]) {
+        if (typeof next.headers?.[key] === "string") headers[key] = next.headers[key];
+      }
+      const connected = await mcp(next.body, headers);
+      check(`recovery ${next.profile} reaches discovery`, connected.status === 200 && connected.body.result !== undefined);
+    }
+  }
 } catch (error) {
   console.log(
     `  FAIL  reaching ${ORIGIN} — ${error instanceof Error ? error.message : "unknown error"}`,

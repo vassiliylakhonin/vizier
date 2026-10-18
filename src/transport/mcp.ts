@@ -14,7 +14,7 @@ import {
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
-import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, type McpRejection, type McpConnectionObservation, observedRevision } from "./mcp-profiles";
+import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, type McpRejection, type McpConnectionObservation, observedRevision, observedClientFamily } from "./mcp-profiles";
 
 // Revisions that predate the stateless 2026-07-28 handshake. Shipping clients
 // (Claude Code, Cursor, the MCP Inspector) still open a session with
@@ -513,17 +513,22 @@ async function handleMcpRequestInner(
   const params = typeof input === "object" && input !== null && "params" in input ? input.params : undefined;
   const values = typeof params === "object" && params !== null ? params as Record<string, unknown> : {};
   const meta = typeof values._meta === "object" && values._meta !== null ? values._meta as Record<string, unknown> : {};
+  const clientInfo = stateless ? meta["io.modelcontextprotocol/clientInfo"] : values.clientInfo;
   observation.connection = {
     mcp_profile: stateless ? "stateless" : "session",
     mcp_header_revision: observedRevision(request.headers.get("MCP-Protocol-Version")),
     mcp_body_revision: observedRevision(stateless ? meta["io.modelcontextprotocol/protocolVersion"] : values.protocolVersion),
+    mcp_client_family: observedClientFamily(
+      typeof clientInfo === "object" && clientInfo !== null && "name" in clientInfo ? clientInfo.name : undefined,
+      request.headers.get("User-Agent"),
+    ),
   };
   return stateless ? handleStatelessRequest(request, input, options) : handleSessionRequest(request, input, options);
 }
 
 export async function handleMcpRequest(request: Request, options: TransportOptions = {}): Promise<Response> {
   const observation: { operation: string; connection: McpConnectionObservation } = {
-    operation: "other", connection: { mcp_profile: "unmeasured", mcp_header_revision: "unmeasured", mcp_body_revision: "unmeasured" },
+    operation: "other", connection: { mcp_profile: "unmeasured", mcp_header_revision: "unmeasured", mcp_body_revision: "unmeasured", mcp_client_family: "unmeasured" },
   };
   const response = await handleMcpRequestInner(request, options, observation);
   let rpcError = false;
