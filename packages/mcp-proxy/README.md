@@ -16,7 +16,7 @@ audit evidence. The operator must remove the agent's direct upstream route.
 Install both GitHub Release archives, then run the installed proxy:
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-sdk-0.5.9.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.9/vizier-mcp-proxy-0.5.9.tgz
+npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-mcp-proxy-0.5.10.tgz
 npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \
