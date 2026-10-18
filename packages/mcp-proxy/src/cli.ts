@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
 
-import { Vizier } from "@vizier/sdk";
+import { Vizier } from "@agenda-intelligence/vizier-sdk";
 import { z } from "zod";
 
 import { createMcpEnforcementProxy } from "./index.js";

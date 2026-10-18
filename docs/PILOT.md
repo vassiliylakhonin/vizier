@@ -49,7 +49,7 @@ an action they actually operate. They must:
    it.
 
 For a participant whose action already runs through an HTTP MCP server, the
-private `@vizier/mcp-proxy` adapter may replace a custom integration. Configure
+private `@agenda-intelligence/vizier-mcp-proxy` adapter may replace a custom integration. Configure
 exactly one upstream endpoint and the minimum tool allowlist. The participant
 must remove the agent's direct upstream route and keep the proxy, Vizier, and
 upstream credentials separate. Using the proxy in a synthetic fixture proves

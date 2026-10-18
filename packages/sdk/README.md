@@ -1,4 +1,4 @@
-# @vizier/sdk
+# @agenda-intelligence/vizier-sdk
 
 Official TypeScript client for **Vizier** — deterministic authorization & audit firewall for AI agents.
 
@@ -11,7 +11,7 @@ Vizier verifies proposed agent actions (purchases, database queries, deployments
 ## 📦 Installation
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz
+npm install @agenda-intelligence/vizier-sdk@0.5.10
 ```
 
 ---
@@ -19,13 +19,15 @@ npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10
 ## 🚀 Quickstart
 
 ```ts
-import { Vizier } from "@vizier/sdk";
+import { Vizier } from "@agenda-intelligence/vizier-sdk";
 
 const vizier = new Vizier({
   baseUrl: "https://vizier.agendamcp.dpdns.org",
   apiKey: process.env.VIZIER_API_KEY,
 });
 
+// The owner must register a public key and sign a matching short-lived grant.
+// Keep the private signing key outside the agent and this integration.
 const decision = await vizier.verify({
   agent: { id: "procurement-agent-01", owner: "acme-corp" },
   principal: { id: "acme-corp" },
@@ -42,26 +44,28 @@ const decision = await vizier.verify({
       allowed_targets: ["supplier.example"],
     },
   },
+  grant: process.env.VIZIER_GRANT_JWS!,
   context: { source: "rest" },
 });
 
-if (decision.decision === "ALLOW") {
-  console.log("Action authorized! Receipt hash:", decision.receipt.request_hash);
-  // Proceed with execution
-} else {
-  console.error("Action blocked:", decision.explanation, decision.reason_codes);
-}
+// Authorization alone does not execute the purchase.
+console.log(decision.decision, decision.reason_codes);
 ```
 
 ---
 
+The hosted service requires a valid owner-signed grant; an API key alone is not
+owner permission. Without the matching grant this example returns `BLOCK`. See
+[delegation setup](https://github.com/vassiliylakhonin/vizier/blob/main/docs/DELEGATION_GRANTS.md)
+before connecting a real executor.
+
 ## 🔑 Features
 
 * **Deterministic Policies**: No probabilistic LLM-in-the-loop decisions. Strict mathematical rule enforcement.
-* **Cryptographic Receipts**: SHA-256 canonical JSON hash (`receipt.request_hash`) on every response for tamper-evident audit trails.
+* **Request-bound Receipts**: SHA-256 canonical JSON hash (`receipt.request_hash`). These receipts are unsigned and do not independently authenticate the issuer.
 * **Delegation Grants**: Support for principal-signed JWS delegation grants (`grant` field).
 * **Action Covenants**: Full lifecycle support (`activateCovenant`, `authorizeCovenant`, `recordOutcome`).
-* **Sub-25ms Latency**: Designed to run against Cloudflare Workers globally distributed on the edge.
+* **Edge API**: Hosted on Cloudflare Workers; end-to-end latency depends on the caller and network.
 
 ---
 

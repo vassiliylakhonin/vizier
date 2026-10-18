@@ -1,20 +1,19 @@
-# @vizier/gated-deploy
+# @agenda-intelligence/vizier-gated-deploy
 
 Operator-owned deployment of an already uploaded version of one existing
 Cloudflare Worker. Requires owner-signed scope and signed human approval of the
 exact version before calling Cloudflare. Node 24+.
 
-Install both matching GitHub Release archives; the npm scope is not published:
+Install the matching packages from npm:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-gated-deploy-0.5.10.tgz
+npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-gated-deploy@0.5.10
 npx --no-install vizier-worker-deploy prepare \
-  --scope node_modules/@vizier/gated-deploy/examples/scope.json \
-  --plan node_modules/@vizier/gated-deploy/examples/plan.json
+  --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
+  --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
 ```
 
-Verify the release's `SHA256SUMS` when downloading the archives. `prepare` is
-local, uses synthetic IDs and needs no credentials. `--help` lists modes.
+`prepare` is local, uses synthetic IDs and needs no credentials. `--help` lists modes.
 
 The package exports `createWorkerVersionDeployer`,
 `prepareWorkerDeploymentReview` and `workerDeploymentAuthority`. The CLI supports

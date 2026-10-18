@@ -1,4 +1,4 @@
-# @vizier/mcp-proxy
+# @agenda-intelligence/vizier-mcp-proxy
 
 Deterministic authorization proxy for [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers and AI agents.
 
@@ -13,10 +13,10 @@ audit evidence. The operator must remove the agent's direct upstream route.
 
 ## ⚡ Quickstart
 
-Install both GitHub Release archives, then run the installed proxy:
+Install from npm, then run the installed proxy:
 
 ```bash
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-mcp-proxy-0.5.10.tgz
+npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-mcp-proxy@0.5.10
 npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \
@@ -43,7 +43,7 @@ Agent (Claude / Cursor / Framework)
                │  JSON-RPC 2.0 (tools/call)
                ▼
    ┌───────────────────────┐
-   │   @vizier/mcp-proxy   │
+   │   @agenda-intelligence/vizier-mcp-proxy   │
    └───────────┬───────────┘
                │  POST /v1/verify
                ▼
@@ -68,8 +68,8 @@ Agent (Claude / Cursor / Framework)
 ## 💻 Programmatic Usage
 
 ```typescript
-import { createMcpEnforcementProxy } from "@vizier/mcp-proxy";
-import { Vizier } from "@vizier/sdk";
+import { createMcpEnforcementProxy } from "@agenda-intelligence/vizier-mcp-proxy";
+import { Vizier } from "@agenda-intelligence/vizier-sdk";
 
 const proxy = createMcpEnforcementProxy({
   integrationId: "agent-mcp-gateway",

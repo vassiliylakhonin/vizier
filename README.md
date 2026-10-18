@@ -32,18 +32,16 @@ exact uploaded version before changing its traffic. Changed versions, out-of-sco
 targets, expired permissions and repeated approval claims stop before execution.
 Keep cloud credentials and the executor outside the agent's control.
 
-Install the **v0.5.10** SDK and deployment adapter from GitHub Release archives
-(Node 24+; the `@vizier` npm scope is not published):
+Install the **v0.5.10** SDK and deployment adapter from npm (Node 24+):
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-gated-deploy-0.5.10.tgz
+npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-gated-deploy@0.5.10
 npx --no-install vizier-worker-deploy prepare \
-  --scope node_modules/@vizier/gated-deploy/examples/scope.json \
-  --plan node_modules/@vizier/gated-deploy/examples/plan.json
+  --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
+  --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
 ```
 
-Preparation is local, uses synthetic IDs and needs no keys. Check `SHA256SUMS`
-on the release; follow the [integration and recovery guide](docs/WORKER_DEPLOY_PILOT.md)
+Preparation is local, uses synthetic IDs and needs no keys. Follow the [integration and recovery guide](docs/WORKER_DEPLOY_PILOT.md)
 before submitting a real review or executing anything. The
 [live sandbox trace](docs/WORKER_DEPLOY_DEMO.md) shows eight scenarios against
 production Vizier and a disposable Cloudflare Worker, including a real API
@@ -114,12 +112,15 @@ to the archive integration; they are not general replay guarantees from Vizier.
 
 ## Start with signed delegation
 
-**Experimental v0.5.10.** TypeScript SDK, deployment adapter and MCP proxy packages are available as
-[GitHub Release archives](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.10),
-with `SHA256SUMS`. The `@vizier` npm scope is not currently published.
+**Experimental v0.5.10.** TypeScript packages use the owned `@agenda-intelligence`
+npm organization: [SDK](https://www.npmjs.com/package/@agenda-intelligence/vizier-sdk),
+[MCP proxy](https://www.npmjs.com/package/@agenda-intelligence/vizier-mcp-proxy), and
+[deployment adapter](https://www.npmjs.com/package/@agenda-intelligence/vizier-gated-deploy).
+Earlier GitHub archives retain their original `@vizier/*` names; update imports
+when switching from those archives to npm.
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz
+npm install @agenda-intelligence/vizier-sdk@0.5.10
 ```
 
 First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up)
@@ -141,7 +142,7 @@ integration API key and a current grant file to the trusted guard:
 
 ```ts
 import { readFile } from "node:fs/promises";
-import { Vizier } from "@vizier/sdk";
+import { Vizier } from "@agenda-intelligence/vizier-sdk";
 
 const client = new Vizier({
   baseUrl: "https://vizier.agendamcp.dpdns.org",
@@ -192,10 +193,10 @@ principal or key is blocked. For your own service origin, update both the client
 URL and the grant audience. [Grant setup and rotation](docs/DELEGATION_GRANTS.md)
 cover the full operator procedure.
 
-For an MCP boundary, install both release archives:
+For an MCP boundary, install the SDK and proxy from npm:
 
 ```sh
-npm install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-sdk-0.5.10.tgz https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.10/vizier-mcp-proxy-0.5.10.tgz
+npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-mcp-proxy@0.5.10
 ```
 
 Use the [mandatory proxy profile](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056)
@@ -262,7 +263,7 @@ principal-signed delegation, and its receipt helper does not verify a JWS
 signature. Use the hosted tool and the maintained enforcing SDK/proxy for the
 signed-grant workflow above. The root npm workspace is private: `npm install
 vizier` is not an installation command for this project. TypeScript packages
-are distributed through the GitHub Release archives linked above.
+are published under `@agenda-intelligence/vizier-*` as linked above.
 
 ## Interfaces and capabilities
 

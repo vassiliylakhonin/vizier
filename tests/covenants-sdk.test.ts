@@ -55,7 +55,7 @@ function draft(): ActionCovenantDraft {
   };
 }
 
-describe("@vizier/sdk Action Covenant lifecycle", () => {
+describe("@agenda-intelligence/vizier-sdk Action Covenant lifecycle", () => {
   it("validates signed authorization and outcome receipts against JWKS", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const receiptSigningKey = await createTestSigningKey();

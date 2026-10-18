@@ -5,7 +5,7 @@ import {
   type JsonValue,
   type VerificationRequest,
   type VerificationResponse,
-} from "@vizier/sdk";
+} from "@agenda-intelligence/vizier-sdk";
 
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 export const MCP_PROXY_ACTION_TYPE = "mcp_tool_call";

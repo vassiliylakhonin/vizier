@@ -9,11 +9,11 @@ import type {
   SignedOutcomeReceipt,
   VerificationRequest,
   VerificationResponse,
-} from "@vizier/sdk";
+} from "@agenda-intelligence/vizier-sdk";
 import {
   hashActionCovenantDraft,
   hashCanonicalJson,
-} from "@vizier/sdk";
+} from "@agenda-intelligence/vizier-sdk";
 
 export * from "./worker-version.js";
 
@@ -100,7 +100,7 @@ export function createDeployCovenantDraft(
     schema_version: "0.2",
     drafted_by: {
       kind: "SYSTEM",
-      identifier: "@vizier/gated-deploy",
+      identifier: "@agenda-intelligence/vizier-gated-deploy",
     },
     drafted_at: draftedAt.toISOString(),
     principal: DEPLOY_PRINCIPAL,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type HumanReviewRequest, type Vizier } from "@vizier/sdk";
+import { type HumanReviewRequest, type Vizier } from "@agenda-intelligence/vizier-sdk";
 
 const accountId = z.string().regex(/^[a-f0-9]{32}$/);
 const workerName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
