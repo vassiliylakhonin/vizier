@@ -17,6 +17,34 @@ function post(method: string, params: Record<string, unknown> = {}, headers: Rec
 }
 
 describe("MCP connection recovery", () => {
+  it('keeps ordinary session progress metadata in the session profile',async()=>{
+    for (const method of ['initialize','tools/list']) {
+      const params={...(method==='initialize'?{protocolVersion:VERSION,capabilities:{},clientInfo:{name:'standard-client',version:'1'}}:{}),
+        _meta:{progressToken:'private-progress-token'}};
+      const response=await handleHttpRequest(post(method,params,{'MCP-Protocol-Version':VERSION}));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toHaveProperty('result');
+    }
+  });
+  it('offers executable discovery, never an action replay, after an unknown tool in either profile', async () => {
+    for (const profile of ['session','session-progress','stateless']) {
+      const headers: Record<string,string> = profile==='stateless' ? {'MCP-Protocol-Version':STATELESS,'Mcp-Method':'tools/call','Mcp-Name':'private-unknown-tool'}
+        : {'MCP-Protocol-Version':VERSION};
+      const params = {name:'private-unknown-tool',arguments:{private:'private-request'},
+        ...(profile==='stateless'?{_meta:meta}:profile==='session-progress'?{_meta:{progressToken:'private-progress-token'}}:{})};
+      const response=await handleHttpRequest(post('tools/call',params,headers));
+      const body=await response.json() as {error:{data:{tool_hint:{recovery_request:{headers:Record<string,string>;body:unknown}}}}};
+      expect(body.error.data.tool_hint).toMatchObject({available_tools:['vizier_verify_action'],automatic_tool_retry:false});
+      const recovery=body.error.data.tool_hint.recovery_request;
+      expect(recovery.headers['MCP-Protocol-Version']).toBe(profile==='stateless'?STATELESS:VERSION);
+      expect(recovery.body).toMatchObject({method:'tools/list'});
+      expect(JSON.stringify(body)).not.toContain('private-');
+      const listed=await handleHttpRequest(new Request('https://vizier.example/mcp',{
+        method:'POST',headers:recovery.headers,body:JSON.stringify(recovery.body)}));
+      expect(listed.status).toBe(200);
+      expect(await listed.json()).toMatchObject({result:{tools:[{name:'vizier_verify_action'}]}});
+    }
+  });
   it("provides executable read-only recovery requests for both mixed-profile failures", async () => {
     for (const revision of ["2025-06-18", VERSION, STATELESS]) {
       const response = await handleHttpRequest(post("initialize", {
