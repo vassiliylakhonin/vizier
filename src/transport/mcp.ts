@@ -14,7 +14,7 @@ import {
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
-import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, type McpRejection, type McpConnectionObservation, observedRevision, observedClientFamily } from "./mcp-profiles";
+import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, toolDiscoveryHint, type McpRejection, type McpConnectionObservation, observedRevision, observedClientFamily } from "./mcp-profiles";
 
 // Revisions that predate the stateless 2026-07-28 handshake. Shipping clients
 // (Claude Code, Cursor, the MCP Inspector) still open a session with
@@ -270,7 +270,8 @@ async function runVerifyTool(
     };
   }
   if (params.name !== verifyTool.name) {
-    return { kind: "error", code: -32602, status: 200, message: "Unknown tool name." };
+    return { kind: "error", code: -32602, status: 200, message: "Unknown tool name.",
+      data:{tool_hint:toolDiscoveryHint(usesStatelessProfile({params}),[verifyTool.name],request.headers.get("MCP-Protocol-Version"))} };
   }
   const parsed = verificationRequestSchema.safeParse(params.arguments);
   if (!parsed.success) {

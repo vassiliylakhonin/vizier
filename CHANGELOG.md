@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.11 — 2026-10-19
+
+- Return executable, read-only tool discovery after an unknown tool name in either MCP profile. Publish the finite method inventory for each profile; never replay a tool call or weaken protocol, credential or authority checks. Verify the released standard session and stateless flows before attributing invalid probes to an outage. Node source/workspace versions advance together; existing npm 0.5.10 clients remain compatible.
+
 ## npm distribution — 2026-10-18
 
 - Publish the three Node packages under the owned `@agenda-intelligence` npm organization: `vizier-sdk`, `vizier-mcp-proxy`, and `vizier-gated-deploy`. The unavailable `@vizier` namespace remains only in historical GitHub release archives. Update imports, exact workspace dependencies, CLI examples and release checks together; executable names and hosted API behavior are unchanged.

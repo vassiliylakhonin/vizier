@@ -34,9 +34,11 @@ export function connectionHint(reason: McpRejection) {
         } } },
       },
     ],
-    session: { start_with: "initialize", protocol_versions: SESSION_PROTOCOL_VERSIONS },
+    session: { start_with: "initialize", protocol_versions: SESSION_PROTOCOL_VERSIONS,
+      methods:["initialize","notifications/initialized","ping","tools/list","tools/call"] },
     stateless: {
       start_with: "server/discover", protocol_version: MCP_PROTOCOL_VERSION,
+      methods:["server/discover","tools/list","tools/call"],
       required_headers: ["MCP-Protocol-Version", "Mcp-Method"],
       params_meta: {
         "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
@@ -44,6 +46,26 @@ export function connectionHint(reason: McpRejection) {
       },
       note: "Mirror the protocol version from params._meta and the request method in these headers. tools/call also requires Mcp-Name to match params.name. Do not use initialize in this profile.",
     },
+  };
+}
+
+/** Discover names after an invalid call; never synthesize or replay an action. */
+export function toolDiscoveryHint(stateless: boolean, toolNames: readonly string[], revision: string | null) {
+  const protocolVersion = stateless ? MCP_PROTOCOL_VERSION
+    : revision !== null && SESSION_PROTOCOL_VERSIONS.includes(revision) ? revision : DEFAULT_SESSION_PROTOCOL_VERSION;
+  return {
+    available_tools: toolNames,
+    automatic_tool_retry: false,
+    instruction: "Run the read-only tools/list request, select an advertised tool and validate its inputSchema. Review before making a new tools/call; the failed call was not replayed.",
+    recovery_request: {
+      endpoint:"/mcp", method:"POST",
+      headers:{"Content-Type":"application/json",Accept:"application/json, text/event-stream",
+        "MCP-Protocol-Version":protocolVersion,...(stateless?{"Mcp-Method":"tools/list"}:{})},
+      body:{jsonrpc:"2.0",id:"discover-tools",method:"tools/list",params:stateless?{_meta:{
+        "io.modelcontextprotocol/protocolVersion":MCP_PROTOCOL_VERSION,
+        "io.modelcontextprotocol/clientCapabilities":{}
+      }}:{}}
+    }
   };
 }
 
