@@ -1,5 +1,9 @@
 # Changelog
 
+## OSS Scanner preparation — 2026-10-20
+
+- Add a source-built Docker audit environment, offline verification commands and a source-backed security threat model. Keep production releases, credentials and deployment behavior unchanged. Enrollment remains subject to maintainer approval and Anthropic review; preparation is not a completed audit or security certification.
+
 ## 0.5.11 — 2026-10-19
 
 - Return executable, read-only tool discovery after an unknown tool name in either MCP profile. Publish the finite method inventory for each profile; never replay a tool call or weaken protocol, credential or authority checks. Verify the released standard session and stateless flows before attributing invalid probes to an outage. Node source/workspace versions advance together; existing npm 0.5.10 clients remain compatible.
