@@ -531,12 +531,19 @@ export async function handleMcpRequest(request: Request, options: TransportOptio
   const observation: { operation: string; connection: McpConnectionObservation } = {
     operation: "other", connection: { mcp_profile: "unmeasured", mcp_header_revision: "unmeasured", mcp_body_revision: "unmeasured", mcp_client_family: "unmeasured" },
   };
-  const response = await handleMcpRequestInner(request, options, observation);
+  let response = await handleMcpRequestInner(request, options, observation);
+  const rejection = connectionRejections.get(response);
   let rpcError = false;
   try {
-    const body = await response.clone().json() as { error?: unknown; result?: { isError?: boolean } };
+    const body = await response.clone().json() as { error?: {data?: Record<string,unknown>}; result?: { isError?: boolean } };
     rpcError = body.error !== undefined || body.result?.isError === true;
+    if (rejection !== undefined && body.error?.data) {
+      body.error.data.connection_hint = connectionHint(rejection, observation.connection);
+      const headers = new Headers(response.headers);
+      headers.delete("content-length");
+      response = Response.json(body, {status: response.status, headers});
+    }
   } catch { /* Notifications have no JSON body. */ }
-  logServiceAccess(request, observation.operation, response, rpcError, connectionRejections.get(response), observation.connection);
+  logServiceAccess(request, observation.operation, response, rpcError, rejection, observation.connection);
   return response;
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.12 — 2026-10-23
+
+- Recommend a supported MCP profile/revision after a connection refusal, preserving a recognized client revision. Include complete read-only session/stateless discovery follow-ups; never automatically replay tools, weaken protocol refusal or change authority. Keep guidance free of arbitrary client strings.
+
 ## OSS Scanner preparation — 2026-10-20
 
 - Add a source-built Docker audit environment, offline verification commands and a source-backed security threat model. Keep production releases, credentials and deployment behavior unchanged. Enrollment remains subject to maintainer approval and Anthropic review; preparation is not a completed audit or security certification.

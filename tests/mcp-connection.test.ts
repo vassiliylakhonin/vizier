@@ -17,6 +17,50 @@ function post(method: string, params: Record<string, unknown> = {}, headers: Rec
 }
 
 describe("MCP connection recovery", () => {
+  it("recommends stateless discovery for the current body revision and never echoes unknown revisions in hints",async()=>{
+    for (const revision of [STATELESS,"private-client-revision"]) {
+      const response=await handleHttpRequest(post("initialize",{_meta:{...meta,
+        "io.modelcontextprotocol/protocolVersion":revision}},{"MCP-Protocol-Version":revision,"Mcp-Method":"initialize"}));
+      const body=await response.json() as {error:{data:{connection_hint:{recommended_profile:string;
+        recovery_requests:{profile:string;headers:Record<string,string>;body:unknown;
+          follow_up_requests:{headers:Record<string,string>;body:unknown}[]}[]}}}};
+      const hint=body.error.data.connection_hint;
+      expect(hint.recommended_profile).toBe(revision===STATELESS?"stateless":"session");
+      expect(JSON.stringify(hint)).not.toContain("private-");
+      const recovery=hint.recovery_requests.find(r=>r.profile===hint.recommended_profile)!;
+      for(const step of [recovery,...recovery.follow_up_requests]) {
+        const recovered=await handleHttpRequest(new Request("https://vizier.example/mcp",{
+          method:"POST",headers:step.headers,body:JSON.stringify(step.body)}));
+        expect([200,202]).toContain(recovered.status);
+      }
+    }
+  });
+
+  it("preserves a recognized session revision and supplies its full read-only recovery sequence", async () => {
+    for (const revision of ["2025-06-18", VERSION]) {
+      const rejected=await handleHttpRequest(post("initialize",{_meta:{...meta,
+        "io.modelcontextprotocol/protocolVersion":revision}},
+        {"MCP-Protocol-Version":revision,"Mcp-Method":"initialize"}));
+      expect(rejected.status).toBe(400);
+      const body=await rejected.json() as {error:{data:{connection_hint:{recommended_profile:string;
+        recommended_protocol_version:string;automatic_retry:boolean;recovery_requests:{profile:string;headers:Record<string,string>;
+          body:unknown;follow_up_requests:{headers:Record<string,string>;body:unknown}[]}[]}}}};
+      const hint=body.error.data.connection_hint;
+      expect(hint.recommended_profile).toBe("session");
+      expect(hint.recommended_protocol_version).toBe(revision);
+      expect(hint.automatic_retry).toBe(false);
+      const recovery=hint.recovery_requests.find(item=>item.profile==="session")!;
+      expect(recovery.body).toMatchObject({method:"initialize",params:{protocolVersion:revision}});
+      for (const step of [recovery,...recovery.follow_up_requests]) {
+        const response=await handleHttpRequest(new Request("https://vizier.example/mcp",{
+          method:"POST",headers:step.headers,body:JSON.stringify(step.body)}));
+        expect([200,202]).toContain(response.status);
+        if(response.status===200)expect(await response.json()).toHaveProperty("result");
+      }
+      expect(JSON.stringify(recovery)).not.toContain("tools/call");
+    }
+  });
+
   it('keeps ordinary session progress metadata in the session profile',async()=>{
     for (const method of ['initialize','tools/list']) {
       const params={...(method==='initialize'?{protocolVersion:VERSION,capabilities:{},clientInfo:{name:'standard-client',version:'1'}}:{}),
