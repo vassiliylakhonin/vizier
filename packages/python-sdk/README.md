@@ -64,6 +64,12 @@ Or using an existing Python environment:
 }
 ```
 
+The local stdio connector uses the initialize-based session lifecycle. It
+preserves `2025-11-25`, `2025-06-18`, `2025-03-26` and `2024-11-05`, and
+counter-offers `2025-11-25` for an unsupported revision. It does not negotiate
+stateless `2026-07-28` through initialize. Use the hosted HTTP endpoint's
+`server/discover` sequence when you need that separate protocol era.
+
 ### Cursor Configuration (`.cursor/mcp.json`)
 
 ```json

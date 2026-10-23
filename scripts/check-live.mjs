@@ -95,6 +95,15 @@ try {
       served.body.remotes?.[0]?.url === `${ORIGIN}/mcp`,
   );
 
+  const capabilities = await getJson("/mcp");
+  const probing = await getJson("/.well-known/mcp-probing.json");
+  const guide = capabilities.body.connection_guide;
+  check("public discovery explains both connection profiles before a failed POST",
+    capabilities.status === 200 && probing.status === 200 &&
+      guide?.recommended_profile === "session" && guide?.recommended_protocol_version === SESSION_VERSION &&
+      guide?.automatic_retry === false && guide?.recovery_requests?.length === 2 &&
+      JSON.stringify(guide) === JSON.stringify(probing.body.connection_guide));
+
   // Session profile: the handshake every shipping client opens with.
   const initialized = await mcp({
     jsonrpc: "2.0",

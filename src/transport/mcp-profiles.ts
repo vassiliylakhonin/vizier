@@ -10,6 +10,11 @@ export type McpRejection = "accept_mismatch" | "invalid_request" | "invalid_json
   | "method_not_found" | "origin_rejected" | "body_too_large" | "content_type_mismatch";
 
 export function connectionHint(reason: McpRejection, observation?: McpConnectionObservation) {
+  return { reason, ...connectionGuide(observation) };
+}
+
+/** Publish working read-only connection sequences before a caller mixes eras. */
+export function connectionGuide(observation?: McpConnectionObservation) {
   const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
   // Only public revisions enter guidance. Prefer the body contract when header
   // and body disagree; never infer authority or replay the rejected method.
@@ -24,7 +29,6 @@ export function connectionHint(reason: McpRejection, observation?: McpConnection
     "io.modelcontextprotocol/clientCapabilities": {},
   };
   return {
-    reason,
     endpoint: "/mcp",
     method: "POST",
     content_type: "application/json",
