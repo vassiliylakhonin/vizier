@@ -9,29 +9,53 @@ export type McpRejection = "accept_mismatch" | "invalid_request" | "invalid_json
   | "header_mismatch" | "unsupported_version" | "profile_method_mismatch"
   | "method_not_found" | "origin_rejected" | "body_too_large" | "content_type_mismatch";
 
-export function connectionHint(reason: McpRejection) {
+export function connectionHint(reason: McpRejection, observation?: McpConnectionObservation) {
   const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
+  // Only public revisions enter guidance. Prefer the body contract when header
+  // and body disagree; never infer authority or replay the rejected method.
+  const revision = [observation?.mcp_body_revision, observation?.mcp_header_revision]
+    .find(value => value === MCP_PROTOCOL_VERSION || (value !== undefined && SESSION_PROTOCOL_VERSIONS.includes(value)));
+  const recommendedProfile = revision === MCP_PROTOCOL_VERSION ? "stateless" : "session";
+  const sessionVersion = revision !== undefined && SESSION_PROTOCOL_VERSIONS.includes(revision)
+    ? revision : DEFAULT_SESSION_PROTOCOL_VERSION;
+  const sessionHeaders = { ...headers, "MCP-Protocol-Version": sessionVersion };
+  const statelessMeta = {
+    "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+    "io.modelcontextprotocol/clientCapabilities": {},
+  };
   return {
     reason,
     endpoint: "/mcp",
     method: "POST",
     content_type: "application/json",
     accept: ["application/json", "text/event-stream"],
+    recommended_profile: recommendedProfile,
+    recommended_protocol_version: recommendedProfile === "stateless" ? MCP_PROTOCOL_VERSION : sessionVersion,
+    automatic_retry: false,
+    instruction: "Choose one profile and inspect its read-only sequence. Remove stateless protocol metadata from session requests; mirror the version and method for stateless requests. Do not automatically replay tools/call or treat discovery as authorization.",
     recovery_requests: [
       {
         profile: "session", method: "POST", endpoint: "/mcp", headers,
         body: { jsonrpc: "2.0", id: "connect-session", method: "initialize", params: {
-          protocolVersion: DEFAULT_SESSION_PROTOCOL_VERSION, capabilities: {},
+          protocolVersion: sessionVersion, capabilities: {},
           clientInfo: { name: "connection-recovery", version: "1" },
         } },
+        follow_up_requests: [
+          { method: "POST", endpoint: "/mcp", headers: sessionHeaders,
+            body: { jsonrpc: "2.0", method: "notifications/initialized" } },
+          { method: "POST", endpoint: "/mcp", headers: sessionHeaders,
+            body: { jsonrpc: "2.0", id: "list-session-tools", method: "tools/list" } },
+        ],
       },
       {
         profile: "stateless", method: "POST", endpoint: "/mcp",
         headers: { ...headers, "MCP-Protocol-Version": MCP_PROTOCOL_VERSION, "Mcp-Method": "server/discover" },
-        body: { jsonrpc: "2.0", id: "connect-stateless", method: "server/discover", params: { _meta: {
-          "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
-          "io.modelcontextprotocol/clientCapabilities": {},
-        } } },
+        body: { jsonrpc: "2.0", id: "connect-stateless", method: "server/discover", params: { _meta: statelessMeta } },
+        follow_up_requests: [
+          { method: "POST", endpoint: "/mcp",
+            headers: { ...headers, "MCP-Protocol-Version": MCP_PROTOCOL_VERSION, "Mcp-Method": "tools/list" },
+            body: { jsonrpc: "2.0", id: "list-stateless-tools", method: "tools/list", params: { _meta: statelessMeta } } },
+        ],
       },
     ],
     session: { start_with: "initialize", protocol_versions: SESSION_PROTOCOL_VERSIONS,

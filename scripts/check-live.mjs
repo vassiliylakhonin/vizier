@@ -21,7 +21,7 @@ const ORIGIN =
   process.env.VIZIER_ORIGIN ?? "https://vizier.agendamcp.dpdns.org";
 const SESSION_VERSION = "2025-11-25";
 const STATELESS_VERSION = "2026-07-28";
-const OWNER_HEADERS = { "X-Client-Id": "agenda-owner-vizier-live-smoke", "User-Agent": "vizier-live-smoke/1" };
+const OWNER_HEADERS = { "X-Client-Id": "agenda-owner-vizier-live-smoke" };
 
 const manifest = JSON.parse(
   readFileSync(new URL("../server.json", import.meta.url), "utf8"),
@@ -57,7 +57,7 @@ async function mcp(body, headers = {}) {
     },
     body: JSON.stringify(body),
   });
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: response.status === 202 ? null : await response.json() };
 }
 
 console.log(`${ORIGIN}\n`);
@@ -177,8 +177,11 @@ try {
     "io.modelcontextprotocol/protocolVersion":"2025-06-18",
     "io.modelcontextprotocol/clientCapabilities":{},
   }}}, {"MCP-Protocol-Version":"2025-06-18", "Mcp-Method":"initialize"});
-  const recovery = mixed.body.error?.data?.connection_hint?.recovery_requests;
+  const hint = mixed.body.error?.data?.connection_hint;
+  const recovery = hint?.recovery_requests;
   check("mixed MCP profile is refused with executable recovery", mixed.status === 400 && Array.isArray(recovery) && recovery.length === 2);
+  check("recovery preserves the recognized session revision without automatic retry",
+    hint?.recommended_profile === "session" && hint?.recommended_protocol_version === "2025-06-18" && hint?.automatic_retry === false);
   if (Array.isArray(recovery) && recovery.length === 2) {
     for (const next of recovery) {
       const expected = next.profile === "session" ? "initialize" : next.profile === "stateless" ? "server/discover" : null;
@@ -191,6 +194,21 @@ try {
       }
       const connected = await mcp(next.body, headers);
       check(`recovery ${next.profile} reaches discovery`, connected.status === 200 && connected.body.result !== undefined);
+      const expectedMethods = next.profile === "session" ? ["notifications/initialized", "tools/list"] : ["tools/list"];
+      const followups = next.follow_up_requests;
+      const validSequence = Array.isArray(followups) && followups.length === expectedMethods.length &&
+        followups.every((step, index) => step.method === "POST" && step.endpoint === "/mcp" && step.body?.method === expectedMethods[index]);
+      check(`recovery ${next.profile} has only the expected read-only follow-ups`, validSequence);
+      if (!validSequence) continue;
+      for (const step of followups) {
+        const nextHeaders = {};
+        for (const key of ["MCP-Protocol-Version", "Mcp-Method"]) {
+          if (typeof step.headers?.[key] === "string") nextHeaders[key] = step.headers[key];
+        }
+        const followed = await mcp(step.body, nextHeaders);
+        check(`recovery ${next.profile} ${step.body.method} succeeds`, step.body.method === "notifications/initialized"
+          ? followed.status === 202 : followed.status === 200 && followed.body.result?.tools?.[0]?.name === "vizier_verify_action");
+      }
     }
   }
 } catch (error) {

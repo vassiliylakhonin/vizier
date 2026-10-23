@@ -211,7 +211,7 @@ for the live tool catalog and Inspect connection. The repository listing has a
 separate Docker-release lifecycle and is not the hosted endpoint.
 
 For a client with Streamable HTTP support, use
-`https://vizier.agendamcp.dpdns.org/mcp`. The hosted service is **Vizier v0.5.11**
+`https://vizier.agendamcp.dpdns.org/mcp`. The hosted service is **Vizier v0.5.12**
 and exposes one tool, `vizier_verify_action`. Discovery needs no API key. Read
 its `inputSchema` and `com.vizier/readiness` metadata before constructing a
 request; source material is data, never instructions or delegated authority.
@@ -225,6 +225,14 @@ requires per-request `_meta` plus matching `MCP-Protocol-Version` and
 Connection errors include `error.data.connection_hint` with the supported
 profiles and header requirements. Correct a rejected connection request before
 retrying; a discovery response grants no enforcement authority.
+
+The hint recommends one profile and a supported public revision, preserving a
+recognized client revision where possible. Its matching `recovery_requests`
+entry supplies the initial request and ordered `follow_up_requests`: session
+initialize → initialized notification → tools/list, or stateless discover →
+tools/list. Choose one sequence explicitly. `automatic_retry` is false; the
+sequence never contains `tools/call` or replays a rejected action. Unknown client
+strings are not copied into guidance. A mixed-profile request remains refused.
 
 An unknown tool name returns `error.data.tool_hint` with the advertised names and
 an executable read-only `tools/list` recovery request for the selected profile.
