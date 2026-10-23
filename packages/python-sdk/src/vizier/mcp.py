@@ -35,10 +35,12 @@ from .models import (
     VerificationResponse,
 )
 
-MCP_PROTOCOL_VERSIONS = ["2024-11-05", "2025-03-26", "2026-07-28"]
-DEFAULT_PROTOCOL_VERSION = "2024-11-05"
+# This stdio adapter implements the initialize-based session lifecycle only.
+# A stateless revision cannot be selected through the legacy handshake.
+MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
+DEFAULT_PROTOCOL_VERSION = "2025-11-25"
 SERVER_NAME = "vizier-guard"
-SERVER_VERSION = "0.3.2"
+SERVER_VERSION = "0.3.3"
 
 # DLP pattern detectors (Standard library regex)
 DLP_PATTERNS = {

@@ -1,5 +1,5 @@
 import { SERVICE_VERSION } from "../version";
-import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS } from "./mcp-profiles";
+import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, connectionGuide } from "./mcp-profiles";
 
 export const MCP_SERVER_SCHEMA =
   "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
@@ -142,6 +142,7 @@ export function createVizierLlmsTxt(origin: string): string {
 - [AI Catalog](${origin}/.well-known/ai-catalog.json): Canonical AI catalog.
 - [A2A Agent Card](${origin}/.well-known/agent-card.json): Agent-to-Agent discovery card.
 - [MCP Server Manifest](${origin}/.well-known/mcp.json): Model Context Protocol manifest.
+- [MCP Connection Guide](${origin}/.well-known/mcp-probing.json): choose one complete session or stateless sequence before connecting; do not combine initialize with stateless protocol metadata.
 - [Glama MCP Verification](${origin}/.well-known/glama.json): Glama MCP ownership verification manifest.
 - [OAuth Protected Resource Metadata (RFC 9728)](${origin}/.well-known/oauth-protected-resource): RFC 9728 OAuth 2.0 protected resource metadata and authorization discovery.
 - [OpenAPI 3.1 Contract](${origin}/openapi.json): Action Covenant REST API specification.
@@ -263,6 +264,7 @@ export function createMcpCapabilityDocument(
       MCP_PROTOCOL_VERSION,
       ...SESSION_PROTOCOL_VERSIONS,
     ],
+    connection_guide: connectionGuide(),
     server_card: `${origin}/.well-known/mcp.json`,
     tools: ["vizier_verify_action"],
     liveness: "ok",

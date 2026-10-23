@@ -17,6 +17,31 @@ function post(method: string, params: Record<string, unknown> = {}, headers: Rec
 }
 
 describe("MCP connection recovery", () => {
+  it("publishes executable profile-specific connections before a failed request", async () => {
+    for (const path of ["/mcp", "/.well-known/mcp-probing.json"]) {
+      const document = await handleHttpRequest(new Request(`https://vizier.example${path}`));
+      expect(document.status).toBe(200);
+      const body = await document.json() as { connection_guide: ReturnType<typeof import("../src/transport/mcp-profiles").connectionGuide> };
+      const guide = body.connection_guide;
+      expect(guide).toMatchObject({ recommended_profile: "session", recommended_protocol_version: VERSION, automatic_retry: false });
+      expect(guide).not.toHaveProperty("reason");
+      expect(guide.recovery_requests).toHaveLength(2);
+      for (const sequence of guide.recovery_requests) {
+        expect(sequence.body.method).toBe(sequence.profile === "session" ? "initialize" : "server/discover");
+        expect(JSON.stringify(sequence)).not.toContain("tools/call");
+        for (const step of [sequence, ...sequence.follow_up_requests]) {
+          const response = await handleHttpRequest(new Request(`https://vizier.example${step.endpoint}`, {
+            method: step.method, headers: step.headers, body: JSON.stringify(step.body),
+          }));
+          expect(response.status).toBe(step.body.method === "notifications/initialized" ? 202 : 200);
+          if (step.body.method === "tools/list") {
+            expect(await response.json()).toMatchObject({ result: { tools: [{ name: "vizier_verify_action" }] } });
+          }
+        }
+      }
+    }
+  });
+
   it("recommends stateless discovery for the current body revision and never echoes unknown revisions in hints",async()=>{
     for (const revision of [STATELESS,"private-client-revision"]) {
       const response=await handleHttpRequest(post("initialize",{_meta:{...meta,

@@ -45,9 +45,29 @@ def test_initialize_handshake(mcp_server):
     assert resp["id"] == 1
     assert resp["result"]["protocolVersion"] == "2024-11-05"
     assert resp["result"]["serverInfo"]["name"] == "vizier-guard"
-    assert resp["result"]["serverInfo"]["version"] == "0.3.2"
+    assert resp["result"]["serverInfo"]["version"] == "0.3.3"
     assert resp["result"]["capabilities"]["tools"]["listChanged"] is False
     assert "deterministic authorization" in resp["result"]["instructions"].lower()
+
+
+@pytest.mark.parametrize("revision", ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"])
+def test_initialize_preserves_supported_session_revision(mcp_server, revision):
+    reply = json.loads(mcp_server.handle_request(json.dumps({
+        "jsonrpc": "2.0", "id": "connect", "method": "initialize", "params": {
+            "protocolVersion": revision, "capabilities": {}, "clientInfo": {"name": "client", "version": "1"},
+        },
+    })))
+    assert reply["result"]["protocolVersion"] == revision
+    listed = json.loads(mcp_server.handle_request(json.dumps({"jsonrpc": "2.0", "id": "list", "method": "tools/list"})))
+    assert listed["result"]["tools"]
+
+
+@pytest.mark.parametrize("revision", ["2026-07-28", "2099-01-01"])
+def test_initialize_never_negotiates_a_stateless_revision(mcp_server, revision):
+    reply = json.loads(mcp_server.handle_request(json.dumps({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": revision},
+    })))
+    assert reply["result"]["protocolVersion"] == "2025-11-25"
 
 
 def test_notifications_initialized_returns_none(mcp_server):
