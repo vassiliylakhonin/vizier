@@ -24,6 +24,16 @@ actions and targets while the owner keeps control of the signing key.
 [Delegation setup](docs/DELEGATION_GRANTS.md) ·
 [Threat model](docs/THREAT_MODEL.md)
 
+## Choose an integration
+
+| Your task | Start here | Prerequisites |
+| --- | --- | --- |
+| Try the deployment adapter locally | [Synthetic preparation example](#control-an-agents-infrastructure-deployment) | Node 24+; no keys for the preparation step |
+| Verify an action with signed delegation | [SDK setup](#start-with-signed-delegation) | An operator API key, registered public key and owner-issued grant |
+| Protect existing MCP tools | [Private MCP proxy](packages/mcp-proxy/README.md) | Operator-owned upstream credentials and a restricted tool route |
+| Inspect the hosted API | [API reference](https://vizier.agendamcp.dpdns.org/docs) | Public documentation; execution permissions are separate |
+
+
 ## Control an agent's infrastructure deployment
 
 For platform and security teams operating a DevOps agent: pin one existing
@@ -91,28 +101,23 @@ authority; its receipts do not establish owner delegation.
 
 ## Working integrations
 
-These are owner-operated production workflows, not external customer adoption.
+The Agenda fleet uses Vizier in an owner-operated deployment workflow. This is
+concrete operational use by the same maintainer; it is not external customer
+adoption.
 
-| Workflow | Protected action | Evidence |
+| Workflow | Protected action | Inspect the evidence |
 | --- | --- | --- |
-| Agenda deployment | `deploy_worker` on `worker:agent-output-verification-a2a` | [Signed deployment run](https://github.com/vassiliylakhonin/agenda-intelligence-md/actions/runs/36702604857) |
-| Daily telemetry archive | `archive_telemetry` on the telemetry vault's `main` branch | [Workflow and archive](https://github.com/vassiliylakhonin/agenda-telemetry-vault), [authorization trace](https://github.com/vassiliylakhonin/agenda-telemetry-vault/blob/561c676a5088134a608d4b9ba14f7078036780bb/reports/authorizations/99a253ff5de4f038d08a3df13ed0bad6299f609966f22132271ff66b2c092472.json) |
+| Agenda Worker fleet | Target-scoped `deploy_worker` authorization before deployment | [Public workflow](https://github.com/vassiliylakhonin/agenda-intelligence-md/blob/main/.github/workflows/deploy-existing-fleet.yml) and [successful signed deployment](https://github.com/vassiliylakhonin/agenda-intelligence-md/actions/runs/39930530042) |
 
-The daily chain runs **collection → Agenda evidence preflight → Vizier
-permission → Git write**. Agenda checks report structure and arithmetic against
-supplied records; Vizier authorizes the write. The archive gate binds the
-prepared changes and report digests to a receipt and skips an already recorded
-GitHub run. The [live run](https://github.com/vassiliylakhonin/agenda-telemetry-vault/actions/runs/36706597715)
-succeeded; rerunning it skipped the signing and write steps without another commit.
-
-Both integrations use separate signer and execution steps, ten-minute grants,
-and protected GitHub Environments. Missing or expired grants and invalid
-receipts stop execution. Git path restrictions and duplicate-run handling belong
-to the archive integration; they are not general replay guarantees from Vizier.
+The workflow separates signer and execution steps and supplies short-lived,
+owner-signed grants. Missing or expired grants and invalid required receipts
+stop that deployment path. An operator who retains direct Cloudflare access
+still has separate platform authority; Vizier does not remove it.
 
 ## Start with signed delegation
 
-**Experimental v0.5.10.** TypeScript packages use the owned `@agenda-intelligence`
+**Experimental.** The runnable examples pin published npm clients at **v0.5.10**.
+Service and client versions are tracked separately. TypeScript packages use the owned `@agenda-intelligence`
 npm organization: [SDK](https://www.npmjs.com/package/@agenda-intelligence/vizier-sdk),
 [MCP proxy](https://www.npmjs.com/package/@agenda-intelligence/vizier-mcp-proxy), and
 [deployment adapter](https://www.npmjs.com/package/@agenda-intelligence/vizier-gated-deploy).
