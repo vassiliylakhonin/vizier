@@ -42,10 +42,10 @@ exact uploaded version before changing its traffic. Changed versions, out-of-sco
 targets, expired permissions and repeated approval claims stop before execution.
 Keep cloud credentials and the executor outside the agent's control.
 
-Install the **v0.5.10** SDK and deployment adapter from npm (Node 24+):
+Install the **v0.5.13** SDK and deployment adapter from npm (Node 24+):
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-gated-deploy@0.5.10
+npm install @agenda-intelligence/vizier-sdk@0.5.13 @agenda-intelligence/vizier-gated-deploy@0.5.13
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
   --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
@@ -116,7 +116,7 @@ still has separate platform authority; Vizier does not remove it.
 
 ## Start with signed delegation
 
-**Experimental.** The runnable examples pin published npm clients at **v0.5.10**.
+**Experimental.** The runnable examples pin published npm clients at **v0.5.13**.
 Service and client versions are tracked separately. TypeScript packages use the owned `@agenda-intelligence`
 npm organization: [SDK](https://www.npmjs.com/package/@agenda-intelligence/vizier-sdk),
 [MCP proxy](https://www.npmjs.com/package/@agenda-intelligence/vizier-mcp-proxy), and
@@ -125,7 +125,7 @@ Earlier GitHub archives retain their original `@vizier/*` names; update imports
 when switching from those archives to npm.
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.10
+npm install @agenda-intelligence/vizier-sdk@0.5.13
 ```
 
 First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up)
@@ -201,7 +201,7 @@ cover the full operator procedure.
 For an MCP boundary, install the SDK and proxy from npm:
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-mcp-proxy@0.5.10
+npm install @agenda-intelligence/vizier-sdk@0.5.13 @agenda-intelligence/vizier-mcp-proxy@0.5.13
 ```
 
 Use the [mandatory proxy profile](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056)
@@ -282,7 +282,7 @@ credential and a valid owner-issued grant matching the actual request; see
 [delegation setup](docs/DELEGATION_GRANTS.md). Keep private signing keys outside
 the agent and do not paste credentials into tool arguments.
 
-The separately versioned **Python `vizier-guard` v0.3.2** stdio helper exposes
+The separately versioned **Python `vizier-guard` v0.3.3** stdio helper exposes
 `vizier_screen_action`, `vizier_verify_receipt` and `vizier_check_policy`. That
 local catalog is not the hosted authorization service: its local `ALLOW` is not
 principal-signed delegation, and its receipt helper does not verify a JWS
@@ -290,6 +290,15 @@ signature. Use the hosted tool and the maintained enforcing SDK/proxy for the
 signed-grant workflow above. The root npm workspace is private: `npm install
 vizier` is not an installation command for this project. TypeScript packages
 are published under `@agenda-intelligence/vizier-*` as linked above.
+
+Python SDK 0.3.3 fixes stdio session-version negotiation. Install its tested wheel
+from [GitHub Release v0.5.13](https://github.com/vassiliylakhonin/vizier/releases/tag/v0.5.13):
+
+```sh
+python -m pip install https://github.com/vassiliylakhonin/vizier/releases/download/v0.5.13/vizier_guard-0.3.3-py3-none-any.whl
+```
+
+The wheel is a GitHub Release distribution; this does not claim a PyPI publication.
 
 ## Interfaces and capabilities
 
