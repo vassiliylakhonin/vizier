@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.14 — 2026-10-27
+
+- Release the three Node packages together with the linear-time SDK URL normalization fix and Zod 4.6.7 dependency update. Pin the MCP proxy and gated deployment adapter to the corrected SDK.
+- Align hosted discovery metadata, package versions and installation examples at 0.5.14. Registry test fixture isolation and URL compatibility regressions are included; Python SDK version and authorization behavior are unchanged.
+
 ## Code scanning maintenance — 2026-10-27
 
 - Replace the SDK constructor's trailing-slash regex with a backward scan and one slice. Preserve blank-input errors and existing normalization, including internal/encoded slashes, relative inputs and surrounding whitespace. Isolate long-input regression probes in bounded child processes so a slow constructor cannot block the test runner.
