@@ -11,7 +11,7 @@ describe("SDK URL normalization resource behavior", () => {
     "constructs with a long %s slash run within a bounded child process",
     mode => {
       const result = spawnSync(process.execPath, [probe, mode], {
-        encoding: "utf8", timeout: 5_000, maxBuffer: 16_384,
+        encoding: "utf8", timeout: 5_000, killSignal: "SIGKILL", maxBuffer: 16_384,
       });
       expect(result.error).toBeUndefined();
       expect(result.status).toBe(0);
