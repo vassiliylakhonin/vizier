@@ -1,5 +1,11 @@
 # Changelog
 
+## Dependency maintenance — 2026-10-27
+
+- Refresh Wrangler/workerd and workers-types together, regenerate Worker runtime types and update typescript-eslint. Preserve the stale-type CI gate that caught the incomplete Wrangler-only update.
+- Pin Zod 4.6.7 in all Node workspaces and resolve patched Undici 7.30.1 through Wrangler 4.153.0. Allow future Zod minor-update proposals, retaining the major-update guard. Check early rejection of oversized bounded response collections and existing policy/transport contracts. Published npm tarballs are unchanged until a separate package release.
+- Distinguish repeated acyclic object references from active-ancestor cycles after Zod parsing. Preserve canonical bytes and count every JSON-expanded occurrence against the existing node/depth limits; continue rejecting real cycles and excessive alias expansion.
+
 ## 0.5.12 — 2026-10-23
 
 - Recommend a supported MCP profile/revision after a connection refusal, preserving a recognized client revision. Include complete read-only session/stateless discovery follow-ups; never automatically replay tools, weaken protocol refusal or change authority. Keep guidance free of arbitrary client strings.

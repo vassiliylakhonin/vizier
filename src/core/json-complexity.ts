@@ -8,10 +8,9 @@ export class JsonComplexityError extends Error {
   }
 }
 
-interface PendingValue {
-  readonly value: unknown;
-  readonly depth: number;
-}
+type PendingValue =
+  | { readonly phase: "enter"; readonly value: unknown; readonly depth: number }
+  | { readonly phase: "leave"; readonly value: object };
 
 export function assertJsonComplexity(
   value: unknown,
@@ -22,14 +21,18 @@ export function assertJsonComplexity(
 ): void {
   const maxDepth = options.maxDepth ?? MAX_JSON_DEPTH;
   const maxNodes = options.maxNodes ?? MAX_JSON_NODES;
-  const pending: PendingValue[] = [{ value, depth: 0 }];
-  const visited = new WeakSet<object>();
+  const pending: PendingValue[] = [{ phase: "enter", value, depth: 0 }];
+  const ancestors = new WeakSet<object>();
   let nodeCount = 0;
 
   while (pending.length > 0) {
     const current = pending.pop();
     if (current === undefined) {
       break;
+    }
+    if (current.phase === "leave") {
+      ancestors.delete(current.value);
+      continue;
     }
     nodeCount += 1;
     if (nodeCount > maxNodes) {
@@ -42,16 +45,19 @@ export function assertJsonComplexity(
     if (typeof current.value !== "object" || current.value === null) {
       continue;
     }
-    if (visited.has(current.value)) {
+    if (ancestors.has(current.value)) {
       throw new JsonComplexityError("cycle");
     }
-    visited.add(current.value);
+    ancestors.add(current.value);
+    // JSON repeats acyclic aliases. Count each expanded occurrence; only a
+    // reference to an active ancestor is a cycle. Leave markers cost no nodes.
+    pending.push({ phase: "leave", value: current.value });
 
     const children = Array.isArray(current.value)
       ? current.value
       : Object.values(current.value as Record<string, unknown>);
     for (const child of children) {
-      pending.push({ value: child, depth: current.depth + 1 });
+      pending.push({ phase: "enter", value: child, depth: current.depth + 1 });
     }
   }
 }

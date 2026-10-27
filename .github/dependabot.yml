@@ -12,7 +12,7 @@ updates:
       - dependency-name: "vitest"
         update-types: ["version-update:semver-major"]
       - dependency-name: "zod"
-        versions: [">= 4.5.0"]
+        update-types: ["version-update:semver-major"]
 
   # Maintain dependencies for Python SDK
   - package-ecosystem: "pip"
