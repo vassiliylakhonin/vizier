@@ -658,7 +658,10 @@ export class Vizier {
     if (!options.baseUrl.trim()) {
       throw new TypeError("baseUrl is required");
     }
-    this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
+    const baseUrl = options.baseUrl;
+    let end = baseUrl.length;
+    while (end > 0 && baseUrl[end - 1] === "/") end -= 1;
+    this.#baseUrl = baseUrl.slice(0, end);
     this.#apiKey = options.apiKey;
     this.#fetch = options.fetch ?? globalThis.fetch;
   }

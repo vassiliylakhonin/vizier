@@ -1,5 +1,10 @@
 # Changelog
 
+## Code scanning maintenance — 2026-10-27
+
+- Replace the SDK constructor's trailing-slash regex with a backward scan and one slice. Preserve blank-input errors and existing normalization, including internal/encoded slashes, relative inputs and surrounding whitespace. Isolate long-input regression probes in bounded child processes so a slow constructor cannot block the test runner.
+- Replace the Registry test's generated JavaScript data URL with a fixed preloader receiving JSON over stdin. Preserve the dry-run publication boundary and status handling; verify code-like metadata remains data. The previous literal-encoded mock did not establish a code-injection boundary. No query suppression or alert dismissal is added; published npm packages require a separate release.
+
 ## Dependency maintenance — 2026-10-27
 
 - Refresh Wrangler/workerd and workers-types together, regenerate Worker runtime types and update typescript-eslint. Preserve the stale-type CI gate that caught the incomplete Wrangler-only update.

@@ -34,6 +34,29 @@ async function allowResponse(): Promise<unknown> {
 }
 
 describe("@agenda-intelligence/vizier-sdk", () => {
+  it.each([
+    ["https://vizier.example", "https://vizier.example"],
+    ["https://vizier.example////", "https://vizier.example"],
+    ["https://vizier.example/api///", "https://vizier.example/api"],
+    ["https://vizier.example/a//b///", "https://vizier.example/a//b"],
+    ["https://vizier.example/%2F", "https://vizier.example/%2F"],
+    ["https://vizier.example/\\", "https://vizier.example/\\"],
+    ["https://vizier.example/∕", "https://vizier.example/∕"],
+    [" https://vizier.example/ ", " https://vizier.example/ "],
+    ["relative/path///", "relative/path"],
+    ["////", ""],
+    ["https://vizier.example/?q=/", "https://vizier.example/?q="],
+  ])("preserves URL normalization for %j", async (baseUrl, normalized) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json(await allowResponse()));
+    const client = new Vizier({ baseUrl, fetch: fetchMock });
+    await client.verify(input);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(normalized + "/v1/verify");
+  });
+
+  it.each(["", " ", "\t\n"])("retains the blank URL error for %j", baseUrl => {
+    expect(() => new Vizier({ baseUrl })).toThrowError("baseUrl is required");
+  });
+
   it("posts a typed request and validates the response", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(await allowResponse()),

@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest";
 
 const root = new URL("../", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("server.json", root), "utf8"));
+const preloader = new URL("./fixtures/registry-response.mjs", import.meta.url).href;
 
 function run(server: unknown, status = 200) {
   const body = { server, _meta: { "io.modelcontextprotocol.registry/official": { isLatest: true } } };
-  const stub = `globalThis.fetch = async () => new Response(${JSON.stringify(JSON.stringify(body))}, {status: ${status}});`;
-  return spawnSync(process.execPath, ["--import", `data:text/javascript,${encodeURIComponent(stub)}`, "scripts/publish-registry.mjs", "--dry-run"], { cwd: root, encoding: "utf8", timeout: 10000 });
+  return spawnSync(process.execPath, ["--import", preloader, "scripts/publish-registry.mjs", "--dry-run"], {
+    cwd: root, encoding: "utf8", timeout: 10000, input: JSON.stringify({ body, status }),
+  });
 }
 
 function revision() {
@@ -48,5 +50,18 @@ describe("automatic Registry publication after metadata-only migration", () => {
     const result = run(revision(), 503);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Registry lookup failed");
+  });
+
+  it.each([
+    "\"); process.exit(86); //",
+    "</script><script>process.exit(86)</script>",
+    "` ${process.exit(86)} \\\n\u2028\u2029",
+  ])("keeps code-like Registry metadata as data: %j", description => {
+    const server = revision();
+    server.description = description;
+    const result = run(server);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("--dry-run: would publish");
+    expect(result.stderr).toBe("");
   });
 });
