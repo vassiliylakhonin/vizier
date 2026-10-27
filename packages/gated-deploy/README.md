@@ -7,7 +7,7 @@ exact version before calling Cloudflare. Node 24+.
 Install the matching packages from npm:
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.13 @agenda-intelligence/vizier-gated-deploy@0.5.13
+npm install @agenda-intelligence/vizier-sdk@0.5.14 @agenda-intelligence/vizier-gated-deploy@0.5.14
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
   --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json

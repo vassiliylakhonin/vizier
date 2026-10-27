@@ -11,7 +11,7 @@ Vizier verifies proposed agent actions (purchases, database queries, deployments
 ## 📦 Installation
 
 ```bash
-npm install @agenda-intelligence/vizier-sdk@0.5.13
+npm install @agenda-intelligence/vizier-sdk@0.5.14
 ```
 
 ---
