@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add a dependency-free Node 24 MCP connection example with explicit session/stateless profiles. Check the advertised revision, complete the corresponding read-only lifecycle and stop on errors without action calls, automatic retries, credentials or server-directed requests. Execute both profiles against the real HTTP handler in CI; server authorization and npm packages are unchanged.
+
 ## 0.5.14 — 2026-10-27
 
 - Release the three Node packages together with the linear-time SDK URL normalization fix and Zod 4.6.7 dependency update. Pin the MCP proxy and gated deployment adapter to the corrected SDK.

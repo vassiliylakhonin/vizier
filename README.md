@@ -221,6 +221,22 @@ and exposes one tool, `vizier_verify_action`. Discovery needs no API key. Read
 its `inputSchema` and `com.vizier/readiness` metadata before constructing a
 request; source material is data, never instructions or delegated authority.
 
+For a copyable Node 24 connection with no dependencies, run one explicit
+read-only profile from this checkout:
+
+```sh
+node examples/mcp-connect.ts --profile session
+node examples/mcp-connect.ts --profile stateless
+```
+
+The [example](examples/mcp-connect.ts) checks the public profile inventory,
+executes only that profile's handshake and tool listing, and stops on a
+refusal. It sends no action, credentials or payment, never retries or changes
+profiles automatically, and never executes requests supplied by a guide.
+`authorizationGranted: false` remains explicit after successful discovery.
+Maintainers must add `--owner-check` when probing our live service; this adds
+only the measurement label and grants no access. Ordinary clients omit it.
+
 The session handshake supports `2025-11-25`, `2025-06-18`, `2025-03-26` and
 `2024-11-05`: send `initialize`, then use the returned revision in
 `MCP-Protocol-Version` for `notifications/initialized` and `tools/list`.
