@@ -78,3 +78,36 @@ events without this field remain unmeasured. Mixed-profile errors include two
 complete server-authored `connection_hint.recovery_requests`, one per profile;
 both perform discovery only. Clients must explicitly choose a profile rather
 than automatically replaying an action, credentials or an untrusted error URL.
+
+## Optional daily MCP correlation
+
+The hosted MCP access observation can add `caller_hash`, `correlation_status`,
+and a finite `mcp_tool` classification. Correlation is enabled only with a
+separately generated `VIZIER_MCP_CORRELATION_KEY` secret containing exactly
+32 cryptographically random bytes encoded as unpadded base64url. Install it as a
+Worker secret through the operator's secret management process; never commit,
+log, send to a client, or reuse it as an authorization credential. Key format
+validation does not prove entropy. Missing or malformed keys, missing network
+address, and cryptographic errors record a null hash and a bounded status;
+service admission and decisions are unaffected.
+
+The 128-bit truncated HMAC covers a fixed purpose, UTC date, connecting address
+and bounded User-Agent. The same caller may get a different pseudonym when its
+network or User-Agent changes; shared networks and spoofed labels can combine
+callers. It is pseudonymous, not anonymous identity or a verified integration.
+The pseudonym changes at the UTC date boundary, although the key holder may
+recompute it for known inputs; this does not guarantee unlinkability. The
+provider log retention still governs how long individual events can exist.
+`mcp_tool` is absent outside parsed `tools/call`, null when no name was provided,
+`vizier_verify_action` for that exact known tool, and `unknown` for other names;
+raw names and arguments are never added. Rate-limited requests rejected before
+the MCP handler are outside this correlation stream.
+
+Install the corresponding private-vault collector changes first: it derives
+same-day, same-label 30-minute aggregate recovery observations in memory and
+never commits the new pseudonyms to Git. A partial/provider snapshot is a lower
+bound, not independently verified users or causal conversion. History prior to
+enablement remains unmeasured. Do not enable a secret before the vault collector
+understands the new fields; no change here provisions the secret automatically.
+
+Counts from this feature are distinct from the separate rolling audit snapshot.

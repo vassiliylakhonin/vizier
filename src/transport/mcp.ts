@@ -1,4 +1,5 @@
 import { assertEvaluationCannotAllow, EVALUATION_METADATA } from "./evaluation-boundary";
+import { mcpCallerCorrelation } from "./mcp-correlation";
 import { logServiceAccess, ACCESS_OPERATIONS } from "./access-telemetry";
 import { z } from "zod";
 
@@ -484,7 +485,7 @@ async function handleSessionRequest(
 async function handleMcpRequestInner(
   request: Request,
   options: TransportOptions,
-  observation: { operation: string; connection: McpConnectionObservation },
+  observation: { operation: string; connection: McpConnectionObservation; mcpTool?: "vizier_verify_action" | "unknown" | null },
 ): Promise<Response> {
   if (!validateOrigin(request)) {
     return mcpError(
@@ -516,6 +517,10 @@ async function handleMcpRequestInner(
   const stateless = usesStatelessProfile(input);
   const params = typeof input === "object" && input !== null && "params" in input ? input.params : undefined;
   const values = typeof params === "object" && params !== null ? params as Record<string, unknown> : {};
+  if (observation.operation === "tools/call") {
+    observation.mcpTool = typeof values.name !== "string" ? null
+      : values.name === verifyTool.name ? "vizier_verify_action" : "unknown";
+  }
   const meta = typeof values._meta === "object" && values._meta !== null ? values._meta as Record<string, unknown> : {};
   const clientInfo = stateless ? meta["io.modelcontextprotocol/clientInfo"] : values.clientInfo;
   observation.connection = {
@@ -531,7 +536,7 @@ async function handleMcpRequestInner(
 }
 
 export async function handleMcpRequest(request: Request, options: TransportOptions = {}): Promise<Response> {
-  const observation: { operation: string; connection: McpConnectionObservation } = {
+  const observation: { operation: string; connection: McpConnectionObservation; mcpTool?: "vizier_verify_action" | "unknown" | null } = {
     operation: "other", connection: { mcp_profile: "unmeasured", mcp_header_revision: "unmeasured", mcp_body_revision: "unmeasured", mcp_client_family: "unmeasured" },
   };
   let response = await handleMcpRequestInner(request, options, observation);
@@ -547,6 +552,9 @@ export async function handleMcpRequest(request: Request, options: TransportOptio
       response = Response.json(body, {status: response.status, headers});
     }
   } catch { /* Notifications have no JSON body. */ }
-  logServiceAccess(request, observation.operation, response, rpcError, rejection, observation.connection);
+  const timestamp = new Date().toISOString();
+  const correlation = await mcpCallerCorrelation(request, options.mcpCorrelationKey, timestamp);
+  logServiceAccess(request, observation.operation, response, rpcError, rejection, observation.connection,
+    correlation, observation.mcpTool, timestamp);
   return response;
 }

@@ -8,7 +8,8 @@ export const ACCESS_OPERATIONS = new Set([
 const observed = new WeakSet<Response>();
 export const hasAccessObservation = (response: Response): boolean => observed.has(response);
 
-export function logServiceAccess(request: Request, operation: string, response: Response, rpcError = false, mcpRejection?: McpRejection, connection?: McpConnectionObservation): void {
+export function logServiceAccess(request: Request, operation: string, response: Response, rpcError = false, mcpRejection?: McpRejection, connection?: McpConnectionObservation, correlation?: { caller_hash: string | null; correlation_status: string },
+  mcpTool?: "vizier_verify_action" | "unknown" | null, timestamp?: string): void {
   observed.add(response);
   try {
     const client = (request.headers.get('x-client-id') ?? '').toLowerCase();
@@ -18,7 +19,7 @@ export function logServiceAccess(request: Request, operation: string, response: 
     const status = response.status;
     console.log(JSON.stringify({
       event: 'agenda_service_access', event_version: 1, service: 'vizier',
-      timestamp: new Date().toISOString(), event_id: crypto.randomUUID(),
+      timestamp: timestamp ?? new Date().toISOString(), event_id: crypto.randomUUID(),
       transport: new URL(request.url).pathname === '/mcp' ? 'mcp' : 'http',
       operation: ACCESS_OPERATIONS.has(operation) ? operation : 'other',
       access_mode: request.headers.has('authorization') || request.headers.has('x-vizier-key') ? 'credential_present' : 'unverified',
@@ -28,6 +29,8 @@ export function logServiceAccess(request: Request, operation: string, response: 
       caller_kind: caller, origin_verification: 'unverified',
       ...(mcpRejection === undefined ? {} : { mcp_rejection: mcpRejection }),
       ...(connection ?? {}),
+      ...(correlation ?? {}),
+      ...(mcpTool === undefined ? {} : { mcp_tool: mcpTool }),
     }));
   } catch { /* Observability must not change authorization or response handling. */ }
 }

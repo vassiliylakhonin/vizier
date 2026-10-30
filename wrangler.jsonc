@@ -6,6 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   // Optional VIZIER_SIGNED_GRANT_MODE: required | optional. Unset keeps legacy
   // callers compatible; invalid configured values block verification.
+  // VIZIER_MCP_CORRELATION_KEY is an optional 32-byte random base64url secret.
+  // Configure only after deploying the compatible private-vault collector.
   // VIZIER_PRINCIPAL_KEYS is deliberately not required: delegation grants are
   // opt-in, and an unset registry simply means no grant can be verified.
   "secrets": {

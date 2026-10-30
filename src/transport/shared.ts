@@ -32,6 +32,7 @@ export interface TransportOptions {
    */
   readonly principalKeySource?: string;
   readonly signedGrantModeSource?: string;
+  readonly mcpCorrelationKey?: string;
   readonly upstreamFetch?: typeof fetch;
   readonly upstreamUrl?: string;
   readonly allowedUpstreamOrigins?: readonly string[];
