@@ -11,7 +11,7 @@ Vizier verifies proposed agent actions (purchases, database queries, deployments
 ## 📦 Installation
 
 ```bash
-npm install @agenda-intelligence/vizier-sdk@0.5.14
+npm install @agenda-intelligence/vizier-sdk@0.5.15
 ```
 
 ---
@@ -28,7 +28,7 @@ const vizier = new Vizier({
 
 // The owner must register a public key and sign a matching short-lived grant.
 // Keep the private signing key outside the agent and this integration.
-const decision = await vizier.verify({
+const decision = await vizier.authorize({
   agent: { id: "procurement-agent-01", owner: "acme-corp" },
   principal: { id: "acme-corp" },
   action: {
@@ -45,10 +45,12 @@ const decision = await vizier.verify({
     },
   },
   grant: process.env.VIZIER_GRANT_JWS!,
-  context: { source: "rest" },
+  context: { request_id: null, timestamp: null, source: "rest" },
 });
 
-// Authorization alone does not execute the purchase.
+// This method throws unless the trusted service returns a request-bound ALLOW
+// with matching principal-signed, unexpired delegation. It does not execute
+// the action, verify an unsigned receipt signature or provide replay protection.
 console.log(decision.decision, decision.reason_codes);
 ```
 
