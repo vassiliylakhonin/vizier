@@ -3,7 +3,7 @@
   "name": "io.github.vassiliylakhonin/vizier",
   "title": "Vizier",
   "description": "Owner-signed permissions for AI agent actions; ALLOW/BLOCK/REVIEW with request-bound receipts.",
-  "version": "0.5.15",
+  "version": "0.5.16",
   "websiteUrl": "https://vizier.agendamcp.dpdns.org/docs",
   "remotes": [
     {
