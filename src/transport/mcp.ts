@@ -1,3 +1,4 @@
+import { assertEvaluationCannotAllow, EVALUATION_METADATA } from "./evaluation-boundary";
 import { logServiceAccess, ACCESS_OPERATIONS } from "./access-telemetry";
 import { z } from "zod";
 
@@ -123,7 +124,7 @@ function mcpResult(id: string | number, result: Record<string, unknown>): Respon
     result: {
       ...result,
       resultType: "complete",
-      _meta: responseMeta(),
+      _meta: { ...responseMeta(), ...(typeof result._meta === "object" && result._meta !== null ? result._meta : {}) },
     },
   });
 }
@@ -299,6 +300,7 @@ async function runVerifyTool(
     principalKeys: resolvePrincipalKeys(options),
     signedGrantMode: resolveSignedGrantMode(options),
   });
+  if (authorization === "evaluation") assertEvaluationCannotAllow(result.decision);
   console.log(
     JSON.stringify({
       event: "vizier.mcp.completed",
@@ -313,6 +315,7 @@ async function runVerifyTool(
     result: {
       content: [{ type: "text", text: JSON.stringify(result) }],
       structuredContent: result,
+      ...(authorization === "evaluation" ? { _meta: EVALUATION_METADATA } : {}),
       isError: false,
     },
   };

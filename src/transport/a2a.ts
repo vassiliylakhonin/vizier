@@ -1,3 +1,4 @@
+import { assertEvaluationCannotAllow, EVALUATION_METADATA } from "./evaluation-boundary";
 import { z } from "zod";
 
 import { verificationRequestSchema, verifyAction } from "../core/index";
@@ -408,6 +409,7 @@ export async function handleA2aRequest(
     principalKeys: resolvePrincipalKeys(options),
     signedGrantMode: resolveSignedGrantMode(options),
   });
+  if (authorization === "evaluation") assertEvaluationCannotAllow(result.decision);
   const contextId =
     sendMessage.data.message.contextId ?? `ctx_${crypto.randomUUID()}`;
   const taskId = `task_${crypto.randomUUID()}`;
@@ -443,7 +445,7 @@ export async function handleA2aRequest(
           },
         ],
         history: [sendMessage.data.message],
-        metadata: { skillId: "verify_agent_action" },
+        metadata: { skillId: "verify_agent_action", ...(authorization === "evaluation" ? EVALUATION_METADATA : {}) },
       },
     },
   });

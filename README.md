@@ -21,6 +21,7 @@ actions and targets while the owner keeps control of the signing key.
 [Playground](https://vizier.agendamcp.dpdns.org/playground) ·
 [Live API reference](https://vizier.agendamcp.dpdns.org/docs) ·
 [OpenAPI](https://vizier.agendamcp.dpdns.org/openapi.json) ·
+[Quickstart](docs/AUTHORIZATION_QUICKSTART.md) ·
 [Delegation setup](docs/DELEGATION_GRANTS.md) ·
 [Threat model](docs/THREAT_MODEL.md)
 

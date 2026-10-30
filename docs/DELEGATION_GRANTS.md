@@ -11,11 +11,11 @@ application asserted about itself:
                  "constraints": { "max_amount": 10000 } } }
 ```
 
-Vizier checked the proposed action against that block faithfully and signed a
-receipt for the result. But nothing in the exchange showed that `acme-corp` had
-ever delegated anything. Any holder of the integration credential could name any
-principal and any limit, and the receipt would attest to the decision — a signed
-record of an unverified claim.
+Vizier checked the proposed action against that block and returned an unsigned
+audit receipt bound to the request. Nothing in the exchange showed that
+`acme-corp` had delegated anything. An integration credential holder could name
+any principal and limit; the receipt did not prove the owner approved them.
+Delegation grants are signed; legacy `/v1/verify` receipts are not.
 
 That is a calculator, not a control. A delegation grant makes it a control.
 

@@ -848,6 +848,44 @@ export class Vizier {
     return verifiedBody;
   }
 
+  /**
+   * Require a signed delegation and an ALLOW from the configured trusted service.
+   * This does not execute an action or independently verify the legacy unsigned
+   * response receipt. The caller must bind its protected operation to the same
+   * request and enforce one-time or transactional execution separately.
+   */
+  async authorize(
+    request: VerificationRequest,
+    options: VerifyOptions = {},
+  ): Promise<VerificationResponse> {
+    if (!this.#apiKey?.trim() || !request.grant?.trim() || !request.principal?.id || !request.agent?.id) {
+      throw new VizierError("An integration credential, principal and signed grant are required.", 0, "AUTHORIZATION_INPUT_REQUIRED");
+    }
+    let snapshot: VerificationRequest;
+    try {
+      snapshot = JSON.parse(JSON.stringify(request)) as VerificationRequest;
+    } catch {
+      throw new VizierError("The intended request cannot be serialized.", 0, "INVALID_REQUEST");
+    }
+    if (!snapshot.grant?.trim() || !snapshot.principal?.id || !snapshot.agent?.id) {
+      throw new VizierError("The serialized request must contain the principal, agent and signed grant.", 0, "AUTHORIZATION_INPUT_REQUIRED");
+    }
+    const result = await this.verify(snapshot, options);
+    const grant = result.receipt.grant;
+    if (
+      result.decision !== "ALLOW" ||
+      result.receipt.authority_provenance !== "principal_signed" ||
+      !grant || grant.issuer !== snapshot.principal?.id || grant.subject !== snapshot.agent.id ||
+      !Number.isFinite(Date.parse(grant.expires_at)) || Date.parse(grant.expires_at) <= Date.now()
+    ) {
+      throw new VizierError("Authorization was not established; do not execute the action.", 0, "AUTHORIZATION_NOT_GRANTED", {
+        decision: result.decision,
+        reason_codes: result.reason_codes,
+      });
+    }
+    return result;
+  }
+
   async activateCovenant(
     request: ActionCovenantActivationRequest,
     options: VerifyOptions = {},
