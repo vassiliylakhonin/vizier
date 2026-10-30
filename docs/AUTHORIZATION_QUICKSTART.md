@@ -56,8 +56,7 @@ grant cannot yield ALLOW.
 
 ## Put the check immediately before the tool
 
-The `authorize` helper below is part of this repository's source and requires an
-SDK release containing it; it is **not** in the already published v0.5.14. It
+The `authorize` helper is available in SDK v0.5.15 and later. It
 requires a configured integration credential and grant, validates the service
 response and request hash, and refuses REVIEW, BLOCK, wrong identities, expired
 grants and caller-asserted provenance. The configured service and its HTTPS

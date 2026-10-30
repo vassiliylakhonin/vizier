@@ -16,7 +16,7 @@ audit evidence. The operator must remove the agent's direct upstream route.
 Install from npm, then run the installed proxy:
 
 ```bash
-npm install @agenda-intelligence/vizier-sdk@0.5.14 @agenda-intelligence/vizier-mcp-proxy@0.5.14
+npm install @agenda-intelligence/vizier-sdk@0.5.15 @agenda-intelligence/vizier-mcp-proxy@0.5.15
 npx --no-install vizier-mcp-proxy \
   --upstream http://localhost:3000/mcp \
   --tools "query_db,execute_command,fetch_api" \

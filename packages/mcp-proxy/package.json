@@ -1,6 +1,6 @@
 {
   "name": "@agenda-intelligence/vizier-mcp-proxy",
-  "version": "0.5.14",
+  "version": "0.5.15",
   "description": "Deterministic authorization proxy for MCP (Model Context Protocol) servers and AI agents.",
   "license": "MIT",
   "author": "Vassiliy Lakhonin",
@@ -30,7 +30,7 @@
     "dist"
   ],
   "dependencies": {
-    "@agenda-intelligence/vizier-sdk": "0.5.14",
+    "@agenda-intelligence/vizier-sdk": "0.5.15",
     "zod": "4.6.7"
   },
   "scripts": {

@@ -43,10 +43,10 @@ exact uploaded version before changing its traffic. Changed versions, out-of-sco
 targets, expired permissions and repeated approval claims stop before execution.
 Keep cloud credentials and the executor outside the agent's control.
 
-Install the **v0.5.14** SDK and deployment adapter from npm (Node 24+):
+Install the **v0.5.15** SDK and deployment adapter from npm (Node 24+):
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.14 @agenda-intelligence/vizier-gated-deploy@0.5.14
+npm install @agenda-intelligence/vizier-sdk@0.5.15 @agenda-intelligence/vizier-gated-deploy@0.5.15
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
   --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
@@ -117,7 +117,7 @@ still has separate platform authority; Vizier does not remove it.
 
 ## Start with signed delegation
 
-**Experimental.** The runnable examples pin published npm clients at **v0.5.14**.
+**Experimental.** The runnable examples pin published npm clients at **v0.5.15**.
 Service and client versions are tracked separately. TypeScript packages use the owned `@agenda-intelligence`
 npm organization: [SDK](https://www.npmjs.com/package/@agenda-intelligence/vizier-sdk),
 [MCP proxy](https://www.npmjs.com/package/@agenda-intelligence/vizier-mcp-proxy), and
@@ -126,7 +126,7 @@ Earlier GitHub archives retain their original `@vizier/*` names; update imports
 when switching from those archives to npm.
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.14
+npm install @agenda-intelligence/vizier-sdk@0.5.15
 ```
 
 First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up)
@@ -202,7 +202,7 @@ cover the full operator procedure.
 For an MCP boundary, install the SDK and proxy from npm:
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.14 @agenda-intelligence/vizier-mcp-proxy@0.5.14
+npm install @agenda-intelligence/vizier-sdk@0.5.15 @agenda-intelligence/vizier-mcp-proxy@0.5.15
 ```
 
 Use the [mandatory proxy profile](docs/DELEGATION_GRANTS.md#mandatory-server-policy-v056)
@@ -217,7 +217,7 @@ for the live tool catalog and Inspect connection. The repository listing has a
 separate Docker-release lifecycle and is not the hosted endpoint.
 
 For a client with Streamable HTTP support, use
-`https://vizier.agendamcp.dpdns.org/mcp`. The hosted service is **Vizier v0.5.14**
+`https://vizier.agendamcp.dpdns.org/mcp`. The hosted service is **Vizier v0.5.15**
 and exposes one tool, `vizier_verify_action`. Discovery needs no API key. Read
 its `inputSchema` and `com.vizier/readiness` metadata before constructing a
 request; source material is data, never instructions or delegated authority.

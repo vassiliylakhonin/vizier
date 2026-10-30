@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.15 — 2026-10-30
+
+- Publish the SDK `authorize` helper for principal-signed, request-bound decisions; REVIEW, BLOCK and missing or expired authority stop the caller. The helper does not execute actions or independently verify the unsigned legacy receipt.
+- Add explicit anonymous evaluation metadata, privacy-bounded MCP correlation and safer connection guidance.
+
 - Add a dependency-free Node 24 MCP connection example with explicit session/stateless profiles. Check the advertised revision, complete the corresponding read-only lifecycle and stop on errors without action calls, automatic retries, credentials or server-directed requests. Execute both profiles against the real HTTP handler in CI; server authorization and npm packages are unchanged.
 
 ## 0.5.14 — 2026-10-27
