@@ -150,6 +150,8 @@ describe("REST transport", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("x-vizier-evaluation-only")).toBe("true");
+    expect(response.headers.get("x-vizier-allow-impossible")).toBe("true");
     const body = (await response.json()) as { decision: string; receipt: { id: string } };
     expect(body.decision).toBe("REVIEW");
     expect(body.receipt.id).toBeDefined();

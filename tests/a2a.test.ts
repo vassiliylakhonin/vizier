@@ -198,10 +198,11 @@ describe("A2A JSON-RPC binding", () => {
       apiKey: TEST_API_KEY,
     });
     const body = (await response.json()) as {
-      result: { task: { artifacts: Array<{ parts: Array<{ data: { decision: string } }> }> } };
+      result: { task: { metadata: { evaluation_only: boolean; allow_impossible: boolean }; artifacts: Array<{ parts: Array<{ data: { decision: string } }> }> } };
     };
 
     expect(response.status).toBe(200);
+    expect(body.result.task.metadata).toMatchObject({ evaluation_only: true, allow_impossible: true });
     expect(body.result.task.artifacts[0]?.parts[0]?.data.decision).toBe("REVIEW");
   });
 

@@ -1,3 +1,4 @@
+import { assertEvaluationCannotAllow, EVALUATION_HEADERS } from "./evaluation-boundary";
 import { logServiceAccess, hasAccessObservation } from "./access-telemetry";
 import { grantReadiness } from "./onboarding";
 import { canonicalize, sha256 } from "../core/receipts";
@@ -420,7 +421,8 @@ async function handleVerify(
     { receipt_id: result.receipt.id },
     (db) => storeReceipt(db, normalizedRequest, result.receipt),
   );
-  return jsonResponse(result);
+  if (authorization === "evaluation") assertEvaluationCannotAllow(result.decision);
+  return jsonResponse(result, 200, authorization === "evaluation" ? EVALUATION_HEADERS : undefined);
 }
 
 async function handleVerifyEvaluate(
@@ -446,7 +448,8 @@ async function handleVerifyEvaluate(
       latency_ms: Number((performance.now() - startedAt).toFixed(2)),
     }),
   );
-  return jsonResponse(result);
+  assertEvaluationCannotAllow(result.decision);
+  return jsonResponse(result, 200, EVALUATION_HEADERS);
 }
 
 const resetCircuitBreakerSchema = z.strictObject({

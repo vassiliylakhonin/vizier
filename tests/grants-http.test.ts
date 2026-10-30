@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { handleHttpRequest } from "../src/transport/http";
+import { Vizier, type VerificationRequest } from "../packages/sdk/src/index";
 
 const run = promisify(execFile);
 const TEST_API_KEY = "test-enforcement-key";
@@ -96,6 +97,21 @@ async function verify(
 }
 
 describe("delegation grants over HTTP", () => {
+  it("authorizes through the SDK against a locally verified owner-signed grant", async () => {
+    const grant = await mintViaCli({ iss: "acme-corp", sub: "procurement-agent-01", authority: AUTHORITY });
+    const client = new Vizier({
+      baseUrl: "https://vizier.example", apiKey: TEST_API_KEY,
+      fetch: async (url, init) => handleHttpRequest(new Request(url, init), {
+        apiKey: TEST_API_KEY,
+        principalKeySource: JSON.stringify({ "acme-corp": principal.publicJwk }),
+        signedGrantModeSource: "required",
+      }),
+    });
+    const result = await client.authorize(body({ grant }) as unknown as VerificationRequest);
+    expect(result.decision).toBe("ALLOW");
+    expect(result.receipt.authority_provenance).toBe("principal_signed");
+  });
+
   it("accepts a grant minted by the operator CLI", async () => {
     const registry = JSON.stringify({ "acme-corp": principal.publicJwk });
     const grant = await mintViaCli({

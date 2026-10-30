@@ -171,9 +171,10 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
 
     expect(response.status).toBe(200);
     const parsed = (await response.json()) as {
-      result: { structuredContent: { decision: string } };
+      result: { structuredContent: { decision: string }; _meta: { evaluation_only: boolean; allow_impossible: boolean } };
     };
     expect(parsed.result.structuredContent.decision).not.toBe("ALLOW");
+    expect(parsed.result._meta).toMatchObject({ evaluation_only: true, allow_impossible: true });
   });
 
   it("rejects an invalid enforcement credential for tools/call", async () => {
