@@ -6,6 +6,68 @@ type Profile = "session" | "stateless";
 type Options = { fetchImpl?: typeof fetch; ownerCheck?: boolean };
 const VERSIONS = { session: "2025-11-25", stateless: "2026-07-28" } as const;
 
+const SESSION_REVISIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] as const;
+const REASONS = ["accept_mismatch", "invalid_request", "invalid_json", "header_mismatch",
+  "unsupported_version", "profile_method_mismatch", "method_not_found", "origin_rejected",
+  "body_too_large", "content_type_mismatch"] as const;
+
+/** A bounded, sanitized server hint, never an instruction to replay a call. */
+export class McpConnectionError extends Error {
+  readonly status: number;
+  readonly reason: string | null;
+  readonly recommendedProfile: Profile | null;
+  readonly recommendedVersion: string | null;
+
+  constructor(status: number, reason: string | null,
+    recommendedProfile: Profile | null, recommendedVersion: string | null) {
+    const next = recommendedProfile && recommendedVersion
+      ? ` Suggested read-only profile: ${recommendedProfile} (${recommendedVersion}); start a new connection explicitly.` : "";
+    super(`MCP connection refused (HTTP ${status}${reason ? `, ${reason}` : ""}).${next} No retry performed.`);
+    this.name = "McpConnectionError";
+    this.status = status;
+    this.reason = reason;
+    this.recommendedProfile = recommendedProfile;
+    this.recommendedVersion = recommendedVersion;
+  }
+}
+
+function safeHint(value: unknown): {reason: string; profile: Profile; version: string} | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as { error?: { data?: { connection_hint?: {reason?: unknown;
+    recommended_profile?: unknown; recommended_protocol_version?: unknown} } } };
+  const h = v.error?.data?.connection_hint;
+  if (!h || typeof h.reason !== "string" || !REASONS.some(reason => reason === h.reason)) return null;
+  const profile = h.recommended_profile;
+  const version = h.recommended_protocol_version;
+  if (typeof version !== "string" || !(profile === "session" && SESSION_REVISIONS.some(v => v === version)
+    || profile === "stateless" && version === VERSIONS.stateless)) return null;
+  return {reason: h.reason, profile, version};
+}
+
+async function refusal(response: Response): Promise<McpConnectionError> {
+  // Limit untrusted error bodies before parsing; no raw server text is printed.
+  let hint: ReturnType<typeof safeHint> = null;
+  try {
+    const reader = response.body?.getReader();
+    if (reader) {
+      const chunks: Uint8Array[] = []; let size = 0;
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        size += part.value.byteLength;
+        if (size > 65_536) { await reader.cancel(); break; }
+        chunks.push(part.value);
+      }
+      if (size <= 65_536) {
+        const bytes = new Uint8Array(size); let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+        hint = safeHint(JSON.parse(new TextDecoder().decode(bytes)));
+      }
+    }
+  } catch { /* malformed or unavailable error payload: report status only */ }
+  return new McpConnectionError(response.status, hint?.reason ?? null, hint?.profile ?? null, hint?.version ?? null);
+}
+
 export async function connectMcp(origin: string, profile: Profile, options: Options = {}) {
   const base = new URL(origin);
   if (!(base.protocol === "https:" || (base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)))
@@ -24,9 +86,12 @@ export async function connectMcp(origin: string, profile: Profile, options: Opti
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (response.status === 202 && body?.method === "notifications/initialized") return null;
-    if (!response.ok) throw new Error(`MCP ${profile}: HTTP ${response.status}; inspect connection_hint before a new request. No retry performed.`);
+    if (!response.ok) throw await refusal(response);
     const value = await response.json() as Record<string, unknown>;
-    if (value.error) throw new Error(`MCP ${profile}: JSON-RPC refusal. Inspect connection_hint; no retry performed.`);
+    if (value.error) {
+      const hint = safeHint(value);
+      throw new McpConnectionError(response.status, hint?.reason ?? null, hint?.profile ?? null, hint?.version ?? null);
+    }
     return value;
   };
   // The guide confirms the selected contract. Server-supplied URLs, headers and

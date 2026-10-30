@@ -232,9 +232,13 @@ node examples/mcp-connect.ts --profile stateless
 
 The [example](examples/mcp-connect.ts) checks the public profile inventory,
 executes only that profile's handshake and tool listing, and stops on a
-refusal. It sends no action, credentials or payment, never retries or changes
+refusal. For a recognized server refusal it displays a bounded reason and
+suggested profile/revision; start any new connection explicitly. It sends no
+action, credentials or payment, never retries or changes
 profiles automatically, and never executes requests supplied by a guide.
 `authorizationGranted: false` remains explicit after successful discovery.
+For the observed mixed-profile refusals and a real internal deployment observation,
+see [the connection diagnosis](docs/MCP_REJECTION_OBSERVATION_2026_10_30.md).
 Maintainers must add `--owner-check` when probing our live service; this adds
 only the measurement label and grants no access. Ordinary clients omit it.
 

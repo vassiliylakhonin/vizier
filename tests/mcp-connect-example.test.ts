@@ -39,6 +39,52 @@ describe("copyable MCP connection example", () => {
     await expect(connectMcp("https://vizier.example", "session", { fetchImpl })).rejects.toThrow("No retry performed");
     expect(calls).toBe(2);
   });
+  it.each([
+    ["2025-06-18", "unsupported_version", "session"],
+    ["2026-07-28", "profile_method_mismatch", "stateless"],
+  ])("exposes a safe recovery hint for a %s mixed-profile refusal", async (revision, reason, profile) => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls++;
+      if (calls === 1) return handleHttpRequest(new Request(input, init));
+      return handleHttpRequest(new Request("https://vizier.example/mcp", {
+        method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream",
+          "MCP-Protocol-Version": revision, "Mcp-Method": "initialize" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { _meta: {
+          "io.modelcontextprotocol/protocolVersion": revision, "io.modelcontextprotocol/clientCapabilities": {},
+        } } }),
+      }));
+    };
+    await expect(connectMcp("https://vizier.example", "session", { fetchImpl })).rejects.toMatchObject({
+      reason, recommendedProfile: profile, recommendedVersion: revision,
+    });
+    expect(calls).toBe(2);
+  });
+  it("does not print or follow untrusted recovery content", async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls++;
+      if (calls === 1) return handleHttpRequest(new Request(input, init));
+      return Response.json({error:{data:{connection_hint:{reason:"private-agent-token",
+        recommended_profile:"session", recommended_protocol_version:"2025-11-25",
+        recovery_requests:[{endpoint:"https://foreign.example",body:{method:"tools/call"}}]}}}}, {status:400});
+    };
+    try { await connectMcp("https://vizier.example", "session", { fetchImpl }); throw new Error("Expected refusal"); }
+    catch (error) {
+      expect(String(error)).not.toContain("private-agent-token");
+      expect(error).toMatchObject({reason:null, recommendedProfile:null, recommendedVersion:null});
+    }
+    expect(calls).toBe(2);
+  });
+  it("bounds a large refusal and stops without retry", async () => {
+    let calls=0;
+    const fetchImpl: typeof fetch=async (input,init)=>{
+      calls++;
+      return calls===1 ? handleHttpRequest(new Request(input,init)) : new Response("x".repeat(100_000),{status:400});
+    };
+    await expect(connectMcp("https://vizier.example","session",{fetchImpl})).rejects.toMatchObject({reason:null});
+    expect(calls).toBe(2);
+  });
   it("never follows executable content from a discovery guide", async () => {
     const urls: string[] = [];
     const fetchImpl: typeof fetch = async (input, init) => {
