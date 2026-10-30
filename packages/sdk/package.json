@@ -1,6 +1,6 @@
 {
   "name": "@agenda-intelligence/vizier-sdk",
-  "version": "0.5.15",
+  "version": "0.5.16",
   "description": "Thin TypeScript client for the Vizier verification API.",
   "license": "MIT",
   "author": "Vassiliy Lakhonin",

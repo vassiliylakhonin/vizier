@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.5.16 — 2026-10-30
+
+- Normalize npm command paths for the MCP proxy and gated deployment packages.
+
 ## 0.5.15 — 2026-10-30
 
 - Publish the SDK `authorize` helper for principal-signed, request-bound decisions; REVIEW, BLOCK and missing or expired authority stop the caller. The helper does not execute actions or independently verify the unsigned legacy receipt.
