@@ -183,6 +183,8 @@ https://vizier.agendamcp.dpdns.org/mcp
 
 The hosted service exposes a tool catalog and verification endpoint. Discovery requires no API key. Read the tool schema and metadata before constructing a request.
 
+GET/HEAD discovery is measured as HTTP metadata, separately from MCP RPC requests. A refused connection includes a bounded correction hint and a read-only connection sequence. Correct the request and explicitly start the selected profile; the hint does not authorize an action or trigger automatic retries.
+
 For a copyable Node 24 connection with no dependencies, run one explicit read-only profile from this checkout:
 
 ```sh

@@ -1698,7 +1698,8 @@ export async function handleHttpRequest(request: Request, options: TransportOpti
   // MCP observations include the parsed method and RPC error. Do not count twice.
   if (!hasAccessObservation(response)) {
     const step = trafficStep(url.pathname);
-    logServiceAccess(request, url.pathname === "/health" ? "health" : step === "action" || step === "api" ? "action" : step === "other" ? "other" : "metadata", response);
+    const mcpDiscovery = url.pathname === "/mcp" && (request.method === "GET" || request.method === "HEAD");
+    logServiceAccess(request, url.pathname === "/health" ? "health" : mcpDiscovery ? "metadata" : step === "action" || step === "api" ? "action" : step === "other" ? "other" : "metadata", response);
   }
   return response;
 }

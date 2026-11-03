@@ -10,7 +10,14 @@ export type McpRejection = "accept_mismatch" | "invalid_request" | "invalid_json
   | "method_not_found" | "origin_rejected" | "body_too_large" | "content_type_mismatch";
 
 export function connectionHint(reason: McpRejection, observation?: McpConnectionObservation) {
-  return { reason, ...connectionGuide(observation) };
+  const correction = reason === "unsupported_version"
+    ? "Match the revision to one profile: session uses initialize.params.protocolVersion; stateless uses the published params._meta revision and matching headers."
+    : reason === "profile_method_mismatch"
+      ? "Start a session with initialize, or start the stateless profile with server/discover. Remove stateless _meta when choosing a session."
+      : reason === "invalid_request"
+        ? "Use a JSON-RPC 2.0 object with a string method and object params. Requests need an id; notifications/initialized must omit it."
+        : "Inspect the advertised read-only sequence and correct the request before explicitly starting a new connection.";
+  return { reason, correction, ...connectionGuide(observation) };
 }
 
 /** Publish working read-only connection sequences before a caller mixes eras. */
