@@ -17,6 +17,30 @@ function post(method: string, params: Record<string, unknown> = {}, headers: Rec
 }
 
 describe("MCP connection recovery", () => {
+  it.each([
+    ['unsupported_version','initialize',{_meta:{...meta,'io.modelcontextprotocol/protocolVersion':'2025-06-18'}},
+      {'MCP-Protocol-Version':'2025-06-18','Mcp-Method':'initialize'},'protocolVersion'],
+    ['profile_method_mismatch','initialize',{_meta:meta},
+      {'MCP-Protocol-Version':STATELESS,'Mcp-Method':'initialize'},'server/discover'],
+    ['invalid_request','notifications/initialized',{},
+      {'MCP-Protocol-Version':VERSION},'JSON-RPC'],
+  ] as const)('gives a targeted correction for %s while keeping the refusal',async(reason,method,params,headers,term)=>{
+    const request=post(method,params,{...headers});
+    const rejected=await handleHttpRequest(reason==='invalid_request'
+      ? new Request(request,{body:JSON.stringify({jsonrpc:'1.0',id:1,method,params})}) : request);
+    const body=await rejected.json() as {error:{data:{connection_hint:ReturnType<typeof import('../src/transport/mcp-profiles').connectionHint> & {correction:string}}}};
+    const hint=body.error.data.connection_hint;
+    expect(hint.reason).toBe(reason);
+    expect(hint.correction).toContain(term);
+    expect(hint.automatic_retry).toBe(false);
+    const sequence=hint.recovery_requests.find(r=>r.profile===hint.recommended_profile)!;
+    for(const step of [sequence,...sequence.follow_up_requests]) {
+      expect(['initialize','server/discover','notifications/initialized','tools/list']).toContain(step.body.method);
+      const recovered=await handleHttpRequest(new Request('https://vizier.example/mcp',{
+        method:'POST',headers:step.headers,body:JSON.stringify(step.body)}));
+      expect([200,202]).toContain(recovered.status);
+    }
+  });
   it("publishes executable profile-specific connections before a failed request", async () => {
     for (const path of ["/mcp", "/.well-known/mcp-probing.json"]) {
       const document = await handleHttpRequest(new Request(`https://vizier.example${path}`));

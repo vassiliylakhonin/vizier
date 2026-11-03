@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Classify GET/HEAD MCP discovery as HTTP metadata rather than RPC actions. Add bounded correction hints for unsupported revisions, profile/method mismatches and invalid JSON-RPC requests; preserve refusals and explicit read-only recovery.
+
 - Move the read-only daily wallet monitor to a fixed PublicNode Base endpoint and reduce its complete finalized-day scan from 48 to nine requests. Preserve bounded retries, log/finality validation, failed observations, and disabled policies; interactive admission and outcome verification retain their existing BlockPI path.
 
 ## 0.5.16 — 2026-10-30

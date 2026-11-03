@@ -20,7 +20,7 @@ export function logServiceAccess(request: Request, operation: string, response: 
     console.log(JSON.stringify({
       event: 'agenda_service_access', event_version: 1, service: 'vizier',
       timestamp: timestamp ?? new Date().toISOString(), event_id: crypto.randomUUID(),
-      transport: new URL(request.url).pathname === '/mcp' ? 'mcp' : 'http',
+      transport: request.method === 'POST' && new URL(request.url).pathname === '/mcp' ? 'mcp' : 'http',
       operation: ACCESS_OPERATIONS.has(operation) ? operation : 'other',
       access_mode: request.headers.has('authorization') || request.headers.has('x-vizier-key') ? 'credential_present' : 'unverified',
       http_status: status,

@@ -2,6 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleHttpRequest } from '../src/transport/http';
 
 describe('content-free standalone access telemetry', () => {
+  it.each(['GET', 'HEAD'])('records %s /mcp capability discovery as HTTP metadata, never an action', async (method) => {
+    const log=vi.spyOn(console,'log').mockImplementation(()=>{});
+    try {
+      const response=await handleHttpRequest(new Request('https://vizier.example/mcp?private-query', {method}));
+      expect(response.status).toBe(200);
+      const events=log.mock.calls.map(c=>{try{return typeof c[0]==='string'?JSON.parse(c[0]):c[0]}catch{return null}})
+        .filter(e=>e?.event==='agenda_service_access');
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({operation:'metadata',transport:'http',outcome:'success',caller_kind:'unsigned_external'});
+      expect(events[0]).not.toHaveProperty('mcp_profile');
+      expect(JSON.stringify(events)).not.toContain('private-query');
+    } finally {log.mockRestore()}
+  });
   it('separates MCP discovery, tool errors and access refusals exactly once without submitted values', async () => {
     const log=vi.spyOn(console,'log').mockImplementation(()=>{});
     try {
