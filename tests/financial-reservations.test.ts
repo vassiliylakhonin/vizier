@@ -133,7 +133,21 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
   });
-  it("monitors a complete 1024-block window within 48 RPC calls and records failures", async () => {
+  it("observes the full day despite persistent BlockPI errors without enabling a policy", async () => {
+    await policy({ enabled: false });
+    mockHistory(750000);
+    const fixtureFetch = fetch;
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => {
+      if (url.includes("blockpi")) return Promise.resolve(Response.json({ jsonrpc: "2.0", id: 1,
+        error: { code: -32000, message: "Provider unavailable" } }));
+      return fixtureFetch(url, init);
+    }));
+    expect(await runWalletHistoryMonitor(options.db!, wallet)).toMatchObject({ outgoing: 750000, startBlock: 5000, endBlock: 50000 });
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(9);
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => url === "https://base-rpc.publicnode.com")).toBe(true);
+    expect(mem.prepare("SELECT enabled FROM financial_policies WHERE wallet=?").get(wallet)!.enabled).toBe(0);
+  });
+  it("monitors a complete day within 9 RPC calls and records failures", async () => {
     await policy({ enabled: false });
     const rpcFetch = vi.mocked(fetch);
     rpcFetch.mockClear();
@@ -142,10 +156,15 @@ describe("financial reservations", () => {
     const calls = rpcFetch.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string) as { method: string; params: unknown[] });
     const ranges = calls.filter(call => call.method === "eth_getLogs")
       .map(call => call.params[0] as { fromBlock: string; toBlock: string });
-    expect(calls).toHaveLength(48);
-    expect(ranges).toHaveLength(44);
-    expect(ranges[0]).toMatchObject({ fromBlock: "0x1388", toBlock: "0x1787" });
+    expect(calls).toHaveLength(9);
+    expect(ranges).toHaveLength(5);
+    expect(ranges[0]).toMatchObject({ fromBlock: "0x1388", toBlock: "0x3a97" });
     expect(ranges.at(-1)?.toBlock).toBe("0xc350");
+    for (let i = 0; i < ranges.length; i++) {
+      expect(BigInt(ranges[i]!.toBlock) - BigInt(ranges[i]!.fromBlock)).toBeLessThan(10000n);
+      if (i > 0) expect(BigInt(ranges[i]!.fromBlock)).toBe(BigInt(ranges[i - 1]!.toBlock) + 1n);
+    }
+    expect(history.endBlock - history.startBlock).toBe(45000);
     expect(mem.prepare("SELECT state,observed_outgoing,reason FROM wallet_history_monitor WHERE id=1").get())
       .toMatchObject({ state: "OK", observed_outgoing: 0, reason: null });
 
@@ -160,6 +179,14 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT count(*) AS n FROM human_reviews").get()!.n).toBe(0);
     expect(mem.prepare("SELECT count(*) AS n FROM financial_reservations").get()!.n).toBe(0);
   });
+  it("refuses a saturated monitor log response instead of recording a partial day", async () => {
+    await policy({ enabled: false });
+    mockHistory(0, { eth_getLogs: Array.from({ length: 1000 }, () => ({})) });
+    await expect(runWalletHistoryMonitor(options.db!, wallet)).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
+    expect(mem.prepare("SELECT state,observed_outgoing,reason FROM wallet_history_monitor WHERE id=1").get())
+      .toMatchObject({ state: "FAILED", observed_outgoing: null, reason: "MONITOR_HISTORY_UNAVAILABLE:INCOMPLETE_LOGS" });
+    expect(mem.prepare("SELECT enabled FROM financial_policies WHERE wallet=?").get(wallet)!.enabled).toBe(0);
+  });
   it("retries a failed observation but skips a complete disabled-policy observation from today", async () => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 3, 4, 7));
     await policy({ enabled: false });
@@ -168,7 +195,7 @@ describe("financial reservations", () => {
     mockHistory(750000);
     const scheduledTime = Date.now() + 60000;
     expect(await retryWalletHistoryMonitor(options.db!, wallet, scheduledTime)).toMatchObject({ outgoing: 750000 });
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(48);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(9);
     vi.mocked(fetch).mockClear();
     expect(await retryWalletHistoryMonitor(options.db!, wallet, scheduledTime)).toBeNull();
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
@@ -187,7 +214,7 @@ describe("financial reservations", () => {
       mem.prepare(`UPDATE wallet_history_monitor SET ${updates} WHERE id=1`).run();
       vi.mocked(fetch).mockClear();
       expect(await retryWalletHistoryMonitor(options.db!, wallet, Date.now() + 60000)).not.toBeNull();
-      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(48);
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(9);
       mem.prepare('UPDATE wallet_history_monitor SET checked_at=?,start_block=?,end_block=?,observed_outgoing=?,end_block_hash=?,reason=NULL WHERE id=1')
         .run(complete.checked_at!, complete.start_block!, complete.end_block!, complete.observed_outgoing!, complete.end_block_hash!);
     }
@@ -203,7 +230,7 @@ describe("financial reservations", () => {
     let logCalls = 0;
     vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => {
       const { method } = JSON.parse(init.body as string) as { method: string };
-      if (method === "eth_getLogs" && ++logCalls === 10) {
+      if (method === "eth_getLogs" && ++logCalls === 3) {
         return Promise.resolve(Response.json({ jsonrpc: "2.0", id: 1,
           error: { code: -32005, message: "Transient provider limit" } }));
       }
@@ -211,7 +238,7 @@ describe("financial reservations", () => {
     }));
     const observed = await runWalletHistoryMonitor(options.db!, wallet);
     expect(observed.outgoing).toBe(0);
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(49);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(10);
     expect(mem.prepare("SELECT state FROM wallet_history_monitor WHERE id=1").get()).toMatchObject({ state: "OK" });
 
     mockHistory();
@@ -319,6 +346,7 @@ describe("financial reservations", () => {
     const history = await collectWalletHistory(wallet);
     const requests = vi.mocked(fetch).mock.calls.map(([, init]) => JSON.parse(init?.body as string) as { method: string; params: [{ fromBlock: string; toBlock: string }] });
     expect(requests).toHaveLength(48);
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => url === "https://base.public.blockpi.network/v1/rpc/public")).toBe(true);
     expect(history.outgoing).toBe(0);
     expect(history.endBlock - history.startBlock).toBe(45000);
     for (const request of requests.filter(r => r.method === "eth_getLogs")) {

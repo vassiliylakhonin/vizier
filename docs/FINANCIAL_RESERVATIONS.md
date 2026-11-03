@@ -111,7 +111,7 @@ integration POSTs `/v1/reviews/{id}/transaction` with
 The first hash attachment is immutable and unique across reviews. A wrong hash
 keeps the hold and requires operator investigation; no force-release API exists.
 
-The service queries only `https://base.public.blockpi.network/v1/rpc/public` and checks chain ID,
+Admission and outcome verification query only `https://base.public.blockpi.network/v1/rpc/public` and check chain ID,
 finalized head freshness, canonical block hash/number, transaction hash,
 sender, USDC target, zero native value, exact calldata and a block timestamp
 strictly after consumption. Successful execution also requires exactly one
@@ -145,9 +145,15 @@ errors become `UNKNOWN`. Provider messages, URLs and credentials are never
 persisted. The check remains failed until a complete fresh observation succeeds;
 diagnostics never enable the wallet policy or authorize spending.
 
-Scheduled monitor log reads use single-request batches separated by 2 s pauses; transient retries
-also pause before consuming one of the two spare requests. This adds at least
-86 seconds to a successful scan but reduces bursts against the public RPC.
+The read-only scheduled monitor uses the fixed Base endpoint
+`https://base-rpc.publicnode.com`. Its full 45,001-block window uses five
+log ranges of at most 10,000 blocks and four chain/anchor reads: nine requests
+on success, at most eleven with transient retries. Every read in one scan
+uses the same provider; no partial scans are combined across providers.
+Responses reaching the conservative 1,000-log ceiling are refused as incomplete.
+Scheduled log reads use single-request batches separated by 2 s pauses;
+transient retries also pause before consuming one of the two spare requests.
+This adds at least eight seconds to a successful scan.
 The full finalized day and fail-closed behavior are unchanged. Public-provider
 availability is not guaranteed; persistent rate limits still fail the check.
 Interactive review/history requests retain their existing concurrency and latency;
