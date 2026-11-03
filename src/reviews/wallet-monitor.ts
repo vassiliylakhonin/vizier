@@ -52,7 +52,7 @@ export async function runWalletHistoryMonitor(db: D1Database, wallet: string): P
   if (policy.enabled !== 0) return recordFailure("MONITOR_POLICY_ENABLED");
 
   let history: WalletHistory;
-  try { history = await collectWalletHistory(wallet, { paceRpc: true }); }
+  try { history = await collectWalletHistory(wallet, { paceRpc: true, rpcProvider: "publicnode" }); }
   catch (error: unknown) { return recordFailure("MONITOR_HISTORY_UNAVAILABLE", historyFailureCode(error)); }
 
   await db.prepare(`INSERT INTO wallet_history_monitor

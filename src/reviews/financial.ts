@@ -45,9 +45,15 @@ export async function handleFinancialPolicy(request: Request, db: D1Database, re
   return jsonResponse({ ...p, scope: "vizier_review_workflow_only", execution: "not_performed" });
 }
 
-/** All reads go to one fixed Base endpoint; never accept caller RPC URLs or outcomes. */
-export async function rpc(method: string, params: unknown[]): Promise<unknown> {
-  const response = await fetch("https://base.public.blockpi.network/v1/rpc/public", { method: "POST", redirect: "manual",
+export type BaseRpcProvider = "blockpi" | "publicnode";
+const BASE_RPC_ENDPOINTS: Record<BaseRpcProvider, string> = {
+  blockpi: "https://base.public.blockpi.network/v1/rpc/public",
+  publicnode: "https://base-rpc.publicnode.com",
+};
+
+/** Fixed operator-selected Base endpoints; never accept caller RPC URLs or outcomes. */
+export async function rpc(method: string, params: unknown[], provider: BaseRpcProvider = "blockpi"): Promise<unknown> {
+  const response = await fetch(BASE_RPC_ENDPOINTS[provider], { method: "POST", redirect: "manual",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error(`Base RPC HTTP ${response.status}`);
   if (!response.body) throw new Error("Base RPC empty response");
