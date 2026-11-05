@@ -283,7 +283,8 @@ describe("machine-readable discovery contracts", () => {
       expect(html).toContain(`<link rel="canonical" href="${publicOrigin}/">`);
       expect(html).toContain('<meta name="description"');
       expect(html).toContain(`id="mcp-url" value="${publicOrigin}/mcp"`);
-      expect(html).toContain("<code>verify_agent_action</code>");
+      expect(html).toContain("<code>vizier_verify_action</code>");
+      expect(html).toContain("Run the missing-grant example");
     }
     const sitemap = await handleHttpRequest(new Request(`${legacyOrigin}/sitemap.xml`));
     expect(sitemap.status).toBe(308);

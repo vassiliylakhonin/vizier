@@ -14,6 +14,7 @@ import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
 
 const A2A_PROTOCOL_VERSION = "1.0";
+export const VIZIER_CATALOG_EXAMPLE = "Show why an action without a signed grant is blocked";
 
 const jsonRpcIdSchema = z.union([z.string(), z.number().finite()]);
 
@@ -157,7 +158,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
   return Object.freeze({
     name: "Vizier",
     description:
-      "Free anonymous A2A evaluation of proposed agent actions against caller-supplied authority; anonymous calls cannot authorize ALLOW. An authenticated integration is required for enforcement receipts. Not factuality verification or independent execution proof; REVIEW requires a human decision.",
+      "Try the free example: Show why an action without a signed grant is blocked. Vizier evaluates proposed agent actions against caller-supplied authority; anonymous calls cannot authorize ALLOW. An authenticated integration is required for enforcement receipts. Not factuality verification or independent execution proof; REVIEW requires a human decision.",
     provider: {
       organization: "Vassiliy Lakhonin",
       url: "https://github.com/vassiliylakhonin",
@@ -221,12 +222,12 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
         id: "verify_agent_action",
         name: "Verify Agent Action",
         description:
-          "Evaluate whether a proposed agent action is allowed by delegated authority, policy, target, and context.",
+          "Evaluate whether a proposed agent action is allowed by delegated authority, policy, target, and context. The free worked example evaluates a fictional purchase and explains why a missing principal grant blocks it.",
         tags: ["authorization", "policy", "agent-actions"],
         examples: [
-          "Verify a procurement action against an amount limit and target allowlist.",
+          VIZIER_CATALOG_EXAMPLE,
         ],
-        inputModes: ["application/json"],
+        inputModes: ["application/json", "text/plain"],
         outputModes: ["application/json"],
       },
       {
@@ -355,10 +356,17 @@ export async function handleA2aRequest(
     return jsonRpcError(id, -32602, "Invalid parameters", 200, REQUEST_GUIDANCE);
   }
 
-  const dataPart = sendMessage.data.message.parts.find(
+  const message = sendMessage.data.message;
+  const first = message.parts[0];
+  const demo = message.parts.length === 1 &&
+    first?.text?.trim().toLowerCase() === VIZIER_CATALOG_EXAMPLE.toLowerCase() &&
+    !message.taskId && !message.contextId && !message.metadata && !first.metadata &&
+    !message.referenceTaskIds && !message.extensions && !sendMessage.data.metadata &&
+    !sendMessage.data.configuration && !sendMessage.data.tenant;
+  const dataPart = message.parts.find(
     (part) => part.data !== undefined,
   );
-  if (dataPart?.data === undefined) {
+  if (!demo && dataPart?.data === undefined) {
     // Сообщение без data-части — это не сломанный протокол, а собеседник,
     // который ещё не знает, чего от него хотят: так выглядят и пробы
     // каталогов, и первый заход человека. Ответ уровня протокола (-32602)
@@ -388,7 +396,9 @@ export async function handleA2aRequest(
       },
     });
   }
-  const verification = verificationRequestSchema.safeParse(dataPart.data);
+  const verification = verificationRequestSchema.safeParse(demo
+    ? REQUEST_GUIDANCE.example_request.params.message.parts[0]?.data
+    : dataPart?.data);
   if (!verification.success) {
     return jsonRpcError(id, -32602, "Verification request is invalid.", 200, {
       ...REQUEST_GUIDANCE,
@@ -404,12 +414,13 @@ export async function handleA2aRequest(
     ...verification.data,
     context: { ...verification.data.context, source: "a2a" as const },
   };
+  const evaluationOnly = demo || authorization === "evaluation";
   const result = await verifyAction(normalizedRequest, {
-    trustedAuthority: authorization === "authenticated",
-    principalKeys: resolvePrincipalKeys(options),
-    signedGrantMode: resolveSignedGrantMode(options),
+    trustedAuthority: authorization === "authenticated" && !demo,
+    principalKeys: demo ? undefined : resolvePrincipalKeys(options),
+    signedGrantMode: demo ? "required" : resolveSignedGrantMode(options),
   });
-  if (authorization === "evaluation") assertEvaluationCannotAllow(result.decision);
+  if (evaluationOnly) assertEvaluationCannotAllow(result.decision);
   const contextId =
     sendMessage.data.message.contextId ?? `ctx_${crypto.randomUUID()}`;
   const taskId = `task_${crypto.randomUUID()}`;
@@ -440,12 +451,15 @@ export async function handleA2aRequest(
           {
             artifactId: `artifact_${crypto.randomUUID()}`,
             name: "verification-decision",
-            description: "Vizier authorization decision and audit receipt.",
+            description: demo
+              ? "Synthetic evaluation: the fictional purchase is within its declared limit, but no principal-signed grant authorizes it."
+              : "Vizier authorization decision and audit receipt.",
             parts: [{ data: result, mediaType: "application/json" }],
           },
         ],
         history: [sendMessage.data.message],
-        metadata: { skillId: "verify_agent_action", ...(authorization === "evaluation" ? EVALUATION_METADATA : {}) },
+        metadata: { skillId: "verify_agent_action", ...(evaluationOnly ? EVALUATION_METADATA : {}),
+          ...(demo ? {synthetic_example: true, authorization_granted: false} : {}) },
       },
     },
   });

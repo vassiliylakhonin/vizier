@@ -1,3 +1,5 @@
+import { VIZIER_CATALOG_EXAMPLE } from "./a2a";
+
 export function createPlaygroundHtml(
   origin: string,
   grantMode: "optional" | "required" | "invalid" = "optional",
@@ -210,14 +212,15 @@ export function createPlaygroundHtml(
     </div>
   </div>
 
-  <p><a href="#action-example">Try a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
+  <p><button type="button" class="preset-btn" onclick="runGrantExample()">Run the missing-grant example</button> · <a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
+  <p id="grant-example-result" role="status">Expected: BLOCK. The fictional purchase is within its limit but lacks a principal-signed grant.</p>
   <section class="card" id="connect-mcp" aria-labelledby="connect-mcp-title">
     <h2 id="connect-mcp-title">Connect Vizier over MCP</h2>
     <p>Add this HTTPS address to your MCP client using Streamable HTTP.</p>
     <label for="mcp-url">MCP server URL</label>
     <input id="mcp-url" value="${publicOrigin}/mcp" readonly style="display:block;width:100%;max-width:100%;box-sizing:border-box" onclick="this.select()">
     <button type="button" class="preset-btn" onclick="copyMcpUrl()">Copy MCP URL</button> <span id="mcp-copy-status" role="status"></span>
-    <p>Main tool <code>verify_agent_action</code>. <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/AUTHORIZATION_QUICKSTART.md">Connection and request example</a> · <a href="${publicOrigin}/.well-known/agent-card.json">A2A agent card</a> · <a href="${publicOrigin}/openapi.json">OpenAPI</a></p>
+    <p>Main tool <code>vizier_verify_action</code>. <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/AUTHORIZATION_QUICKSTART.md">Connection and request example</a> · <a href="${publicOrigin}/.well-known/agent-card.json">A2A agent card</a> · <a href="${publicOrigin}/openapi.json">OpenAPI</a></p>
   </section>
   <p>Evaluation playground: caller-supplied authority is unverified. ${grantNotice} No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
   <p>The examples compare proposed purchases with declared spending limits and allowed targets.</p>
@@ -283,6 +286,26 @@ export function createPlaygroundHtml(
   </div>
 
   <script>
+    async function runGrantExample() {
+      const status = document.getElementById('grant-example-result');
+      status.textContent = 'Evaluating the fictional purchase…';
+      try {
+        const id = crypto.randomUUID();
+        const response = await fetch('/a2a', {
+          method: 'POST', credentials: 'omit',
+          headers: {'Content-Type': 'application/json', 'A2A-Version': '1.0'},
+          body: JSON.stringify({jsonrpc: '2.0', id, method: 'SendMessage', params: {
+            message: {messageId: id, role: 'ROLE_USER', parts: [{text: ${JSON.stringify(VIZIER_CATALOG_EXAMPLE)}}]}
+          }})
+        });
+        const data = (await response.json())?.result?.task?.artifacts?.[0]?.parts?.[0]?.data;
+        if (!response.ok || data?.decision !== 'BLOCK' || !data.reason_codes?.includes('GRANT_REQUIRED')) throw new Error('Example did not return the expected block');
+        status.textContent = 'BLOCK — the purchase is within its declared limit, but the principal did not sign a delegation grant. This example authorizes nothing.';
+      } catch {
+        status.textContent = 'The example could not be completed. You can still inspect the structured request in the A2A card.';
+      }
+    }
+
     async function copyMcpUrl() {
       const input = document.getElementById('mcp-url');
       const status = document.getElementById('mcp-copy-status');
