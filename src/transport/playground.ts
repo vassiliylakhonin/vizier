@@ -1,4 +1,8 @@
-export function createPlaygroundHtml(origin: string, grantMode: "optional" | "required" | "invalid" = "optional"): string {
+export function createPlaygroundHtml(
+  origin: string,
+  grantMode: "optional" | "required" | "invalid" = "optional",
+  publicOrigin = origin,
+): string {
   const grantNotice = grantMode === "required"
     ? "This deployment requires a valid principal-signed delegation grant. Requests without it return BLOCK with GRANT_REQUIRED, including anonymous evaluations and requests within the declared limit. An API key alone does not replace the grant."
     : grantMode === "invalid"
@@ -9,7 +13,9 @@ export function createPlaygroundHtml(origin: string, grantMode: "optional" | "re
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vizier — Deterministic AI Agent Authorization Playground</title>
+  <title>AI Agent Action Authorization | Vizier</title>
+  <meta name="description" content="Evaluate a proposed AI agent action against delegated authority, target rules and spending limits. Connect Vizier over MCP or use the playground.">
+  <link rel="canonical" href="${publicOrigin}/">
   <style>
     :root {
       --bg: #090d16;
@@ -193,7 +199,7 @@ export function createPlaygroundHtml(origin: string, grantMode: "optional" | "re
   <div class="header">
     <div class="logo-group">
       <h1>Vizier Action Firewall</h1>
-      <p>Deterministic authorization before an AI agent causes an external side-effect</p>
+      <p>Evaluate a proposed action against delegated authority and policy before execution.</p>
     </div>
     <div class="links">
       <a href="/docs">Docs (JSON)</a>
@@ -204,8 +210,18 @@ export function createPlaygroundHtml(origin: string, grantMode: "optional" | "re
     </div>
   </div>
 
+  <p><a href="#action-example">Try a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
+  <section class="card" id="connect-mcp" aria-labelledby="connect-mcp-title">
+    <h2 id="connect-mcp-title">Connect Vizier over MCP</h2>
+    <p>Add this HTTPS address to your MCP client using Streamable HTTP.</p>
+    <label for="mcp-url">MCP server URL</label>
+    <input id="mcp-url" value="${publicOrigin}/mcp" readonly style="display:block;width:100%;max-width:100%;box-sizing:border-box" onclick="this.select()">
+    <button type="button" class="preset-btn" onclick="copyMcpUrl()">Copy MCP URL</button> <span id="mcp-copy-status" role="status"></span>
+    <p>Main tool <code>verify_agent_action</code>. <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/AUTHORIZATION_QUICKSTART.md">Connection and request example</a> · <a href="${publicOrigin}/.well-known/agent-card.json">A2A agent card</a> · <a href="${publicOrigin}/openapi.json">OpenAPI</a></p>
+  </section>
   <p>Evaluation playground: caller-supplied authority is unverified. ${grantNotice} No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
-  <div class="container">
+  <p>The examples compare proposed purchases with declared spending limits and allowed targets.</p>
+  <div class="container" id="action-example">
     <!-- Left: Request Simulator -->
     <div class="card">
       <div class="card-title">
@@ -267,6 +283,18 @@ export function createPlaygroundHtml(origin: string, grantMode: "optional" | "re
   </div>
 
   <script>
+    async function copyMcpUrl() {
+      const input = document.getElementById('mcp-url');
+      const status = document.getElementById('mcp-copy-status');
+      try {
+        await navigator.clipboard.writeText(input.value);
+        status.textContent = 'MCP URL copied.';
+      } catch {
+        input.focus();
+        input.select();
+        status.textContent = 'Copy the selected address.';
+      }
+    }
     const presets = {
       allow: {
         agent: { id: "procurement-agent-01", owner: "acme-corp" },

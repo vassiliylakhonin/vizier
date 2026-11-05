@@ -274,6 +274,24 @@ describe("machine-readable discovery contracts", () => {
     }
   });
 
+  it("advertises one public playground and a connectable MCP URL on both web hosts", async () => {
+    const publicOrigin = "https://vizier.agendamcp.dpdns.org";
+    const legacyOrigin = "https://vizier.vassiliy-lakhonin.workers.dev";
+    for (const origin of [publicOrigin, legacyOrigin]) {
+      const response = await handleHttpRequest(new Request(`${origin}/playground`));
+      const html = await response.text();
+      expect(html).toContain(`<link rel="canonical" href="${publicOrigin}/">`);
+      expect(html).toContain('<meta name="description"');
+      expect(html).toContain(`id="mcp-url" value="${publicOrigin}/mcp"`);
+      expect(html).toContain("<code>verify_agent_action</code>");
+    }
+    const sitemap = await handleHttpRequest(new Request(`${legacyOrigin}/sitemap.xml`));
+    expect(sitemap.status).toBe(308);
+    expect(sitemap.headers.get("location")).toBe(`${publicOrigin}/sitemap.xml`);
+    const publicMap = await handleHttpRequest(new Request(`${publicOrigin}/sitemap.xml`));
+    expect((await publicMap.text()).match(/<loc>[^<]+<\/loc>/g)).toEqual([`<loc>${publicOrigin}/</loc>`]);
+  });
+
   it("serves the Glama MCP verification manifest at /.well-known/glama.json and /glama.json", async () => {
     const [wellKnown, root] = await Promise.all([
       get("/.well-known/glama.json"),

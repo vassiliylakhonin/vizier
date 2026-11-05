@@ -199,31 +199,18 @@ OpenAPI: ${origin}/openapi.json
 `;
 }
 
-export function createVizierRobotsTxt(origin: string): string {
+export function createVizierRobotsTxt(origin: string, publicOrigin = origin): string {
   return `User-agent: *
 Allow: /
 Content-Signal: ai-train=no, search=yes, ai-input=yes
 
 Agentmap: ${origin}/.well-known/ai-catalog.json
-Sitemap: ${origin}/sitemap.xml
+Sitemap: ${publicOrigin}/sitemap.xml
 `;
 }
 
 export function createVizierSitemap(origin: string): string {
-  const paths = [
-    "/",
-    "/docs",
-    "/playground",
-    "/.well-known/agent-card.json",
-    "/.well-known/ai-catalog.json",
-    "/.well-known/mcp.json",
-    "/openapi.json",
-    "/llms.txt",
-  ];
-  const urls = paths
-    .map((path) => `  <url><loc>${origin}${path}</loc></url>`)
-    .join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${origin}/</loc></url>\n</urlset>\n`;
 }
 
 export function createVizierOwnersDocument(): Readonly<Record<string, unknown>> {

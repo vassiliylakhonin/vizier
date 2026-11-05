@@ -1221,6 +1221,9 @@ async function handleHttpRequestInner(
   options: TransportOptions = {},
 ): Promise<Response> {
   const url = new URL(request.url);
+  const publicOrigin = url.hostname === "vizier.vassiliy-lakhonin.workers.dev"
+    ? "https://vizier.agendamcp.dpdns.org"
+    : url.origin;
   logTraffic(request, url);
   try {
     const discoveryRedirect = DISCOVERY_REDIRECTS[url.pathname];
@@ -1250,7 +1253,7 @@ async function handleHttpRequestInner(
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/playground")) {
       const accept = request.headers.get("accept") ?? "";
       if (url.pathname === "/playground" || accept.includes("text/html")) {
-        return new Response(createPlaygroundHtml(url.origin, resolveSignedGrantMode(options)), {
+        return new Response(createPlaygroundHtml(url.origin, resolveSignedGrantMode(options), publicOrigin), {
           status: 200,
           headers: { "Content-Type": "text/html; charset=utf-8" },
         });
@@ -1285,13 +1288,14 @@ async function handleHttpRequestInner(
       });
     }
     if (request.method === "GET" && url.pathname === "/robots.txt") {
-      return new Response(createVizierRobotsTxt(url.origin), {
+      return new Response(createVizierRobotsTxt(url.origin, publicOrigin), {
         status: 200,
         headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" },
       });
     }
     if (request.method === "GET" && url.pathname === "/sitemap.xml") {
-      return new Response(createVizierSitemap(url.origin), {
+      if (publicOrigin !== url.origin) return Response.redirect(`${publicOrigin}/sitemap.xml`, 308);
+      return new Response(createVizierSitemap(publicOrigin), {
         status: 200,
         headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" },
       });

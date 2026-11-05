@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add search metadata, a canonical URL and MCP connection instructions to the public authorization playground.
+
 - Describe the A2A authorization decision record in terms of policy and delegated authority for catalog discovery.
 
 - Classify GET/HEAD MCP discovery as HTTP metadata rather than RPC actions. Add bounded correction hints for unsupported revisions, profile/method mismatches and invalid JSON-RPC requests; preserve refusals and explicit read-only recovery.
