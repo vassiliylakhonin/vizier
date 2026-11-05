@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a runnable synthetic missing-grant example to the A2A card and public playground. The example always runs without trusted authority and cannot authorize an action.
+
 - Add search metadata, a canonical URL and MCP connection instructions to the public authorization playground.
 
 - Describe the A2A authorization decision record in terms of policy and delegated authority for catalog discovery.

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createAgentCard, handleA2aRequest } from "../src/transport/a2a";
+import { createAgentCard, handleA2aRequest, VIZIER_CATALOG_EXAMPLE } from "../src/transport/a2a";
 import { handleHttpRequest } from "../src/transport/http";
 import { SERVICE_VERSION } from "../src/version";
 
@@ -68,6 +68,23 @@ function validEnvelope(id: string | number = "rpc-01"): Record<string, unknown> 
     },
   };
 }
+
+it("runs the catalog example with no authority even when the caller has an enforcement credential", async () => {
+  const make = (text: string) => ({
+    jsonrpc: "2.0", id: "demo", method: "SendMessage",
+    params: { message: { messageId: "demo", role: "ROLE_USER", parts: [{text}] } },
+  });
+  for (const request of [anonymousRpcRequest(make(VIZIER_CATALOG_EXAMPLE)), rpcRequest(make(VIZIER_CATALOG_EXAMPLE))]) {
+    const response = await handleA2aRequest(request, {apiKey: TEST_API_KEY});
+    const {result: {task}} = (await response.json()) as {result:{task:unknown}};
+    expect(task).toMatchObject({
+      metadata: {synthetic_example: true, authorization_granted: false},
+      artifacts: [{parts: [{data: {decision: "BLOCK", reason_codes: expect.arrayContaining(["GRANT_REQUIRED"])}}]}],
+    });
+  }
+  const ordinary = await handleA2aRequest(anonymousRpcRequest(make("Evaluate an actual purchase.")));
+  expect(await ordinary.json()).toMatchObject({result:{message:{metadata:{guidance:true}}}});
+});
 
 describe("A2A Agent Card", () => {
   it("uses the v1.0 Agent Card shape and current discovery route", async () => {
