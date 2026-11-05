@@ -105,7 +105,7 @@ describe("A2A Agent Card", () => {
       },
       securityRequirements: [{ schemes: {} }, { schemes: { bearerAuth: { list: [] } } }],
     });
-    const skills = body.skills as Array<{ id: string }>;
+    const skills = body.skills as Array<{ id: string; name: string; tags: string[] }>;
     expect(skills.map((skill) => skill.id)).toEqual([
       "verify_agent_action",
       "evaluate_delegated_authority",
@@ -114,6 +114,10 @@ describe("A2A Agent Card", () => {
       "authorize_covenant_action",
       "record_action_outcome",
     ]);
+    expect(skills.find((skill) => skill.id === "generate_verification_receipt")).toMatchObject({
+      name: "Generate Authorization Decision Record",
+      tags: expect.arrayContaining(["authorization", "policy-decision", "audit-record"]),
+    });
   });
 
   // A2A v1 AgentCard and AgentProvider define closed field sets, and

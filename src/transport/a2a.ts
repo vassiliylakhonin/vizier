@@ -240,10 +240,10 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
       },
       {
         id: "generate_verification_receipt",
-        name: "Generate Verification Receipt",
+        name: "Generate Authorization Decision Record",
         description:
-          "Return an auditable machine-readable receipt for an authorization decision.",
-        tags: ["receipt", "audit", "verification"],
+          "Return a machine-readable audit record of the decision on a proposed agent action under delegated authority and policy.",
+        tags: ["authorization", "policy-decision", "audit-record", "agent-actions"],
         inputModes: ["application/json"],
         outputModes: ["application/json"],
       },
