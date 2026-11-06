@@ -1,10 +1,22 @@
 import { VIZIER_CATALOG_EXAMPLE } from "./a2a";
+import { firstMcpCheck } from "./onboarding";
 
 export function createPlaygroundHtml(
   origin: string,
   grantMode: "optional" | "required" | "invalid" = "optional",
   publicOrigin = origin,
 ): string {
+  const firstCheck = firstMcpCheck();
+  const escapeExample = (text: string) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  const shellQuote = (text: string) => "'" + text.replaceAll("'", "'\"'\"'") + "'";
+  const firstCheckCommand = [
+    "curl -sS " + shellQuote(publicOrigin + "/mcp"),
+    ...Object.entries(firstCheck.headers).map(([name, value]) => "  -H " + shellQuote(name + ": " + value)),
+    "  --data-binary " + shellQuote(JSON.stringify(firstCheck.body)),
+  ].join(" " + String.fromCharCode(92, 10));
+  const firstCheckExpected = grantMode === "required"
+    ? "Expected: BLOCK with GRANT_REQUIRED. The fictional purchase is within its declared limit, but the principal has not signed a grant."
+    : "This anonymous check evaluates a fictional purchase and cannot grant ALLOW. The result follows the serving grant policy.";
   const grantNotice = grantMode === "required"
     ? "This deployment requires a valid principal-signed delegation grant. Requests without it return BLOCK with GRANT_REQUIRED, including anonymous evaluations and requests within the declared limit. An API key alone does not replace the grant."
     : grantMode === "invalid"
@@ -221,6 +233,14 @@ export function createPlaygroundHtml(
     <input id="mcp-url" value="${publicOrigin}/mcp" readonly style="display:block;width:100%;max-width:100%;box-sizing:border-box" onclick="this.select()">
     <button type="button" class="preset-btn" onclick="copyMcpUrl()">Copy MCP URL</button> <span id="mcp-copy-status" role="status"></span>
     <p>Main tool <code>vizier_verify_action</code>. <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/AUTHORIZATION_QUICKSTART.md">Connection and request example</a> · <a href="${publicOrigin}/.well-known/agent-card.json">A2A agent card</a> · <a href="${publicOrigin}/openapi.json">OpenAPI</a></p>
+    <h3>First MCP check</h3>
+    <p>Run one synthetic purchase check after connecting. ${firstCheckExpected}</p>
+    <button type="button" class="preset-btn" id="first-mcp-run" onclick="runFirstMcpCheck()">Run synthetic MCP check</button>
+    <p id="first-mcp-result" role="status"></p>
+    <details><summary>Copy the complete stateless MCP command</summary><pre id="first-mcp-command" style="overflow:auto">${escapeExample(firstCheckCommand)}</pre>
+      <p>For an initialized session client, copy only the arguments below into <code>vizier_verify_action</code>. The client supplies its session headers.</p>
+      <pre style="overflow:auto">${escapeExample(JSON.stringify(firstCheck.body.params.arguments, null, 2))}</pre>
+    </details>
   </section>
   <p>Evaluation playground: caller-supplied authority is unverified. ${grantNotice} No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
   <p>The examples compare proposed purchases with declared spending limits and allowed targets.</p>
@@ -286,6 +306,26 @@ export function createPlaygroundHtml(
   </div>
 
   <script>
+    async function runFirstMcpCheck() {
+      const button = document.getElementById('first-mcp-run');
+      const status = document.getElementById('first-mcp-result');
+      button.disabled = true;
+      status.textContent = 'Running the synthetic MCP check…';
+      try {
+        const sample = ${JSON.stringify(firstCheck)};
+        const response = await fetch('/mcp', {method: 'POST', credentials: 'omit',
+          headers: sample.headers, body: JSON.stringify(sample.body)});
+        const data = (await response.json())?.result?.structuredContent;
+        if (!response.ok || !['BLOCK', 'REVIEW'].includes(data?.decision)) throw new Error('Unexpected result');
+        status.textContent = data.decision + (data.reason_codes?.includes('GRANT_REQUIRED')
+          ? ' / GRANT_REQUIRED. The principal has not signed a delegation grant.' : '. The action needs further review.');
+      } catch {
+        status.textContent = 'The MCP example could not complete. Inspect the command and connection guide before retrying.';
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     async function runGrantExample() {
       const status = document.getElementById('grant-example-result');
       status.textContent = 'Evaluating the fictional purchase…';

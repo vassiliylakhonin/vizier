@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Put a runnable synthetic MCP check and its stateless request beside the public connection instructions.
+
 - Add a runnable synthetic missing-grant example to the A2A card and public playground. The example always runs without trusted authority and cannot authorize an action.
 
 - Add search metadata, a canonical URL and MCP connection instructions to the public authorization playground.

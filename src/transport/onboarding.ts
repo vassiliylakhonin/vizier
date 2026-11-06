@@ -1,4 +1,29 @@
 import { resolveSignedGrantMode, type TransportOptions } from "./shared";
+import { MCP_PROTOCOL_VERSION } from "./mcp-profiles";
+
+export function firstMcpCheck() {
+  const name = "vizier_verify_action";
+  return {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+      "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": name,
+    },
+    body: {
+      jsonrpc: "2.0", id: "first-vizier-check", method: "tools/call",
+      params: {
+        name,
+        arguments: grantReadiness({}).example_arguments,
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
+      },
+    },
+  };
+}
 
 /** Public instructions only: never include principal keys or integration secrets. */
 export function grantReadiness(options: TransportOptions) {
