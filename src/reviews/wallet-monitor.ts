@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { collectWalletHistory, type WalletHistory } from "./wallet-history";
+import { collectWalletHistory, monitorLookbackBlocks, type WalletHistory } from "./wallet-history";
 
 const walletAddress = /^0x[0-9a-f]{40}$/;
 
@@ -82,6 +82,8 @@ export async function retryWalletHistoryMonitor(db: D1Database, wallet: string, 
     && row.checked_at <= now + 60 && now - row.checked_at <= 3 * 3600
     && Number.isSafeInteger(row.observed_outgoing) && row.observed_outgoing >= 0 && row.observed_outgoing <= 1000000000000
     && Number.isSafeInteger(row.start_block) && row.start_block >= 0 && Number.isSafeInteger(row.end_block)
-    && row.end_block - row.start_block === 45000 && /^0x[0-9a-f]{64}$/.test(row.end_block_hash)) return null;
+    && row.end_block > row.start_block
+    && BigInt(row.end_block - row.start_block) === monitorLookbackBlocks(BigInt(row.end_block))
+    && /^0x[0-9a-f]{64}$/.test(row.end_block_hash)) return null;
   return runWalletHistoryMonitor(db, wallet);
 }

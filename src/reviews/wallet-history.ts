@@ -13,9 +13,24 @@ const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523
 // Never shorten an incomplete day.
 const LOOKBACK_BLOCKS = 45000n;
 const LOG_SPAN = 1024n;
-// The read-only monitor uses PublicNode with five log ranges, leaving ample
-// subrequest headroom. Admission and outcome verification retain BlockPI.
+// The read-only monitor uses PublicNode. Up to 44 log ranges, four chain/anchor
+// reads and two retries fit the Workers Free external subrequest limit.
 const MONITOR_LOG_SPAN = 10000n;
+// Base mainnet activates Denim at ceil((1793901600 - 1686789347) / 2).
+// https://docs.base.org/upgrades/denim/200ms-blocks
+const DENIM_ACTIVATION_BLOCK = 53_556_127n;
+const DENIM_BLOCKS_PER_DAY = 432_000n;
+
+export function monitorLookbackBlocks(end: bigint): bigint {
+  if (end <= DENIM_ACTIVATION_BLOCK) return LOOKBACK_BLOCKS;
+  const denimBlocks = end - DENIM_ACTIVATION_BLOCK;
+  if (denimBlocks >= DENIM_BLOCKS_PER_DAY) return DENIM_BLOCKS_PER_DAY;
+  // An old block spans ten Denim intervals. Round up to cover the cutoff.
+  const legacyBlocks = (DENIM_BLOCKS_PER_DAY - denimBlocks + 9n) / 10n;
+  const mixedLookback = denimBlocks + legacyBlocks;
+  return mixedLookback > LOOKBACK_BLOCKS ? mixedLookback : LOOKBACK_BLOCKS;
+}
+
 // Public RPC rejects rapid six-request bursts from Workers with JSON-RPC
 // -32000 rate limits. Pace single-request batches without spending more subrequests.
 const LOG_FETCH_CONCURRENCY = 6;
@@ -35,7 +50,9 @@ export async function collectWalletHistory(wallet: string, options: { paceRpc?: 
   const started = Date.now();
   const concurrency = options.paceRpc ? 1 : LOG_FETCH_CONCURRENCY;
   const provider = options.rpcProvider ?? "blockpi";
-  const logSpan = provider === "publicnode" ? MONITOR_LOG_SPAN : LOG_SPAN;
+  const monitor = provider === "publicnode";
+  const logSpan = monitor ? MONITOR_LOG_SPAN : LOG_SPAN;
+  const scanTimeoutMs = monitor ? 180000 : 120000;
   let spareCalls = 2;
   async function historyRpc(method: string, params: unknown[]): Promise<unknown> {
     for (;;) {
@@ -55,8 +72,9 @@ export async function collectWalletHistory(wallet: string, options: { paceRpc?: 
   if (chainId !== "0x2105") throw new Error("Wrong Base chain");
   const anchor = block.parse(rawAnchor);
   const end = BigInt(anchor.number);
-  if (end < LOOKBACK_BLOCKS) throw new Error("Insufficient Base history");
-  const first = end - LOOKBACK_BLOCKS;
+  const lookback = monitor ? monitorLookbackBlocks(end) : LOOKBACK_BLOCKS;
+  if (end < lookback) throw new Error("Insufficient Base history");
+  const first = end - lookback;
   const start = block.parse(await historyRpc("eth_getBlockByNumber", ["0x" + first.toString(16), false]));
   const now = Math.floor(Date.now() / 1000);
   const endTime = Number(BigInt(anchor.timestamp));
@@ -73,7 +91,7 @@ export async function collectWalletHistory(wallet: string, options: { paceRpc?: 
   }
   for (let offset = 0; offset < ranges.length; offset += concurrency) {
     if (options.paceRpc && offset > 0) await pause();
-    if (Date.now() - started > 120000) throw new Error("Base history timed out");
+    if (Date.now() - started > scanTimeoutMs) throw new Error("Base history timed out");
     const batch = ranges.slice(offset, offset + concurrency);
     const responses = await Promise.all(batch.map(({ from, to }) =>
       historyRpc("eth_getLogs", [{ address: USDC, fromBlock: "0x" + from.toString(16),

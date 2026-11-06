@@ -147,6 +147,50 @@ describe("financial reservations", () => {
     expect(vi.mocked(fetch).mock.calls.every(([url]) => url === "https://base-rpc.publicnode.com")).toBe(true);
     expect(mem.prepare("SELECT enabled FROM financial_policies WHERE wallet=?").get(wallet)!.enabled).toBe(0);
   });
+  it.each([
+    { endOffset: 180003, startOffset: -25200, logCalls: 21 },
+    { endOffset: 500003, startOffset: 68003, logCalls: 44 },
+  ])("observes a full day at Denim block offset $endOffset", async ({ endOffset, startOffset, logCalls }) => {
+    const activationBlock = 53556127;
+    const activationTime = 1793901601;
+    const end = activationBlock + endOffset;
+    const start = activationBlock + startOffset;
+    const blockTime = (height: number) => {
+      const offset = height - activationBlock;
+      return activationTime + (offset < 0 ? offset * 2 : Math.floor(offset / 5));
+    };
+    const now = (blockTime(end) + 1000) * 1000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    await policy({ enabled: false });
+    const ranges: Array<{ from: number; to: number }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const { method, params } = JSON.parse(init.body as string) as { method: string; params: unknown[] };
+      let result: unknown;
+      if (method === "eth_chainId") result = "0x2105";
+      else if (method === "eth_getBlockByNumber") {
+        const height = params[0] === "finalized" ? end : Number(params[0]);
+        result = { number: "0x" + height.toString(16), hash: "0x" + "d".repeat(64),
+          timestamp: "0x" + blockTime(height).toString(16) };
+      } else if (method === "eth_getLogs") {
+        const range = params[0] as { fromBlock: string; toBlock: string };
+        ranges.push({ from: Number(range.fromBlock), to: Number(range.toBlock) });
+        result = [];
+      } else throw new Error("Unexpected RPC method");
+      return Response.json({ jsonrpc: "2.0", id: 1, result });
+    }));
+
+    await expect(runWalletHistoryMonitor(options.db!, wallet)).resolves.toMatchObject({
+      startBlock: start, endBlock: end, outgoing: 0,
+    });
+    expect(blockTime(end) - blockTime(start)).toBeGreaterThanOrEqual(86400);
+    expect(ranges).toEqual(Array.from({ length: logCalls }, (_, index) => ({
+      from: start + index * 10000, to: Math.min(start + (index + 1) * 10000 - 1, end),
+    })));
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(logCalls + 4);
+    expect(logCalls + 4 + 2).toBeLessThanOrEqual(50);
+    expect(await retryWalletHistoryMonitor(options.db!, wallet, now)).toBeNull();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(logCalls + 4);
+  });
   it("monitors a complete day within 9 RPC calls and records failures", async () => {
     await policy({ enabled: false });
     const rpcFetch = vi.mocked(fetch);
