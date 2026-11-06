@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleHttpRequest } from "../src/transport/http";
+import { firstMcpCheck } from "../src/transport/onboarding";
 import {
   createMcpServerManifest,
   MCP_SERVER_SCHEMA,
@@ -285,12 +286,25 @@ describe("machine-readable discovery contracts", () => {
       expect(html).toContain(`id="mcp-url" value="${publicOrigin}/mcp"`);
       expect(html).toContain("<code>vizier_verify_action</code>");
       expect(html).toContain("Run the missing-grant example");
+      expect(html).toContain("Run synthetic MCP check");
+      expect(html).toContain("Copy the complete stateless MCP command");
     }
     const sitemap = await handleHttpRequest(new Request(`${legacyOrigin}/sitemap.xml`));
     expect(sitemap.status).toBe(308);
     expect(sitemap.headers.get("location")).toBe(`${publicOrigin}/sitemap.xml`);
     const publicMap = await handleHttpRequest(new Request(`${publicOrigin}/sitemap.xml`));
     expect((await publicMap.text()).match(/<loc>[^<]+<\/loc>/g)).toEqual([`<loc>${publicOrigin}/</loc>`]);
+  });
+
+  it("runs the published first MCP check against the serving grant policy", async () => {
+    const {headers, body} = firstMcpCheck();
+    const response = await handleHttpRequest(new Request(ORIGIN + "/mcp", {
+      method: "POST", headers, body: JSON.stringify(body),
+    }), {signedGrantModeSource: "required"});
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({result:{isError:false, structuredContent:{
+      decision:"BLOCK", reason_codes:expect.arrayContaining(["GRANT_REQUIRED"]),
+    }}});
   });
 
   it("serves the Glama MCP verification manifest at /.well-known/glama.json and /glama.json", async () => {
