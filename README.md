@@ -2,75 +2,111 @@
 
 # Vizier
 
-Scoped authorization for AI agents before they act.
+**Authorize AI agent actions before tools execute.**
 
+[![npm](https://img.shields.io/npm/v/%40agenda-intelligence%2Fvizier-sdk)](https://www.npmjs.com/package/@agenda-intelligence/vizier-sdk)
 [![CI](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml)
-[![Deploy](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/deploy.yml)
 [![Release](https://img.shields.io/github/v/release/vassiliylakhonin/vizier)](https://github.com/vassiliylakhonin/vizier/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Vizier checks a proposed agent action against permissions signed by its owner and returns `ALLOW`, `BLOCK`, or `REVIEW` together with policy results and a receipt bound to the request.
+Vizier checks proposed tool calls against **owner-signed, scoped, expiring permissions** and deterministic policies. It returns `ALLOW`, `BLOCK`, or `REVIEW`, with rule results and a receipt bound to the request. Your trusted guard enforces the result before a deployment, repository write, database change, message, or payment API call.
 
-Use it at the action boundary of an agent or recurring workflow: before a deployment, repository write, database change, message, or payment API call. A continuously running agent can receive short-lived permissions for specific actions and targets while the owner keeps control of the signing key.
+Use the TypeScript or Python client, protect existing tools with the MCP proxy, or integrate through REST and A2A. **No LLM is involved in the authorization decision.**
 
-[Playground](https://vizier.agendamcp.dpdns.org/playground) ·
-[Live API reference](https://vizier.agendamcp.dpdns.org/docs) ·
-[OpenAPI](https://vizier.agendamcp.dpdns.org/openapi.json) ·
-[Quickstart](docs/AUTHORIZATION_QUICKSTART.md) ·
-[Delegation setup](docs/DELEGATION_GRANTS.md) ·
-[Threat model](docs/THREAT_MODEL.md)
+[Try the playground](https://vizier.agendamcp.dpdns.org/playground) · [Quick start](#quick-start) · [SDK example](#start-with-signed-delegation) · [MCP](#connect-through-mcp) · [API reference](https://vizier.agendamcp.dpdns.org/docs) · [Threat model](docs/THREAT_MODEL.md)
 
-## Why this matters
+## What can you control?
 
-AI agents can act quickly, but not every action should be allowed just because the model or workflow requested it. Vizier adds a deterministic authorization layer between an agent's intent and the protected tool call.
+| Workflow | What the integration can enforce | Start here |
+| --- | --- | --- |
+| Agent tool calls | Permitted actions, exact targets, constraints, and grant expiry | [Signed delegation](#start-with-signed-delegation) |
+| Existing MCP tools | Allowed tools and upstream routes, checked before forwarding | [MCP enforcement proxy](packages/mcp-proxy/README.md) |
+| Cloudflare Worker deployments | One existing Worker and human approval of the exact uploaded version | [Local preparation demo](#quick-start) |
+| Sensitive operations | An explicit human-review step bound to the proposed action | [Review helpers](packages/sdk/README.md#explicit-human-reviews) |
 
-This is useful when you need to enforce:
-
-- owner-controlled permissions for agent actions
-- short-lived delegated authority
-- exact target scoping and action constraints
-- review-before-execution for sensitive operations
-- auditable receipts for action decisions
-
-## What this project does
-
-Vizier provides a policy and authorization service for agent actions.
-
-It can validate:
-
-- whether an action is allowed for a specific agent and principal
-- whether the grant is signed by an owner
-- whether the action matches the grant scope and constraints
-- whether the request should be blocked, allowed, or escalated to human review
-
-It does not decide whether the action is factually correct or ethically acceptable. It decides whether the action is authorized according to the signed authority model and policy rules.
+**An API key identifies the integration. A signed grant carries the owner's permission.** Keep the private signing key and protected tool credentials outside the agent's control.
 
 ## Quick start
 
-### 1) Install the SDK
+Try [the browser playground](https://vizier.agendamcp.dpdns.org/playground), or prepare a deployment review locally with **Node.js 24+**:
 
-Node.js 24+ is required for the TypeScript SDK and deployment adapter.
+```sh
+mkdir vizier-demo
+cd vizier-demo
+npm install @agenda-intelligence/vizier-sdk@0.5.16 @agenda-intelligence/vizier-gated-deploy@0.5.16
+npx --no-install vizier-worker-deploy prepare \
+  --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
+  --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
+```
+
+**No API key or Cloudflare account is needed for `prepare`.** After installation, this step runs locally without network calls. The bundled scope and plan use synthetic IDs.
+
+You get JSON containing:
+
+- `review`: the exact Worker version and traffic percentage to review;
+- `review_hash`: a SHA-256 hash binding that review to its contents;
+- `authority`: the action and target scope the owner would need to sign.
+
+This prepares a review; it does not authorize or deploy anything. For a real sandbox, follow the [operator setup and recovery guide](docs/WORKER_DEPLOY_PILOT.md). The adapter's `submit` and `execute` modes require additional credentials; execution requires both a matching signed grant and approval of the exact review.
+
+For general policy exploration, use the [local REST scenarios](docs/AUTHORIZATION_QUICKSTART.md#try-three-local-examples). Anonymous evaluation can return `BLOCK` or `REVIEW`, never `ALLOW`.
+
+## How it works
+
+```mermaid
+flowchart LR
+    Owner[Owner-controlled signer] -->|Scoped, expiring grant| Guard[Trusted tool guard]
+    Agent[Agent proposes action] --> Guard
+    Guard -->|Exact action + grant| Vizier[Vizier policy service]
+    Vizier -->|Decision + request-bound receipt| Guard
+    Guard -->|Validated ALLOW| Tool[Protected tool]
+    Guard -->|Explicit review submission| Human[Human review workflow]
+```
+
+1. The owner signs an ES256 delegation for a principal, agent, permitted actions, constraints, and expiry.
+2. The guard submits the intended action and grant to `/v1/verify`.
+3. Vizier checks the signature, identities, expiry, exact authority binding, and deterministic policies.
+4. The guard validates the response and request binding before invoking the protected tool.
+
+| Decision | What the caller should do |
+| --- | --- |
+| `ALLOW` | Proceed only through the trusted executor, with the exact authorized action and required execution controls. |
+| `BLOCK` | Stop. Inspect `reason_codes` and `policy_results`; fix the underlying request or permissions. |
+| `REVIEW` | Stop execution. Submit a separate human review explicitly if the integration supports it. |
+
+A verification response does not execute the action or automatically open a review.
+
+## Start with signed delegation
+
+**Prerequisites:** an operator-issued API key, a registered principal public key, and a matching owner-issued grant. Follow [delegation setup](docs/DELEGATION_GRANTS.md#setting-it-up) first. An API key alone is insufficient in required-grant mode.
+
+Install the TypeScript client (Node.js 24+):
 
 ```sh
 npm install @agenda-intelligence/vizier-sdk@0.5.16
 ```
 
-### 2) Verify an action with a signed delegation
+Supply `VIZIER_API_KEY` and `VIZIER_GRANT_FILE` to the trusted guard. For this example, the grant must bind `platform-owner` to `release-agent` and contain **exactly the `authority` object below**. Keep the private signer separate.
+
+Save as `authorize.mjs`:
 
 ```ts
 import { readFile } from "node:fs/promises";
 import { Vizier } from "@agenda-intelligence/vizier-sdk";
 
-const client = new Vizier({
-  baseUrl: "https://vizier.agendamcp.dpdns.org",
-  apiKey: process.env.VIZIER_API_KEY,
-});
-
+const apiKey = process.env.VIZIER_API_KEY;
 const grantPath = process.env.VIZIER_GRANT_FILE;
-if (!grantPath) throw new Error("An owner-issued grant file is required.");
+if (!apiKey || !grantPath) {
+  throw new Error("Set VIZIER_API_KEY and VIZIER_GRANT_FILE in the trusted guard.");
+}
+
+const vizier = new Vizier({
+  baseUrl: "https://vizier.agendamcp.dpdns.org",
+  apiKey,
+});
 const grant = (await readFile(grantPath, "utf8")).trim();
 
-const result = await client.verify({
+const result = await vizier.authorize({
   agent: { id: "release-agent", owner: "platform-owner" },
   principal: { id: "platform-owner" },
   action: {
@@ -89,110 +125,40 @@ const result = await client.verify({
   grant,
 });
 
-if (result.decision !== "ALLOW") {
-  throw new Error(`Authorization failed: ${result.decision}`);
-}
-
+// authorize() throws unless the response establishes a request-bound ALLOW
+// with matching, unexpired principal-signed delegation.
 console.log("Authorized request:", result.receipt.id);
 ```
 
-### 3) Gate the protected tool call
+Run `node authorize.mjs` after configuring those prerequisites. A valid authorization prints a receipt ID; a refusal throws. This example performs only the authorization request. Use the [deployment adapter](packages/gated-deploy/README.md) for the separate, version-specific execution workflow.
 
-The service authorizes the action. Your integration still enforces the outcome before calling the protected tool.
-
-## How it works
-
-```mermaid
-flowchart LR
-    Owner[Owner-controlled signer] -->|Scoped, expiring grant| Guard[Tool guard or MCP proxy]
-    Agent[Agent proposes action] --> Guard
-    Guard -->|Action + grant| Vizier[Vizier policy service]
-    Vizier -->|Decision + receipt| Guard
-    Guard -->|Validated ALLOW| Tool[Protected tool]
-    Guard -->|Submit REVIEW explicitly| Human[Human review workflow]
-```
-
-1. The owner signs an ES256 delegation: principal, agent, permitted actions, constraints, and expiry.
-2. The integration submits the intended action and grant to `/v1/verify`.
-3. Vizier verifies the signature, identities, expiry, and exact authority binding, then applies deterministic policies.
-4. The guard validates the response and request binding before invoking the tool.
-
-Important: an API key authenticates the caller; a delegation grant proves the owner's permission. They are separate roles.
-
-## Important boundaries
-
-- Vizier is an authorization service, not a fact checker.
-- It does not prove that a tool executed successfully.
-- It does not establish factual truth, legal clearance, payment settlement, or customer demand.
-- A receipt records authorization, not a guarantee of a successful side effect.
-- Self-hosted optional mode permits caller-asserted authority; receipts do not establish owner delegation.
-
-## Choose your integration
-
-| Your task | Start here | Prerequisites |
-| --- | --- | --- |
-| Try the deployment adapter locally | [Synthetic preparation example](#control-an-agents-infrastructure-deployment) | Node 24+; no keys for the preparation step |
-| Verify an action with signed delegation | [SDK setup](#start-with-signed-delegation) | An operator API key, registered public key and owner-issued grant |
-| Protect existing MCP tools | [Private MCP proxy](packages/mcp-proxy/README.md) | Operator-owned upstream credentials and a restricted tool route |
-| Inspect the hosted API | [API reference](https://vizier.agendamcp.dpdns.org/docs) | Public documentation; execution permissions are separate |
-
-## Control an agent's infrastructure deployment
-
-For platform and security teams operating a DevOps agent: pin one existing Cloudflare Worker and require owner-signed scope plus human approval of the exact uploaded version before changing its traffic. Changed versions, out-of-scope targets, expired permissions, and repeated approval claims stop before execution.
-
-Install the v0.5.16 SDK and deployment adapter from npm:
-
-```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.16 @agenda-intelligence/vizier-gated-deploy@0.5.16
-npx --no-install vizier-worker-deploy prepare \
-  --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
-  --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
-```
-
-Preparation is local, uses synthetic IDs, and needs no keys. Follow the [integration and recovery guide](docs/WORKER_DEPLOY_PILOT.md) before submitting a real review or executing anything.
-
-## Start with signed delegation
-
-Experimental. The runnable examples pin published npm clients at v0.5.16.
-
-```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.16
-```
-
-First [register a principal public key and mint a grant](docs/DELEGATION_GRANTS.md#setting-it-up) from an owner-controlled signer. This example requires a grant for `platform-owner` → `release-agent` with exactly this authority:
-
-```json
-{
-  "allowed_actions": ["deploy_worker"],
-  "constraints": {
-    "allowed_targets": ["worker:example-worker"],
-    "allowed_sensitive_actions": ["deploy_worker"]
-  }
-}
-```
-
-Keep the private signing key outside the action-taking agent. Supply the integration API key and a current grant file to the trusted guard.
+`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the legacy verification receipt itself is unsigned. Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
 
 ## Connect through MCP
 
-For a client with Streamable HTTP support, use:
+### Call the hosted verification service
+
+For a Streamable HTTP MCP client:
 
 ```text
 https://vizier.agendamcp.dpdns.org/mcp
 ```
 
-The hosted service exposes a tool catalog and verification endpoint. Discovery requires no API key. Read the tool schema and metadata before constructing a request.
+Discovery needs no API key. Read the discovered tool schema and metadata before constructing a request. Anonymous verification is evaluation-only and cannot return `ALLOW`.
 
-GET/HEAD discovery is measured as HTTP metadata, separately from MCP RPC requests. A refused connection includes a bounded correction hint and a read-only connection sequence. Correct the request and explicitly start the selected profile; the hint does not authorize an action or trigger automatic retries.
-
-For a copyable Node 24 connection with no dependencies, run one explicit read-only profile from this checkout:
+From a source checkout, inspect either supported connection profile with Node 24+ and no extra dependencies:
 
 ```sh
 node examples/mcp-connect.ts --profile session
 node examples/mcp-connect.ts --profile stateless
 ```
 
-For a stdio-only client, this pinned transport adapter connects to the same hosted tool:
+These commands perform read-only discovery. A rejected connection includes correction guidance; fix the request and explicitly retry the selected profile.
+
+<details>
+<summary>Configuration for a stdio-only MCP client</summary>
+
+This pinned transport adapter connects to the hosted verification service anonymously:
 
 ```json
 {
@@ -209,59 +175,58 @@ For a stdio-only client, this pinned transport adapter connects to the same host
 }
 ```
 
-This configuration sends calls to the hosted service and is anonymous: verification can return `BLOCK` or `REVIEW`, never `ALLOW`.
+It exposes evaluation, not permission to execute: anonymous calls can return `BLOCK` or `REVIEW`, never `ALLOW`.
 
-## Interfaces and capabilities
+</details>
 
-| Surface | Role |
+### Enforce authorization on your own MCP tools
+
+The [private MCP enforcement proxy](packages/mcp-proxy/README.md) sits between the agent and a supported HTTP MCP server. It filters tool discovery and checks configured calls before forwarding them. Configure the signed grant, allowed tools, upstream identity, and protected credentials using the [proxy setup guide](docs/DELEGATION_GRANTS.md#protected-mcp-proxy).
+
+The hosted verification service does not intercept your other tools automatically. Remove the agent's direct upstream access so it cannot bypass the proxy.
+
+## Trust boundaries
+
+- **Authorization scope:** Vizier checks permissions and policy rules. It does not establish factual truth, legal clearance, payment settlement, or successful tool execution.
+- **Receipts:** `/v1/verify` receipts bind a decision to a request hash but are unsigned. The delegation grant is owner-signed. [Action Covenants](docs/ADR-0001-ACTION-COVENANTS.md) have separate signed formats and compatibility limits.
+- **Execution:** a guard protects only the path it controls. An agent or operator with direct tool credentials can bypass it. Short-lived grants are not single-use execution reservations.
+- **Deployment review:** claiming an approval and performing a cloud deployment are not atomic. Reconcile uncertain outcomes before retrying; see [recovery guidance](docs/WORKER_DEPLOY_PILOT.md).
+- **Self-hosting:** optional grant mode permits caller-asserted authority. Those receipts do not establish owner delegation; choose the intended mode explicitly.
+
+See the [threat model](docs/THREAT_MODEL.md) and [security review](docs/SECURITY_REVIEW.md) before relying on an integration boundary.
+
+## Status and evidence
+
+**Experimental.** The npm examples above pin version `0.5.16`. Evaluate the integration in your own sandbox before using it for consequential actions.
+
+The [maintainer's Worker deployment demo](docs/WORKER_DEPLOY_DEMO.md) records eight scenarios, including changed versions, out-of-scope targets, expired grants, missing approval, and replay. The report includes a [sanitized trace](docs/worker-deploy-live-demo-2026-10-13.json) and explains its limitations. It is owner-run testing, not independent customer adoption.
+
+## Documentation and packages
+
+| Need | Reference |
 | --- | --- |
-| REST `/v1/verify` | Action checks with deterministic policies, delegation provenance and request-bound receipts |
-| TypeScript SDK | Validates response contracts and bindings; includes explicit human-review helpers |
-| [Python SDK](packages/python-sdk) | Standard-library client, function guards and framework adapters |
-| MCP service | Discover and call verification tools |
-| MCP enforcement proxy | Intercepts configured tool calls, validates authorization, and forwards permitted calls |
-| A2A | Verification adapter and agent card discovery |
-| Human review queue | Separate reviewer credential, signed approval tokens and atomic server claims |
+| Authorization and owner keys | [Quickstart](docs/AUTHORIZATION_QUICKSTART.md) · [Delegation grants](docs/DELEGATION_GRANTS.md) |
+| JavaScript / TypeScript | [SDK](packages/sdk/README.md) · [npm](https://www.npmjs.com/package/@agenda-intelligence/vizier-sdk) |
+| Python | [Python SDK, function guards, and adapters](packages/python-sdk/README.md) |
+| MCP tools | [Enforcement proxy](packages/mcp-proxy/README.md) |
+| Infrastructure deployment | [Adapter](packages/gated-deploy/README.md) · [Operator guide](docs/WORKER_DEPLOY_PILOT.md) |
+| REST and A2A | [API reference](https://vizier.agendamcp.dpdns.org/docs) · [OpenAPI](https://vizier.agendamcp.dpdns.org/openapi.json) · [Agent card](https://vizier.agendamcp.dpdns.org/.well-known/agent-card.json) |
+| Architecture and scope | [Architecture](docs/ARCHITECTURE.md) · [Claim ledger](docs/CLAIMS.md) · [Pilot scope](docs/PILOT.md) |
 
-## Working integrations
+## Development and contributions
 
-The Agenda fleet uses Vizier in an owner-operated deployment workflow. This is concrete operational use by the same maintainer; it is not external customer adoption.
-
-| Workflow | Protected action | Evidence |
-| --- | --- | --- |
-| Agenda Worker fleet | Target-scoped `deploy_worker` authorization before deployment | [Public workflow](https://github.com/vassiliylakhonin/agenda-intelligence-md/blob/main/.github/workflows/deploy.yml) |
-
-The workflow separates signer and execution steps and supplies short-lived owner-signed grants. Missing or expired grants and invalid required receipts stop that deployment path.
-
-## Receipts and trust boundary
-
-A `/v1/verify` receipt records the request hash, decision, rule results, and authority provenance. The legacy verification receipt itself is unsigned; the grant behind a `principal_signed` decision is owner-signed. The SDK checks response consistency and recomputes the request hash over canonical JSON.
-
-Visualization of the trust boundary:
-
-- the integration enforces the decision
-- the agent or operator with direct tool credentials can bypass that integration
-- short-lived grants are not single-use execution reservations
-- authorization does not replace human judgment or operational controls
-
-## Development
-
-Node.js 24+ is required for the Worker and TypeScript packages.
+Requires Node.js 24+:
 
 ```sh
+git clone https://github.com/vassiliylakhonin/vizier.git
+cd vizier
 npm ci
 npm run check
 ```
 
-`check` runs package builds, type checks, migration checks, lint, tests, and a Worker deployment dry run. It does not publish or deploy.
+`check` runs package builds, type checks, migration checks, lint, tests, and a Worker deployment dry run. It does not publish or deploy. Python SDK checks run separately with `python -m pytest packages/python-sdk` after installing `pytest`.
 
-Useful references:
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Claims](docs/CLAIMS.md)
-- [Security review](docs/SECURITY_REVIEW.md)
-- [Pilot scope](docs/PILOT.md)
-- [Issues and integration feedback](https://github.com/vassiliylakhonin/vizier/issues)
+For bugs or integration questions, [open an issue](https://github.com/vassiliylakhonin/vizier/issues). Include a sanitized request, SDK version, expected decision, and actual result. Never include API keys, private keys, grants, or approval tokens. Reproducible policy cases, adapter examples, and documentation fixes are useful contributions.
 
 ## License
 
