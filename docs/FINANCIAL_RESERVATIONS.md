@@ -146,14 +146,15 @@ persisted. The check remains failed until a complete fresh observation succeeds;
 diagnostics never enable the wallet policy or authorize spending.
 
 The read-only scheduled monitor uses the fixed Base endpoint
-`https://base-rpc.publicnode.com`. Its full 45,001-block window uses five
-log ranges of at most 10,000 blocks and four chain/anchor reads: nine requests
-on success, at most eleven with transient retries. Every read in one scan
-uses the same provider; no partial scans are combined across providers.
+`https://base-rpc.publicnode.com`. Its window accounts for Base Denim's switch
+from two-second to 200 ms blocks. It validates at least 24 hours using block
+timestamps. The largest window uses 44 log ranges of at most 10,000 blocks,
+four chain/anchor reads and up to two transient retries (50 requests total).
+Every read in one scan uses the same provider; no partial scans are combined
+across providers.
 Responses reaching the conservative 1,000-log ceiling are refused as incomplete.
 Scheduled log reads use single-request batches separated by 2 s pauses;
 transient retries also pause before consuming one of the two spare requests.
-This adds at least eight seconds to a successful scan.
 The full finalized day and fail-closed behavior are unchanged. Public-provider
 availability is not guaranteed; persistent rate limits still fail the check.
 Interactive review/history requests retain their existing concurrency and latency;
