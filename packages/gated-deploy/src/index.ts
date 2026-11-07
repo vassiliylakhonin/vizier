@@ -16,6 +16,7 @@ import {
 } from "@agenda-intelligence/vizier-sdk";
 
 export * from "./worker-version.js";
+export * from "./worker-gateway.js";
 
 export interface DeployMetadata {
   readonly commit: string;
