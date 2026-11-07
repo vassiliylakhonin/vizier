@@ -177,6 +177,17 @@ or network failure.
   uses the validating Vizier SDK, refuses redirects, and constrains destinations;
   another embedding must reproduce those controls.
 
+### Worker deployment gateway
+
+The optional `serve` mode exposes only a fixed-scope deployment operation over
+loopback HTTP with a distinct agent bearer capability. Operator scope, grant
+provider and upstream credentials cannot be supplied in its request. It reuses
+the exact-review validation and durable approval consumption of the deployment
+adapter. Host isolation is an operator responsibility: an agent with executor
+OS permissions, service-control privileges or upstream credentials can bypass
+it. The gateway adds neither instant revocation nor a durable execution journal.
+See [deployment isolation and acceptance checks](WORKER_DEPLOY_GATEWAY.md).
+
 ## Fail-closed integration rule
 
 The legacy caller must execute only after a valid `/v1/verify` `ALLOW` whose

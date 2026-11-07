@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Run in the operator-owned executor, never in an agent-controlled workspace.
 import { readFile, stat } from "node:fs/promises";
+import { createWorkerDeploymentGateway } from "./worker-gateway.js";
 import { parseArgs } from "node:util";
 import process from "node:process";
 import { Vizier, hashCanonicalJson } from "@agenda-intelligence/vizier-sdk";
@@ -23,15 +24,45 @@ async function main(): Promise<void> {
     options: { help: { type: "boolean" }, scope: { type: "string" }, plan: { type: "string" }, grant: { type: "string" }, approval: { type: "string" } },
   });
   if (values.help) {
-    console.log("vizier-worker-deploy prepare|submit|execute --scope FILE --plan FILE [--grant FILE --approval FILE]\nprepare: local synthetic review, no network or secrets\nsubmit: persist exact review in operator Vizier\nexecute: require signed scope and exact human approval before Cloudflare\nGuide: https://github.com/vassiliylakhonin/vizier/blob/main/docs/WORKER_DEPLOY_PILOT.md");
+    console.log("vizier-worker-deploy prepare|submit|execute|serve --scope FILE --plan FILE [--grant FILE --approval FILE]\nserve: operator-owned loopback executor (--scope FILE --grant FILE)\nprepare: local synthetic review, no network or secrets\nsubmit: persist exact review in operator Vizier\nexecute: require signed scope and exact human approval before Cloudflare\nGuide: https://github.com/vassiliylakhonin/vizier/blob/main/docs/WORKER_DEPLOY_PILOT.md");
     return;
   }
   const mode = positionals[0];
-  if (positionals.length !== 1 || !mode || !["prepare", "submit", "execute"].includes(mode) || !values.scope || !values.plan) {
-    throw new Error("Usage: vizier-worker-deploy prepare|submit|execute --scope FILE --plan FILE [--grant FILE --approval FILE]");
+  if (positionals.length !== 1 || !mode || !["prepare", "submit", "execute", "serve"].includes(mode) || !values.scope || (mode !== "serve" && !values.plan)) {
+    throw new Error("Usage: vizier-worker-deploy prepare|submit|execute|serve --scope FILE --plan FILE [--grant FILE --approval FILE]");
   }
   const scope = await jsonFile(values.scope) as Parameters<typeof prepareWorkerDeploymentReview>[0];
-  const plan = await jsonFile(values.plan);
+  if (mode === "serve") {
+    const baseUrl = new URL(process.env.VIZIER_BASE_URL ?? "https://vizier.agendamcp.dpdns.org");
+    if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash || baseUrl.pathname !== "/") {
+      throw new Error("Configure an operator-trusted HTTPS Vizier origin");
+    }
+    const apiKey = process.env.VIZIER_API_KEY;
+    const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN;
+    const clientToken = process.env.VIZIER_DEPLOY_CLIENT_TOKEN;
+    const grantPath = values.grant;
+    if (!apiKey || !cloudflareApiToken || !clientToken || !grantPath || values.plan || values.approval) {
+      throw new Error("serve requires operator credentials, client token and grant; no plan or approval file");
+    }
+    if (clientToken === apiKey || clientToken === cloudflareApiToken) throw new Error("Use a distinct client token");
+    const server = createWorkerDeploymentGateway({
+      scope, vizier: new Vizier({ baseUrl: baseUrl.origin, apiKey }), cloudflareApiToken, clientToken,
+      loadGrant: async () => {
+        const info = await stat(grantPath);
+        if (!info.isFile() || info.size > 8192) throw new Error("Invalid grant file");
+        const grant = (await readFile(grantPath, "utf8")).trim();
+        if (Buffer.byteLength(grant) > 8192) throw new Error("Grant too large");
+        return grant;
+      },
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(8791, "127.0.0.1", resolve);
+    });
+    console.log("Worker deployment executor listening on 127.0.0.1:8791");
+    return;
+  }
+  const plan = await jsonFile(values.plan!);
   // The review helper validates the complete operator scope and strict plan.
   const review = prepareWorkerDeploymentReview(scope, plan);
   if (mode === "prepare") {

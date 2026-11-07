@@ -1,3 +1,10 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createServer } from "node:http";
+import { createWorkerDeploymentGateway } from "../packages/gated-deploy/src/worker-gateway";
 import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -342,4 +349,228 @@ describe("Worker version deployment pilot — offline execution boundary", () =>
     expect(await deployer()(input)).toMatchObject({ status: "stopped" });
     expect(cloud).toHaveBeenCalledTimes(1);
   });
+});
+
+
+async function gatewayApproval() {
+  const { id, token } = await approvalFor();
+  return { id, token };
+}
+const gatewayToken = "synthetic-client-capability-0123456789";
+async function withGateway(
+  run: (url: string) => Promise<void>,
+  loadGrant: () => Promise<string> = async () => grant,
+) {
+  const server = createWorkerDeploymentGateway({
+    scope, vizier: client, cloudflareApiToken: "synthetic-cloud-token",
+    cloudflareFetch: cloud, clientToken: gatewayToken, loadGrant,
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing test server address");
+  try { await run(`http://127.0.0.1:${address.port}/execute`); }
+  finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+}
+function gatewayCall(url: string, body: unknown, headers: Record<string, string> = {}) {
+  return fetch(url, {
+    method: "POST", headers: { Authorization: `Bearer ${gatewayToken}`, "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("operator-owned deployment gateway", () => {
+  it("rejects concurrent requests while an execution is in flight", async () => {
+    const approval = await gatewayApproval();
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    await withGateway(async url => {
+      const first = gatewayCall(url, { plan, approval });
+      try {
+        await started;
+        expect((await gatewayCall(url, { plan, approval })).status).toBe(409);
+      } finally { release(); }
+      expect(await (await first).json()).toMatchObject({ status: "deployment_created" });
+    }, async () => { entered(); await blocked; return grant; });
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed at the HTTP boundary when Vizier is unavailable", async () => {
+    const approval = await gatewayApproval();
+    unavailablePath = "/v1/verify";
+    await withGateway(async url => {
+      expect(await (await gatewayCall(url, { plan, approval })).json()).toMatchObject({ status: "stopped", execution: "not_performed" });
+    });
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("executes with operator credentials and refuses approval replay across gateway restarts", async () => {
+    const approval = await gatewayApproval();
+    await withGateway(async url => {
+      const response = await gatewayCall(url, { plan, approval });
+      expect(response.status).toBe(200);
+      const body = await response.text();
+      expect(JSON.parse(body)).toMatchObject({ status: "deployment_created" });
+      for (const secret of [grant, approval.token, "synthetic-cloud-token", gatewayToken]) expect(body).not.toContain(secret);
+    });
+    await withGateway(async url => {
+      expect(await (await gatewayCall(url, { plan, approval })).json()).toMatchObject({ status: "stopped" });
+    });
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["grant", { grant: "agent-controlled" }],
+    ["scope", { scope: { ...scope, worker_name: "other-worker" } }],
+    ["upstream", { url: "https://attacker.invalid" }],
+    ["credential", { cloudflareApiToken: "attacker" }],
+  ])("rejects agent-supplied %s before authorization", async (_label, injection) => {
+    await withGateway(async url => {
+      expect((await gatewayCall(url, { plan, approval: { id: "unused", token: "unused" }, ...injection })).status).toBe(400);
+    });
+    expect(requests).toEqual([]);
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("rejects unauthenticated, browser, alternate-path and oversized calls", async () => {
+    await withGateway(async url => {
+      expect((await gatewayCall(url, {}, { Authorization: "Bearer wrong" })).status).toBe(401);
+      expect((await gatewayCall(url, {}, { Origin: "https://attacker.invalid" })).status).toBe(404);
+      expect((await gatewayCall(`${url}?target=other`, {})).status).toBe(404);
+      expect((await gatewayCall(url, {}, { "Content-Type": "text/plain" })).status).toBe(415);
+      expect((await gatewayCall(url, { padding: "x".repeat(33_000) })).status).toBe(413);
+    });
+    expect(requests).toEqual([]);
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("stops when the operator grant is unavailable, without consuming approval", async () => {
+    const approval = await gatewayApproval();
+    await withGateway(async url => {
+      expect((await gatewayCall(url, { plan, approval })).status).toBe(503);
+    }, async () => { throw new Error("synthetic secret must not escape"); });
+    expect(cloud).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT status FROM human_reviews WHERE id=?").get(approval.id)!.status).toBe("APPROVED");
+  });
+
+  it("loads rotated grants on each call and rejects changed versions and expired grants", async () => {
+    const approval = await gatewayApproval();
+    const provider = vi.fn(async () => grant);
+    await withGateway(async url => {
+      expect(await (await gatewayCall(url, { plan: { ...plan, version_id: otherVersion }, approval })).json()).toMatchObject({ status: "stopped" });
+      grant = await signedGrant({ issuedAt: new Date(Date.now() - 120_000), ttlSeconds: 1 });
+      expect(await (await gatewayCall(url, { plan, approval })).json()).toMatchObject({ status: "stopped" });
+    }, provider);
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("preserves uncertainty and never redeploys after a lost cloud response", async () => {
+    const approval = await gatewayApproval();
+    cloudResult = () => { throw new Error("Cloud committed, response lost"); };
+    await withGateway(async url => {
+      expect(await (await gatewayCall(url, { plan, approval })).json()).toMatchObject({ status: "reconcile_required", execution: "unknown" });
+      expect(await (await gatewayCall(url, { plan, approval })).json()).toMatchObject({ status: "stopped" });
+    });
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+// Explicitly opt in inside the disposable Linux container; never change host users.
+it.runIf(process.env.VIZIER_ISOLATION_TEST === "1")("enforces the boundary against a separate unprivileged Linux process", async () => {
+  expect(process.platform).toBe("linux");
+  expect(process.getuid?.()).toBe(0);
+  const directory = mkdtempSync(join(tmpdir(), "vizier-executor-"));
+  chmodSync(directory, 0o700);
+  const cloudToken = crypto.randomUUID();
+  const secretPath = join(directory, "credential");
+  const configPath = join(directory, "scope.json");
+  writeFileSync(secretPath, cloudToken, { mode: 0o600 });
+  writeFileSync(configPath, JSON.stringify(scope), { mode: 0o600 });
+  let cloudPosts = 0;
+  const upstream = createServer((request, response) => {
+    if (request.headers.authorization !== `Bearer ${cloudToken}`) {
+      response.writeHead(401); response.end(); return;
+    }
+    if (request.method !== "POST") { response.writeHead(405); response.end(); return; }
+    cloudPosts++;
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ success: true, errors: [], result: {
+      id: deploymentId, strategy: "percentage", versions: [{ version_id: plan.version_id, percentage: 100 }],
+    } }));
+  });
+  const listen = async (server: ReturnType<typeof createServer>) => {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject); server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing address");
+    return `http://127.0.0.1:${address.port}`;
+  };
+  const close = async (server: ReturnType<typeof createServer>) => {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  };
+  let gateway: ReturnType<typeof createWorkerDeploymentGateway> | undefined;
+  try {
+    const cloudUrl = await listen(upstream);
+    gateway = createWorkerDeploymentGateway({
+      scope, vizier: client, cloudflareApiToken: cloudToken, clientToken: gatewayToken,
+      loadGrant: async () => grant,
+      cloudflareFetch: async (_url, init) => fetch(cloudUrl, init),
+    });
+    const gatewayUrl = await listen(gateway);
+    const approval = await gatewayApproval();
+    // The child receives only the bounded capability and exact approved request.
+    const program = `
+      const assert = require('node:assert/strict');
+      const fs = require('node:fs');
+      (async () => {
+        assert.equal(process.getuid(), 65534);
+        for (const path of [process.env.SECRET_PATH, process.env.CONFIG_PATH, '/proc/' + process.env.EXECUTOR_PID + '/environ']) {
+          assert.throws(() => fs.readFileSync(path), error => ['EACCES', 'EPERM'].includes(error.code));
+        }
+        assert.throws(() => fs.writeFileSync(process.env.CONFIG_PATH, '{}'), error => error.code === 'EACCES');
+        assert.throws(() => process.kill(Number(process.env.EXECUTOR_PID), 0), error => error.code === 'EPERM');
+        assert.equal(process.env.CLOUDFLARE_API_TOKEN, undefined);
+        assert.equal(process.env.VIZIER_API_KEY, undefined);
+        // Both raw API and an equivalent CLI-style request lack cloud authority.
+        for (const authorization of ['', 'Bearer ' + process.env.CAPABILITY]) {
+          const direct = await fetch(process.env.CLOUD_URL, {method:'POST', headers:{authorization}});
+          assert.equal(direct.status, 401);
+        }
+        const call = body => fetch(process.env.GATEWAY_URL + '/execute', {
+          method:'POST', headers:{authorization:'Bearer ' + process.env.CAPABILITY, 'content-type':'application/json'},
+          body:JSON.stringify(body)
+        });
+        const input = JSON.parse(process.env.APPROVED_REQUEST);
+        const changed = structuredClone(input);
+        changed.plan.version_id = '123e105f-2a42-4f8b-a1c1-73f6a2a30c0f';
+        assert.equal((await (await call(changed)).json()).status, 'stopped');
+        assert.equal((await call({...input, cloudflareApiToken:'override'})).status, 400);
+        assert.equal((await (await call(input)).json()).status, 'deployment_created');
+        assert.equal((await (await call(input)).json()).status, 'stopped');
+        console.log('ISOLATION_PASS');
+      })().catch(error => { console.error(error); process.exitCode = 1; });
+    `;
+    const child = await promisify(execFile)(process.execPath, ["-e", program], {
+      uid: 65534, gid: 65534, cwd: "/tmp", timeout: 20_000,
+      env: {
+        SECRET_PATH: secretPath, CONFIG_PATH: configPath, EXECUTOR_PID: String(process.pid),
+        CLOUD_URL: cloudUrl, GATEWAY_URL: gatewayUrl, CAPABILITY: gatewayToken,
+        APPROVED_REQUEST: JSON.stringify({ plan, approval }),
+      },
+    });
+    expect(child.stdout.trim()).toBe("ISOLATION_PASS");
+    expect(cloudPosts).toBe(1);
+  } finally {
+    if (gateway) await close(gateway);
+    await close(upstream);
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

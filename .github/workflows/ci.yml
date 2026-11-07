@@ -45,3 +45,18 @@ jobs:
           python-version: "3.11"
       - run: pip install pytest
       - run: pytest packages/python-sdk
+
+  deployment-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build disposable deployment sandbox
+        run: docker build -f sandbox/worker-deploy/Dockerfile -t vizier-worker-isolation .
+      - name: Exercise separate-UID execution boundary without external network
+        run: >-
+          docker run --rm --network none --read-only
+          --tmpfs /tmp:rw,nosuid,nodev
+          --tmpfs /app/node_modules/.vite
+          --tmpfs /app/node_modules/.vite-temp
+          --cap-drop ALL --cap-add SETUID --cap-add SETGID
+          --security-opt no-new-privileges vizier-worker-isolation
