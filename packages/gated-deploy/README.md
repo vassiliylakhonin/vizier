@@ -17,7 +17,7 @@ npx --no-install vizier-worker-deploy prepare \
 
 The package exports `createWorkerVersionDeployer`,
 `prepareWorkerDeploymentReview` and `workerDeploymentAuthority`. The CLI supports
-`prepare`, `submit`, `execute` and `serve`; the last two use the operator's trusted Vizier
+`prepare`, `submit`, `execute`, `serve` and `status`. Submit and execution modes use the operator's trusted Vizier
 instance. Execution also requires a protected Cloudflare credential, exact
 approval and grant files. Keep credentials, configuration and the executor out
 of the agent's control; remove direct upstream access and alternate tool routes.
@@ -34,7 +34,7 @@ instant revocation or customer adoption claim is made.
 
 ## Separate executor process
 
-`vizier-worker-deploy serve --scope /etc/vizier-deploy/scope.json --grant /etc/vizier-deploy/grant.jws`
+`vizier-worker-deploy serve --scope /etc/vizier-deploy/scope.json --grant /etc/vizier-deploy/grant.jws --journal /var/lib/vizier-deploy/executions.sqlite`
 exposes only a bounded `POST /execute` on loopback port 8791. The agent supplies
 an exact plan and approval using a separate client capability. Scope, grant,
 Vizier credentials and Cloudflare credentials stay in the operator process.

@@ -1,6 +1,6 @@
 # Isolated Worker deployment executor
 
-`vizier-worker-deploy serve --scope /etc/vizier-deploy/scope.json --grant /etc/vizier-deploy/grant.jws`
+`vizier-worker-deploy serve --scope /etc/vizier-deploy/scope.json --grant /etc/vizier-deploy/grant.jws --journal /var/lib/vizier-deploy/executions.sqlite`
 starts an operator-owned HTTP executor on **127.0.0.1:8791**. It accepts only
 `POST /execute`, with `Content-Type: application/json`, a separate bearer
 capability and a JSON object containing `plan` and `approval: {id, token}`.
@@ -47,8 +47,10 @@ User=vizier-deploy
 Group=vizier-deploy
 WorkingDirectory=/opt/vizier-deploy
 EnvironmentFile=/etc/vizier-deploy/executor.env
-ExecStart=/usr/bin/node /opt/vizier-deploy/node_modules/@agenda-intelligence/vizier-gated-deploy/dist/worker-cli.js serve --scope /etc/vizier-deploy/scope.json --grant /etc/vizier-deploy/grant.jws
+ExecStart=/usr/bin/node /opt/vizier-deploy/node_modules/@agenda-intelligence/vizier-gated-deploy/dist/worker-cli.js serve --scope /etc/vizier-deploy/scope.json --grant /etc/vizier-deploy/grant.jws --journal /var/lib/vizier-deploy/executions.sqlite
 NoNewPrivileges=true
+StateDirectory=vizier-deploy
+StateDirectoryMode=0700
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
@@ -99,8 +101,7 @@ the in-memory busy flag is not the replay defense.
 A lost connection or `reconcile_required` is not permission to retry with a new
 approval. Check the consumed review and Cloudflare deployment history using the
 [pilot recovery procedure](WORKER_DEPLOY_PILOT.md). Approval consumption and
-cloud execution are not atomic. There is no claim of exactly-once deployment or
-a durable execution journal in this change.
+cloud execution are not atomic. There is no claim of exactly-once execution across SQLite and Cloudflare.
 
 Before production, test from the actual agent OS identity:
 
@@ -119,3 +120,50 @@ Cloudflare API. They do not establish your host's isolation or deploy a Worker.
 Run the [disposable Linux sandbox](../sandbox/worker-deploy/README.md) to test
 file, environment, process and API boundaries with a separate unprivileged UID.
 CI runs this acceptance test without external runtime network or host mounts.
+
+## Durable execution status
+
+`serve` now requires `--journal FILE`; update existing service units before
+upgrading. The systemd example above creates a private persistent state directory.
+For other process managers, pre-create `/var/lib/vizier-deploy` owned by the
+executor with mode 0700. Never use `/tmp`, an ephemeral container layer or a
+network filesystem for production state. Mount durable storage into containers.
+The database must be a regular, non-symlink file with no group/other permissions;
+new files are created with mode 0600. Keep the directory outside agent control.
+Use a separate journal per trusted Vizier deployment. Back up the database using
+a SQLite-aware backup or while the executor is stopped; do not delete unresolved
+records or restore an old snapshot as a retry mechanism.
+
+The journal stores approval ID, verification receipt ID, the exact review hash,
+latest state, update time and optional deployment ID. It stores no tokens,
+grants, raw plan or cloud credentials. SQLite uses synchronous FULL commits,
+DELETE journaling and fullfsync where supported. Durability still depends on the
+filesystem and hardware honoring synchronization. This is a local recovery
+record, not an append-only event history, signed audit ledger or proof of health.
+
+After signed authorization and successful approval consumption, the executor
+commits `prepared`, then `dispatching`, **before** contacting Cloudflare. A failed
+write stops this invocation without sending a cloud request, although approval
+may already be consumed. A failure to commit the final response returns
+`reconcile_required`, even if the cloud acknowledged deployment.
+
+Inspect a record locally as the operator (no credentials or network needed):
+
+```sh
+vizier-worker-deploy status \
+  --journal /var/lib/vizier-deploy/executions.sqlite \
+  --approval-id REVIEW_ID
+```
+
+| Stored state | Interpretation and next step |
+| --- | --- |
+| No record (`not_recorded`) | Not evidence of non-execution. Check approval, correct executor/database, legacy paths and cloud history. |
+| `prepared` (`not_submitted`) | This journaled attempt did not reach cloud dispatch. Approval was consumed; reconcile it before requesting a new approval. |
+| `dispatching` or `unknown` (`unknown`) | Cloud execution may have occurred. A crash immediately before POST is indistinguishable from response loss. Reconcile cloud history; never automatically redeploy. |
+| `acknowledged` | Cloud acknowledged the reviewed version; the deployment ID was committed locally. This does not prove application health. |
+
+Status is read-only, operator-local and never authorizes a retry. The journal
+cannot resolve the cross-system atomicity gap or prove outcomes independently.
+There is no automatic purge or operator override API in this version. Existing
+programmatic adapters and `execute` can opt in with `journal` / `--journal FILE`;
+unconfigured legacy callers retain their earlier non-journaled behavior.
