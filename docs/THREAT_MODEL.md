@@ -185,7 +185,8 @@ provider and upstream credentials cannot be supplied in its request. It reuses
 the exact-review validation and durable approval consumption of the deployment
 adapter. Host isolation is an operator responsibility: an agent with executor
 OS permissions, service-control privileges or upstream credentials can bypass
-it. The gateway adds neither instant revocation nor a durable execution journal.
+it. The CLI gateway requires an operator-owned SQLite execution journal; this is
+local recovery evidence, not a tamper-proof audit ledger or instant revocation.
 See [deployment isolation and acceptance checks](WORKER_DEPLOY_GATEWAY.md).
 
 ## Fail-closed integration rule

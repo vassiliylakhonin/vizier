@@ -14,7 +14,7 @@ only the gateway capability and an exact approved operation. Root is used only
 to create the separate-UID child in this disposable test container. Production
 should use a dedicated unprivileged executor account.
 
-The test checks that the child cannot read protected credentials, configuration
+The test checks that the child cannot read protected credentials, configuration, execution journal
 or executor environment, write configuration, or signal the executor. Direct
 calls to the simulated cloud API fail, including with the gateway capability.
 A changed version and injected credentials fail; the exact approved version
@@ -22,3 +22,6 @@ succeeds once, and approval replay fails. The normal deployment tests also run.
 Vizier transport, signatures, SDK and SQLite approval consumption are real;
 Cloudflare is a local authenticated simulator. This does not establish the
 isolation of a production host, real Cloudflare IAM policy or application health.
+
+The suite also verifies SQLite recovery after abrupt child-process exit and
+fail-closed behavior when journal writes fail before or after a cloud request.

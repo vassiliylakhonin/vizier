@@ -9,4 +9,4 @@ COPY tests ./tests
 COPY migrations ./migrations
 RUN npm run build --workspace @agenda-intelligence/vizier-sdk
 ENV VIZIER_ISOLATION_TEST=1
-CMD ["npx", "--no-install", "vitest", "run", "tests/worker-version-deploy.test.ts", "--reporter=verbose"]
+CMD ["npx", "--no-install", "vitest", "run", "tests/worker-version-deploy.test.ts", "tests/execution-journal.test.ts", "--reporter=verbose"]

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Run in the operator-owned executor, never in an agent-controlled workspace.
 import { readFile, stat } from "node:fs/promises";
+import { SqliteExecutionJournal } from "./execution-journal.js";
 import { createWorkerDeploymentGateway } from "./worker-gateway.js";
 import { parseArgs } from "node:util";
 import process from "node:process";
@@ -21,13 +22,24 @@ async function jsonFile(path: string): Promise<unknown> {
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { help: { type: "boolean" }, scope: { type: "string" }, plan: { type: "string" }, grant: { type: "string" }, approval: { type: "string" } },
+    options: { help: { type: "boolean" }, scope: { type: "string" }, plan: { type: "string" }, grant: { type: "string" }, approval: { type: "string" }, journal: { type: "string" }, "approval-id": { type: "string" } },
   });
   if (values.help) {
-    console.log("vizier-worker-deploy prepare|submit|execute|serve --scope FILE --plan FILE [--grant FILE --approval FILE]\nserve: operator-owned loopback executor (--scope FILE --grant FILE)\nprepare: local synthetic review, no network or secrets\nsubmit: persist exact review in operator Vizier\nexecute: require signed scope and exact human approval before Cloudflare\nGuide: https://github.com/vassiliylakhonin/vizier/blob/main/docs/WORKER_DEPLOY_PILOT.md");
+    console.log("vizier-worker-deploy prepare|submit|execute --scope FILE --plan FILE [--grant FILE --approval FILE --journal FILE]\nserve: operator-owned loopback executor (--scope FILE --grant FILE --journal FILE)\nstatus: read-only local journal (--journal FILE --approval-id ID)\nprepare: local synthetic review, no network or secrets\nsubmit: persist exact review in operator Vizier\nexecute: require signed scope and exact human approval before Cloudflare\nGuide: https://github.com/vassiliylakhonin/vizier/blob/main/docs/WORKER_DEPLOY_PILOT.md");
     return;
   }
   const mode = positionals[0];
+  if (mode === "status" && positionals.length === 1) {
+    if (!values.journal || !values["approval-id"] || values.scope || values.plan || values.grant || values.approval) {
+      throw new Error("status requires only --journal FILE --approval-id ID");
+    }
+    const journal = new SqliteExecutionJournal(values.journal, { readOnly: true });
+    try {
+      const record = journal.get(values["approval-id"]);
+      console.log(JSON.stringify({ record, execution: !record ? "not_recorded" : record.state === "prepared" ? "not_submitted" : record.state === "acknowledged" ? "acknowledged" : "unknown" }, null, 2));
+    } finally { journal.close(); }
+    return;
+  }
   if (positionals.length !== 1 || !mode || !["prepare", "submit", "execute", "serve"].includes(mode) || !values.scope || (mode !== "serve" && !values.plan)) {
     throw new Error("Usage: vizier-worker-deploy prepare|submit|execute|serve --scope FILE --plan FILE [--grant FILE --approval FILE]");
   }
@@ -41,11 +53,13 @@ async function main(): Promise<void> {
     const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN;
     const clientToken = process.env.VIZIER_DEPLOY_CLIENT_TOKEN;
     const grantPath = values.grant;
-    if (!apiKey || !cloudflareApiToken || !clientToken || !grantPath || values.plan || values.approval) {
-      throw new Error("serve requires operator credentials, client token and grant; no plan or approval file");
+    if (!apiKey || !cloudflareApiToken || !clientToken || !grantPath || !values.journal || values.plan || values.approval) {
+      throw new Error("serve requires operator credentials, client token, grant and journal; no plan or approval file");
     }
     if (clientToken === apiKey || clientToken === cloudflareApiToken) throw new Error("Use a distinct client token");
+    const journal = new SqliteExecutionJournal(values.journal);
     const server = createWorkerDeploymentGateway({
+      journal,
       scope, vizier: new Vizier({ baseUrl: baseUrl.origin, apiKey }), cloudflareApiToken, clientToken,
       loadGrant: async () => {
         const info = await stat(grantPath);
@@ -55,6 +69,7 @@ async function main(): Promise<void> {
         return grant;
       },
     });
+    server.once("close", () => journal.close());
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(8791, "127.0.0.1", resolve);
@@ -86,10 +101,13 @@ async function main(): Promise<void> {
   const grant = (await readFile(values.grant, "utf8")).trim();
   if (grant.length > 8192) throw new Error("Grant too large");
   const approval = await jsonFile(values.approval) as Parameters<ReturnType<typeof createWorkerVersionDeployer>>[0]["approval"];
-  const execute = createWorkerVersionDeployer({ scope, vizier, cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN });
-  const result = await execute({ plan, grant, approval });
-  console.log(JSON.stringify(result, null, 2));
-  if (result.status !== "deployment_created") process.exitCode = 1;
+  const journal = values.journal ? new SqliteExecutionJournal(values.journal) : undefined;
+  try {
+    const execute = createWorkerVersionDeployer({ scope, vizier, journal, cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN });
+    const result = await execute({ plan, grant, approval });
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "deployment_created") process.exitCode = 1;
+  } finally { journal?.close(); }
 }
 
 main().catch(() => {

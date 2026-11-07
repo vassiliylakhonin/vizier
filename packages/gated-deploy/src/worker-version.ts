@@ -1,5 +1,6 @@
+import type { ExecutionJournal } from "./execution-journal.js";
 import { z } from "zod";
-import { type HumanReviewRequest, type Vizier } from "@agenda-intelligence/vizier-sdk";
+import { hashCanonicalJson, type HumanReviewRequest, type Vizier } from "@agenda-intelligence/vizier-sdk";
 
 const accountId = z.string().regex(/^[a-f0-9]{32}$/);
 const workerName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
@@ -72,6 +73,7 @@ export interface WorkerVersionDeploymentOptions {
   readonly scope: WorkerDeploymentScope;
   readonly vizier: Vizier;
   readonly cloudflareApiToken: string;
+  readonly journal?: ExecutionJournal;
   readonly cloudflareFetch?: typeof globalThis.fetch;
 }
 
@@ -126,6 +128,7 @@ export function createWorkerVersionDeployer(options: WorkerVersionDeploymentOpti
   const scope = Object.freeze(scopeSchema.parse(options.scope));
   const token = z.string().min(1).regex(/^\S+$/).parse(options.cloudflareApiToken);
   const vizier = options.vizier;
+  const journal = options.journal;
   const cloudflareFetch = options.cloudflareFetch ?? globalThis.fetch;
   const url = `https://api.cloudflare.com/client/v4/accounts/${scope.account_id}/workers/scripts/${scope.worker_name}/deployments`;
 
@@ -170,6 +173,16 @@ export function createWorkerVersionDeployer(options: WorkerVersionDeploymentOpti
       // A failed/lost claim may have consumed approval. Never auto-retry it.
       return stop("AUTHORIZATION_FAILED_RECONCILE_APPROVAL");
     }
+    // Approval has been claimed. A surviving prepared record means this attempt
+    // did not reach cloud dispatch. A dispatch marker is conservative:
+    // it cannot distinguish a crash immediately before POST from response loss.
+    if (journal) {
+      try {
+        journal.prepare({ approval_id: approval.id, receipt_id: receipt.id, review_hash: await hashCanonicalJson(review) });
+        journal.dispatch(approval.id);
+      } catch { return stop("JOURNAL_UNAVAILABLE_RECONCILE_APPROVAL"); }
+      if (Date.parse(receipt.grant!.expires_at) <= Date.now()) return stop("GRANT_EXPIRED_BEFORE_EXECUTION");
+    }
     let acknowledgedId: string | undefined;
     try {
       const signal = AbortSignal.timeout(15_000);
@@ -201,12 +214,17 @@ export function createWorkerVersionDeployer(options: WorkerVersionDeploymentOpti
       }
       const confirmed = deploymentSchema.safeParse(deployment);
       if (confirmed.success && confirmed.data.id === acknowledgedId && confirmed.data.versions[0]?.version_id === plan.version_id) {
+        // A failed final commit must not report durable success. The dispatch
+        // marker survives for operator reconciliation; never send another POST.
+        journal?.finish(approval.id, "acknowledged", confirmed.data.id);
         return {
           status: "deployment_created", execution: "acknowledged",
           deploymentId: confirmed.data.id, receiptId: receipt.id, approvalId: approval.id,
         };
       }
     } catch { /* The cloud may have committed the request before response loss. */ }
+    try { journal?.finish(approval.id, "unknown", acknowledgedId); }
+    catch { /* Keep the conservative dispatch marker if storage is unavailable. */ }
     return {
       status: "reconcile_required", execution: "unknown",
       receiptId: receipt.id, approvalId: approval.id,

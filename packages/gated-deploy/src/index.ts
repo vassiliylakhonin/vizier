@@ -17,6 +17,7 @@ import {
 
 export * from "./worker-version.js";
 export * from "./worker-gateway.js";
+export * from "./execution-journal.js";
 
 export interface DeployMetadata {
   readonly commit: string;

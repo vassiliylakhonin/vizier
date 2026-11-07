@@ -1,3 +1,4 @@
+import { SqliteExecutionJournal } from "../packages/gated-deploy/src/execution-journal";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
@@ -516,11 +517,13 @@ it.runIf(process.env.VIZIER_ISOLATION_TEST === "1")("enforces the boundary again
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
   };
+  const journalPath = join(directory, "executions.sqlite");
+  const isolatedJournal = new SqliteExecutionJournal(journalPath);
   let gateway: ReturnType<typeof createWorkerDeploymentGateway> | undefined;
   try {
     const cloudUrl = await listen(upstream);
     gateway = createWorkerDeploymentGateway({
-      scope, vizier: client, cloudflareApiToken: cloudToken, clientToken: gatewayToken,
+      scope, vizier: client, journal: isolatedJournal, cloudflareApiToken: cloudToken, clientToken: gatewayToken,
       loadGrant: async () => grant,
       cloudflareFetch: async (_url, init) => fetch(cloudUrl, init),
     });
@@ -532,7 +535,7 @@ it.runIf(process.env.VIZIER_ISOLATION_TEST === "1")("enforces the boundary again
       const fs = require('node:fs');
       (async () => {
         assert.equal(process.getuid(), 65534);
-        for (const path of [process.env.SECRET_PATH, process.env.CONFIG_PATH, '/proc/' + process.env.EXECUTOR_PID + '/environ']) {
+        for (const path of [process.env.SECRET_PATH, process.env.CONFIG_PATH, process.env.JOURNAL_PATH, '/proc/' + process.env.EXECUTOR_PID + '/environ']) {
           assert.throws(() => fs.readFileSync(path), error => ['EACCES', 'EPERM'].includes(error.code));
         }
         assert.throws(() => fs.writeFileSync(process.env.CONFIG_PATH, '{}'), error => error.code === 'EACCES');
@@ -561,7 +564,7 @@ it.runIf(process.env.VIZIER_ISOLATION_TEST === "1")("enforces the boundary again
     const child = await promisify(execFile)(process.execPath, ["-e", program], {
       uid: 65534, gid: 65534, cwd: "/tmp", timeout: 20_000,
       env: {
-        SECRET_PATH: secretPath, CONFIG_PATH: configPath, EXECUTOR_PID: String(process.pid),
+        SECRET_PATH: secretPath, CONFIG_PATH: configPath, JOURNAL_PATH: journalPath, EXECUTOR_PID: String(process.pid),
         CLOUD_URL: cloudUrl, GATEWAY_URL: gatewayUrl, CAPABILITY: gatewayToken,
         APPROVED_REQUEST: JSON.stringify({ plan, approval }),
       },
@@ -571,6 +574,67 @@ it.runIf(process.env.VIZIER_ISOLATION_TEST === "1")("enforces the boundary again
   } finally {
     if (gateway) await close(gateway);
     await close(upstream);
+    isolatedJournal.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+
+describe("durable deployment execution journal", () => {
+  let directory: string;
+  let path: string;
+  let journal: SqliteExecutionJournal;
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), "vizier-journal-test-"));
+    path = join(directory, "executions.sqlite");
+    journal = new SqliteExecutionJournal(path);
+  });
+  afterEach(() => { journal.close(); rmSync(directory, { recursive: true, force: true }); });
+
+  it("persists acknowledgement across reopen without persisting credentials or grants", async () => {
+    const approval = await approvalFor();
+    expect(await deployer({ journal })({ plan, grant, approval })).toMatchObject({ status: "deployment_created" });
+    const reopened = new SqliteExecutionJournal(path, { readOnly: true });
+    try {
+      expect(reopened.get(approval.id)).toMatchObject({ state: "acknowledged", deployment_id: deploymentId });
+    } finally { reopened.close(); }
+    const bytes = readFileSync(path).toString();
+    for (const secret of [grant, approval.token, "synthetic-cloud-token"]) expect(bytes).not.toContain(secret);
+    expect(await deployer({ journal })({ plan, grant, approval })).toMatchObject({ status: "stopped" });
+    expect(journal.get(approval.id)?.state).toBe("acknowledged");
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["prepare", "dispatch"] as const)("does not call cloud when %s cannot commit", async method => {
+    const approval = await approvalFor();
+    vi.spyOn(journal, method).mockImplementation(() => { throw new Error("Disk unavailable"); });
+    expect(await deployer({ journal })({ plan, grant, approval })).toMatchObject({ status: "stopped", reason: "JOURNAL_UNAVAILABLE_RECONCILE_APPROVAL" });
+    expect(cloud).not.toHaveBeenCalled();
+    expect(journal.get(approval.id)?.state ?? null).toBe(method === "dispatch" ? "prepared" : null);
+    expect(db.prepare("SELECT status FROM human_reviews WHERE id=?").get(approval.id)!.status).toBe("CONSUMED");
+  });
+
+  it("retains dispatch uncertainty when the final journal commit fails", async () => {
+    const approval = await approvalFor();
+    vi.spyOn(journal, "finish").mockImplementation(() => { throw new Error("Disk unavailable after cloud effect"); });
+    expect(await deployer({ journal })({ plan, grant, approval })).toMatchObject({ status: "reconcile_required", execution: "unknown", deploymentId });
+    expect(journal.get(approval.id)?.state).toBe("dispatching");
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists unknown after a lost cloud response and refuses another dispatch", async () => {
+    const approval = await approvalFor();
+    cloudResult = () => { throw new Error("Response lost"); };
+    expect(await deployer({ journal })({ plan, grant, approval })).toMatchObject({ status: "reconcile_required" });
+    expect(journal.get(approval.id)).toMatchObject({ state: "unknown", deployment_id: null });
+    expect(await deployer({ journal })({ plan, grant, approval })).toMatchObject({ status: "stopped" });
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+
+  it("records nothing for an unapproved operation", async () => {
+    const approval = await approvalFor();
+    await deployer({ journal })({ plan: { ...plan, version_id: otherVersion }, grant, approval });
+    expect(journal.get(approval.id)).toBeNull();
+    expect(cloud).not.toHaveBeenCalled();
+  });
 });
