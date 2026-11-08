@@ -1,5 +1,8 @@
 # OpenAgentEmail v1 vector consumer fixture
 
+The next-stage [authenticated task-detail handoff fixture](OPENAGENTEMAIL_HANDOFF_PILOT.md)
+implements the task-detail and expiry contract confirmed by OAE.
+
 This offline fixture checks OpenAgentEmail's published `nested-order-v1`
 action in Vizier's canonical serializer and signed human-review consumer.
 It uses synthetic credentials, ephemeral ES256 keys, in-memory SQLite and a
