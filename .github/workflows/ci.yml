@@ -32,6 +32,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Keep this before check/build: exercise the documented source-checkout
+      # command without relying on an SDK dist left by another CI step.
+      - name: Synthetic mass-ban guard regression (clean checkout)
+        run: npm run demo:mass-ban
       - run: npm run check
       - name: Verify installable release archives
         run: |

@@ -36,7 +36,9 @@ PASS: 5 authorized bans executed, 3 added accounts blocked, enlarged authority r
 
 ## Run it
 
-From a source checkout, with Node.js 24+:
+From the repository root of a source checkout, with Node.js 24+ and npm
+installed. Dependency installation needs network access; the demo itself uses
+only a disposable local Worker and needs permission to listen on localhost:
 
 ```sh
 npm ci
@@ -49,6 +51,26 @@ principal key in a temp dir, and removes everything when it finishes. No
 account, production API key, Cloudflare account, deployment, or real platform
 is involved. The grant is reusable because the disposable local Worker has no
 D1 binding; a `single_use` grant fails closed without D1, by design.
+
+## Automated regression
+
+The `CI` workflow runs the same `npm run demo:mass-ban` command immediately
+after `npm ci`, before the general checks build any packages. The command
+builds the source SDK itself, so the walkthrough does not depend on a stale
+or prebuilt `dist` directory. No Cloudflare credentials or production calls
+are needed for this step.
+
+The runner already contains assertions that fail the command (and CI) unless:
+
+- all five agreed accounts return ALLOW;
+- all three added accounts return BLOCK with `TARGET_NOT_ALLOWED`;
+- enlarged authority returns BLOCK with `GRANT_AUTHORITY_MISMATCH`;
+- the final mock execution list exactly equals the five agreed accounts, in
+  order, with no extra calls or duplicates.
+
+These are checks of actual decisions and the in-memory executor list, not
+matching console output. They remain a local integration regression, not an
+isolation test or a real moderation integration.
 
 ## What this proves
 
