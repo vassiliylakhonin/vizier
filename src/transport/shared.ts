@@ -32,6 +32,8 @@ export interface TransportOptions {
    */
   readonly principalKeySource?: string;
   readonly signedGrantModeSource?: string;
+  /** `VIZIER_REVOKED_GRANTS`: JSON array of revoked grant ids (jti). */
+  readonly revokedGrantSource?: string;
   readonly mcpCorrelationKey?: string;
   readonly upstreamFetch?: typeof fetch;
   readonly upstreamUrl?: string;

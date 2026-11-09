@@ -5,7 +5,8 @@ import { z } from "zod";
 
 import { grantReadiness, grantInstructions } from "./onboarding";
 
-import { verificationRequestSchema, verificationResponseSchema, verifyAction } from "../core/index";
+import { verificationRequestSchema, verificationResponseSchema } from "../core/index";
+import { verifyWithGrantLifecycle } from "./grant-lifecycle";
 import {
   jsonResponse,
   readLimitedJson,
@@ -296,11 +297,16 @@ async function runVerifyTool(
     ...parsed.data,
     context: { ...parsed.data.context, source: "mcp" as const },
   };
-  const result = await verifyAction(normalizedRequest, {
-    trustedAuthority: authorization === "authenticated",
-    principalKeys: resolvePrincipalKeys(options),
-    signedGrantMode: resolveSignedGrantMode(options),
-  });
+  const result = await verifyWithGrantLifecycle(
+    normalizedRequest,
+    {
+      trustedAuthority: authorization === "authenticated",
+      principalKeys: resolvePrincipalKeys(options),
+      signedGrantMode: resolveSignedGrantMode(options),
+    },
+    options,
+    { enforce: authorization === "authenticated" },
+  );
   if (authorization === "evaluation") assertEvaluationCannotAllow(result.decision);
   console.log(
     JSON.stringify({

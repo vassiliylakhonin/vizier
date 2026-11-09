@@ -39,8 +39,9 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 
 **Gaps (acknowledged)**
 
-- No revocation store. Short TTLs are the only mechanism. (See
-  [DELEGATION_GRANTS.md](DELEGATION_GRANTS.md) "Deliberate limits".)
+- Revocation is operator-driven: `POST /v1/grants/revoke` or the
+  `VIZIER_REVOKED_GRANTS` secret, by grant id. It is not principal-signed, and
+  anyone with the integration credential can revoke.
 - A grant proves delegation of a shape of action, not that a human looked at a
   particular action.
 - Key registration is a deployment-time operation by the operator, so the
@@ -118,9 +119,10 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
   reservation review is an experimental exception for EVM wallets.)
 - The SDK `authorize()` helper does not yet verify `receipt_jws`; it trusts the
   configured service over HTTPS.
-- Grants are not single-use. The same valid grant can authorize repeated
-  matching actions until it expires. Execution idempotency is the integration's
-  job.
+- Grants are reusable by default. A principal can sign `single_use: true`,
+  which spends the grant at `ALLOW` (atomic in D1). It is spent on the decision,
+  not on execution success, and execution idempotency is still the
+  integration's job.
 - No transparency log, independent timestamp or durable full-receipt store.
   Callers hold their receipts.
 
@@ -128,6 +130,6 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 
 | Question | Next step | Tracking |
 | --- | --- | --- |
-| 1 | Grant revocation (jti denylist) and principal-signed covenant acceptance | [FUTURE.md](../FUTURE.md) |
+| 1 | Principal-signed revocation and principal-signed covenant acceptance | [FUTURE.md](../FUTURE.md) |
 | 3 | A second independent approval transport (OpenAgentEmail consumer, draft PR) | PR #132 |
-| 4 | SDK-side `receipt_jws` verification, single-use execution reservation, transparency log | not started |
+| 4 | SDK-side `receipt_jws` verification, execution-confirmed (not decision-time) single-use spend, transparency log | not started |

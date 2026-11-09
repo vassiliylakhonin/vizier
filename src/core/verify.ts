@@ -22,6 +22,10 @@ export interface VerificationOptions extends PolicyOptions, ReceiptOptions {
   readonly principalKeys?: PrincipalKeyRegistry;
   /** Expected `aud` when a grant names one. */
   readonly audience?: string;
+  /** Revoked grant ids, resolved by the transport before the call. */
+  readonly revokedGrantIds?: ReadonlySet<string>;
+  /** Consumed single-use grant ids, resolved by the transport before the call. */
+  readonly usedGrantIds?: ReadonlySet<string>;
 }
 
 const EXPLANATIONS: Readonly<Record<Decision, string>> = Object.freeze({
@@ -69,6 +73,8 @@ export async function verifyAction(
           agentId: request.agent.id,
           authority: request.authority,
           ...(options.audience === undefined ? {} : { audience: options.audience }),
+          ...(options.revokedGrantIds === undefined ? {} : { revokedGrantIds: options.revokedGrantIds }),
+          ...(options.usedGrantIds === undefined ? {} : { usedGrantIds: options.usedGrantIds }),
           ...(options.now === undefined ? {} : { now: options.now() }),
         });
 

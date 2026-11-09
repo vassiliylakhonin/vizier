@@ -70,6 +70,7 @@ import {
 } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
+import { revokeGrant, verifyWithGrantLifecycle } from "./grant-lifecycle";
 import { generateApiKey, listApiKeys, revokeApiKey } from "../auth/keys";
 import { createJwks, maybeSignAgentCard } from "./jws";
 import { SERVICE_VERSION } from "../version";
@@ -344,15 +345,20 @@ async function executeVerificationPipeline(
     quorumPromise,
   ]);
 
-  const result = await verifyAction(normalizedRequest, {
-    trustedAuthority: params.trustedAuthority,
-    principalKeys: resolvePrincipalKeys(params.options),
-    signedGrantMode: resolveSignedGrantMode(params.options),
-    circuitBreaker: circuitBreakerResult,
-    sanctions: sanctionsResult,
-    dlp: dlpResult,
-    quorum: quorumResult,
-  });
+  const result = await verifyWithGrantLifecycle(
+    normalizedRequest,
+    {
+      trustedAuthority: params.trustedAuthority,
+      principalKeys: resolvePrincipalKeys(params.options),
+      signedGrantMode: resolveSignedGrantMode(params.options),
+      circuitBreaker: circuitBreakerResult,
+      sanctions: sanctionsResult,
+      dlp: dlpResult,
+      quorum: quorumResult,
+    },
+    params.options,
+    { enforce: !params.isEvaluation },
+  );
 
   return { normalizedRequest, result, startedAt };
 }
@@ -529,6 +535,54 @@ async function handleCircuitBreakerReset(
     status: "ok",
     session_id: parsed.data.session_id,
     message: `Circuit breaker reset for session '${parsed.data.session_id}'.`,
+  });
+}
+
+const revokeGrantRequestSchema = z.strictObject({
+  jti: identifierSchema,
+  /** Optional grant expiry (ISO 8601). Bounds how long the revocation is kept. */
+  expires_at: z.iso.datetime({ offset: true }).optional(),
+});
+
+/**
+ * Revoke a delegation grant by id. The integration credential is the trust
+ * anchor here, as it is for covenant activation: anyone holding it can
+ * already submit requests for any principal. A principal-signed revocation is
+ * a possible later hardening, not implemented.
+ */
+async function handleGrantRevoke(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "grant revocation");
+  if (options.db === undefined) {
+    throw new TransportRequestError(
+      503,
+      "GRANT_STORE_UNAVAILABLE",
+      "Grant revocation requires D1 storage. Set VIZIER_REVOKED_GRANTS for static revocation.",
+    );
+  }
+  const parsed = revokeGrantRequestSchema.safeParse(await readLimitedJson(request));
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Revocation request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const keptUntil = await revokeGrant(
+    options,
+    parsed.data.jti,
+    parsed.data.expires_at === undefined
+      ? undefined
+      : Math.floor(Date.parse(parsed.data.expires_at) / 1000),
+  );
+  console.log(JSON.stringify({ event: "vizier.grant.revoked", jti: parsed.data.jti }));
+  return jsonResponse({
+    status: "revoked",
+    jti: parsed.data.jti,
+    retained_until: new Date(keptUntil * 1000).toISOString(),
   });
 }
 
@@ -1542,6 +1596,9 @@ async function handleHttpRequestInner(
     }
     if (request.method === "POST" && url.pathname === "/v1/circuit-breaker/reset") {
       return await handleCircuitBreakerReset(request, options);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/grants/revoke") {
+      return await handleGrantRevoke(request, options);
     }
     if (request.method === "POST" && url.pathname === "/v1/sanctions/screen") {
       return await handleSanctionsScreen(request, options);

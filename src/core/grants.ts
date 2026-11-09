@@ -42,6 +42,8 @@ export const delegationGrantPayloadSchema = z.strictObject({
   iat: numericDateSchema,
   nbf: numericDateSchema.optional(),
   exp: numericDateSchema,
+  /** When true the principal authorizes exactly one executed ALLOW. */
+  single_use: z.boolean().optional(),
   authority: authoritySchema,
 });
 
@@ -54,6 +56,8 @@ export type GrantFailureCode =
   | "GRANT_SIGNATURE_INVALID"
   | "GRANT_NOT_YET_VALID"
   | "GRANT_EXPIRED"
+  | "GRANT_REVOKED"
+  | "GRANT_ALREADY_USED"
   | "GRANT_LIFETIME_EXCESSIVE"
   | "GRANT_ISSUER_MISMATCH"
   | "GRANT_SUBJECT_MISMATCH"
@@ -153,6 +157,10 @@ export interface GrantVerificationInput {
   readonly authority: unknown;
   readonly audience?: string;
   readonly now?: Date;
+  /** Grant ids an operator or integration has revoked. Resolved by the caller. */
+  readonly revokedGrantIds?: ReadonlySet<string>;
+  /** Ids of single-use grants that were already consumed. Resolved by the caller. */
+  readonly usedGrantIds?: ReadonlySet<string>;
 }
 
 function failure(
@@ -239,6 +247,16 @@ export async function verifyDelegationGrant(
     return failure("GRANT_EXPIRED", { expires_at: claims.exp });
   }
 
+  // Revocation and single-use state are looked up by the caller, so the kernel
+  // stays free of I/O. Both checks sit after the signature: an unsigned token
+  // cannot probe which ids are revoked or used.
+  if (input.revokedGrantIds?.has(claims.jti) === true) {
+    return failure("GRANT_REVOKED", { jti: claims.jti });
+  }
+  if (claims.single_use === true && input.usedGrantIds?.has(claims.jti) === true) {
+    return failure("GRANT_ALREADY_USED", { jti: claims.jti });
+  }
+
   if (input.audience !== undefined && claims.aud !== undefined && claims.aud !== input.audience) {
     return failure("GRANT_AUDIENCE_MISMATCH", { audience: claims.aud });
   }
@@ -300,6 +318,8 @@ export interface MintDelegationGrantInput {
   readonly jti?: string;
   readonly issuedAt?: Date;
   readonly notBefore?: Date;
+  /** Mark the grant as authorizing exactly one executed ALLOW. */
+  readonly singleUse?: boolean;
 }
 
 export async function mintDelegationGrant(
@@ -322,6 +342,7 @@ export async function mintDelegationGrant(
     exp: issuedAt + input.ttlSeconds,
     authority: input.authority,
     ...(input.audience === undefined ? {} : { aud: input.audience }),
+    ...(input.singleUse === true ? { single_use: true } : {}),
     ...(input.notBefore === undefined
       ? {}
       : { nbf: Math.floor(input.notBefore.getTime() / 1000) }),

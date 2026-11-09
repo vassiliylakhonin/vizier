@@ -154,9 +154,22 @@ score risk 1.0, because each of them is an attempt rather than an accident.
   decision time. The authorization kernel makes no outbound request, so nobody
   who controls a network path can change, delay, or observe a decision. A
   `.well-known` JWKS fetch would be more convenient and would give that away.
-- **No revocation list.** `jti` and `exp` are recorded in the receipt so a
-  downstream system can refuse a known-bad grant, but Vizier itself has no
-  revocation store. Short TTLs are the mechanism; rotation is the fallback.
+- **Revocation is operator-driven, not principal-signed.** Revoke a grant by id
+  (its `jti`, which every receipt records) with `POST /v1/grants/revoke`
+  (`{"jti": "...", "expires_at": "<optional grant expiry>"}`, integration
+  credential, requires the D1 binding and migration 0011), or list ids in the
+  `VIZIER_REVOKED_GRANTS` secret (a JSON array). A revoked grant is `BLOCK` with
+  `GRANT_REVOKED`, in every transport. Anyone holding the integration credential
+  can revoke; there is no principal-signed revocation yet. Short TTLs and key
+  rotation remain the fallback.
+- **Single-use is opt-in, set by the principal.** Add `"single_use": true` to
+  the grant claims (signed with the grant). The first `ALLOW` consumes the
+  `jti` with an atomic D1 insert; later presentations are `BLOCK` with
+  `GRANT_ALREADY_USED`, including a concurrent loser. Consumption happens when
+  Vizier returns `ALLOW`, not when the action finishes: if the integration does
+  not execute, or fails after the `ALLOW`, the grant is already spent and the
+  principal must issue a new one. Evaluation-only paths never consume. Without
+  the D1 binding, state is per-isolate memory and is neither durable nor shared.
 - **Clock skew** is tolerated at 60 seconds on `nbf` and `exp`.
 - **A grant proves delegation, not intent.** It says the principal authorised
   this shape of action for this agent. It does not say a human looked at this

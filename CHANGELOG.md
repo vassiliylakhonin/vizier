@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add grant lifecycle. Revocation: `POST /v1/grants/revoke` (D1, migration 0011) and the `VIZIER_REVOKED_GRANTS` secret produce `BLOCK` / `GRANT_REVOKED` in REST, MCP and A2A. Single-use: a grant signed with `single_use: true` is consumed by its first `ALLOW` (atomic D1 insert) and later presentations return `GRANT_ALREADY_USED`. `scripts/mint-grant.mjs` and `mintDelegationGrant` accept the flag. Grants without it behave as before. Consumption happens at `ALLOW`, not on execution success.
+
 - Add opt-in `receipt_jws` to authenticated `/v1/verify` responses (request header `X-Vizier-Receipt: jws`, receipt signing key configured; opt-in so strict-schema SDK clients are unaffected). The SDK response schema now tolerates the optional field. It is an ES256 compact JWS (`typ application/vizier-receipt+jwt`) over the exact returned receipt, verifiable with the published JWKS. The unsigned `receipt` field is unchanged; anonymous `/v1/verify/evaluate` is never signed.
 
 - Put a runnable synthetic MCP check and its stateless request beside the public connection instructions.

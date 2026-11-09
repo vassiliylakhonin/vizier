@@ -1,7 +1,8 @@
 import { assertEvaluationCannotAllow, EVALUATION_METADATA } from "./evaluation-boundary";
 import { z } from "zod";
 
-import { verificationRequestSchema, verifyAction } from "../core/index";
+import { verificationRequestSchema } from "../core/index";
+import { verifyWithGrantLifecycle } from "./grant-lifecycle";
 import {
   jsonResponse,
   readLimitedJson,
@@ -415,11 +416,16 @@ export async function handleA2aRequest(
     context: { ...verification.data.context, source: "a2a" as const },
   };
   const evaluationOnly = demo || authorization === "evaluation";
-  const result = await verifyAction(normalizedRequest, {
-    trustedAuthority: authorization === "authenticated" && !demo,
-    principalKeys: demo ? undefined : resolvePrincipalKeys(options),
-    signedGrantMode: demo ? "required" : resolveSignedGrantMode(options),
-  });
+  const result = await verifyWithGrantLifecycle(
+    normalizedRequest,
+    {
+      trustedAuthority: authorization === "authenticated" && !demo,
+      principalKeys: demo ? undefined : resolvePrincipalKeys(options),
+      signedGrantMode: demo ? "required" : resolveSignedGrantMode(options),
+    },
+    options,
+    { enforce: !evaluationOnly },
+  );
   if (evaluationOnly) assertEvaluationCannotAllow(result.decision);
   const contextId =
     sendMessage.data.message.contextId ?? `ctx_${crypto.randomUUID()}`;

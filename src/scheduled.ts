@@ -1,5 +1,6 @@
 import type { D1Database, ExecutionContext, ScheduledController } from '@cloudflare/workers-types';
 import { pruneAuditMetadata } from './storage/audit';
+import { pruneGrantLifecycle } from './transport/grant-lifecycle';
 import { runWalletHistoryMonitor, retryWalletHistoryMonitor } from './reviews/wallet-monitor';
 
 export function handleScheduled(controller: Pick<ScheduledController, 'cron' | 'scheduledTime'>,
@@ -9,6 +10,8 @@ export function handleScheduled(controller: Pick<ScheduledController, 'cron' | '
   // Extra observations must not repeat pruning or any other scheduled mutation.
   if (!retry) {
     ctx.waitUntil(env.DB.prepare("DELETE FROM human_reviews WHERE created_at <= ? AND id NOT IN (SELECT review_id FROM financial_reservations WHERE state='CLAIMED' OR settled_at > unixepoch()-604800)").bind(Math.floor(controller.scheduledTime / 1000) - 7 * 86400).run());
+    ctx.waitUntil(pruneGrantLifecycle(env.DB, Math.floor(controller.scheduledTime / 1000)).catch((error: unknown) =>
+      console.error(JSON.stringify({ event: 'vizier.grant_lifecycle.prune_failed', error: error instanceof Error ? error.name : 'UnknownError' }))));
     ctx.waitUntil(pruneAuditMetadata(env.DB, new Date(controller.scheduledTime))
       .then(result => console.log(JSON.stringify({ event: 'vizier.audit.pruned', cutoff: result.cutoff, deleted: result.deleted })))
       .catch((error: unknown) => console.error(JSON.stringify({ event: 'vizier.audit.prune_failed',

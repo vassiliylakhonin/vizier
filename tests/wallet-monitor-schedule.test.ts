@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-const mocks = vi.hoisted(() => ({ run: vi.fn(), retry: vi.fn(), prune: vi.fn() }));
+const mocks = vi.hoisted(() => ({ run: vi.fn(), retry: vi.fn(), prune: vi.fn(), pruneGrants: vi.fn() }));
 vi.mock('../src/reviews/wallet-monitor', () => ({ runWalletHistoryMonitor: mocks.run, retryWalletHistoryMonitor: mocks.retry }));
 vi.mock('../src/storage/audit', () => ({ pruneAuditMetadata: mocks.prune }));
+vi.mock('../src/transport/grant-lifecycle', () => ({ pruneGrantLifecycle: mocks.pruneGrants }));
 import { handleScheduled } from '../src/scheduled';
 
 function schedule(cron: string) {
@@ -19,6 +20,7 @@ beforeEach(() => {
   mocks.run.mockResolvedValue({ observedAt: 1, endBlock: 2 });
   mocks.retry.mockResolvedValue(null);
   mocks.prune.mockResolvedValue({ cutoff: 'test', deleted: 0 });
+  mocks.pruneGrants.mockResolvedValue(undefined);
 });
 describe('bounded wallet observation schedule', () => {
   it.each(['47 3 * * *', '7 4 * * *'])('retry %s invokes only the read-only monitor', async cron => {
@@ -29,7 +31,7 @@ describe('bounded wallet observation schedule', () => {
   it('daily cron still prunes and observes once', async () => {
     const { prepare, pending } = schedule('17 3 * * *'); await Promise.all(pending);
     expect(mocks.run).toHaveBeenCalledOnce(); expect(mocks.retry).not.toHaveBeenCalled();
-    expect(mocks.prune).toHaveBeenCalledOnce(); expect(prepare).toHaveBeenCalledOnce();
+    expect(mocks.prune).toHaveBeenCalledOnce(); expect(mocks.pruneGrants).toHaveBeenCalledOnce(); expect(prepare).toHaveBeenCalledOnce();
   });
   it('unknown schedules perform no work', async () => {
     const { prepare, pending } = schedule('* * * * *'); await Promise.all(pending);

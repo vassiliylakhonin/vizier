@@ -114,6 +114,7 @@ async function sign() {
     exp: issuedAt + ttl,
     authority: claims.authority,
     ...(claims.aud === undefined ? {} : { aud: claims.aud }),
+    ...(claims.single_use === true ? { single_use: true } : {}),
   };
 
   const header = { alg: "ES256", kid: signingKey.kid, typ: TYP };
