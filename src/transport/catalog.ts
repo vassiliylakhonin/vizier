@@ -108,6 +108,13 @@ export function createMcpServerManifest(
     title: "Vizier",
     description:
       "Owner-signed permissions for AI agent actions; ALLOW/BLOCK/REVIEW with request-bound receipts.",
+    icons: [
+      {
+        src: "https://raw.githubusercontent.com/vassiliylakhonin/vizier/main/assets/icon.png",
+        mimeType: "image/png",
+        sizes: ["512x512"],
+      },
+    ],
     version: SERVICE_VERSION,
     websiteUrl: `${origin}/docs`,
     remotes: [
