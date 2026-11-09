@@ -20,5 +20,14 @@
       }
     }
   ],
-  "websiteUrl": "https://vizier.agendamcp.dpdns.org"
+  "websiteUrl": "https://vizier.agendamcp.dpdns.org",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/vassiliylakhonin/vizier/main/assets/icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    }
+  ]
 }

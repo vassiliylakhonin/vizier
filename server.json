@@ -18,5 +18,14 @@
         }
       ]
     }
+  ],
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/vassiliylakhonin/vizier/main/assets/icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    }
   ]
 }
