@@ -31,8 +31,13 @@ export const RISK_WEIGHTS = Object.freeze({
   GRANT_SUBJECT_MISMATCH: 1,
   GRANT_AUDIENCE_MISMATCH: 1,
   GRANT_AUTHORITY_MISMATCH: 1,
+  GRANT_REQUIRED: 0.5,
+  GRANT_POLICY_MISCONFIGURED: 0.5,
+  IRREVERSIBLE_ACTION_REVIEW: 0.3,
 } as const);
 
+// The score is diagnostic context for the decision, which comes from the
+// policy results alone; no code path gates on it.
 export function calculateRiskScore(results: readonly PolicyResult[]): number {
   const reasonCodes = new Set(
     results.flatMap((item) => (item.reason_code === null ? [] : [item.reason_code])),

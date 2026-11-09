@@ -39,7 +39,8 @@ PASS: both clients refused the action and detected receipt tampering. Nothing de
 In this mode, both clients request `receipt_jws`, verify ES256 against the local
 Worker's JWKS, and reject a changed receipt ID. The demo explicitly rejects a
 missing JWS too. This is stricter than the clients' normal compatibility behavior,
-which permits responses without a JWS. Installing the Python `receipts` extra is
+which permits responses without a JWS; the TypeScript SDK's opt-in
+`requireReceiptJws` makes a missing JWS an error in production integrations. Installing the Python `receipts` extra is
 required; without `cryptography`, signed-receipt verification fails closed.
 
 The runner stops the Worker and removes its temporary config, signing key, and

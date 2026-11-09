@@ -61,6 +61,11 @@ const decision = await vizier.authorize({
 console.log(decision.decision, decision.reason_codes);
 ```
 
+Pass `{ requireReceiptJws: true }` to `authorize()` or `verify()` to require a
+signed `receipt_jws`: a response without one then throws
+`RECEIPT_SIGNATURE_REQUIRED` instead of being trusted unsigned. The default
+stays compatible with services that have no receipt key configured.
+
 ---
 
 The hosted service requires a valid owner-signed grant; an API key alone is not

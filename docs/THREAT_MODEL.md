@@ -129,9 +129,13 @@ or network failure.
   recorded in the receipt so a downstream system can refuse a known-bad grant,
   but Vizier will keep accepting a leaked key's grants until it is unregistered
   or they expire. Short TTLs and rotation are the mechanism.
-- Legacy `/v1/verify` receipts remain unsigned. Complete covenant receipts and
+- Legacy `/v1/verify` receipts remain unsigned. The SDK tolerates an absent
+  `receipt_jws` by default; its opt-in `requireReceiptJws` turns a missing JWS
+  into an error. Complete covenant receipts and
   JWS tokens remain caller-held and are not independently timestamped; D1 keeps
   only selected receipt metadata and hashes.
+- `risk_score` is diagnostic context only. The decision comes from the policy
+  results alone and never depends on the score.
 - D1 metadata writes are asynchronous and best-effort. Insights can undercount,
   provide no per-integration attribution, and must not be treated as a complete
   audit ledger or adoption proof. Retention is time-based; selective deletion

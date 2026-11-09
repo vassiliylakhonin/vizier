@@ -267,6 +267,13 @@ export interface VerifyOptions {
   signal?: AbortSignal;
   /** Send `X-Vizier-Receipt: jws` so enforcement responses carry a signed `receipt_jws`. */
   requestReceiptJws?: boolean;
+  /**
+   * Require a signed `receipt_jws`: a response without one throws
+   * `RECEIPT_SIGNATURE_REQUIRED` instead of being trusted unsigned. Implies
+   * `requestReceiptJws`. Opt-in; the default tolerates an absent JWS for
+   * compatibility with services that have no receipt key configured.
+   */
+  requireReceiptJws?: boolean;
 }
 
 export class VizierError extends Error {
@@ -879,7 +886,9 @@ export class Vizier {
         ...(this.#apiKey === undefined
           ? {}
           : { Authorization: `Bearer ${this.#apiKey}` }),
-        ...(options.requestReceiptJws === true ? { "X-Vizier-Receipt": "jws" } : {}),
+        ...(options.requestReceiptJws === true || options.requireReceiptJws === true
+          ? { "X-Vizier-Receipt": "jws" }
+          : {}),
       },
       body: JSON.stringify(normalizedRequest),
       signal: options.signal,
@@ -913,9 +922,17 @@ export class Vizier {
         "INVALID_RESPONSE",
       );
     }
-    // Optional: a receipt_jws is verified when present and ignored when absent.
-    if (
-      verifiedBody.receipt_jws !== undefined &&
+    // Optional: a receipt_jws is verified when present and ignored when
+    // absent, unless the caller requires it.
+    if (verifiedBody.receipt_jws === undefined) {
+      if (options.requireReceiptJws === true) {
+        throw new VizierError(
+          "Vizier did not return the required signed receipt.",
+          response.status,
+          "RECEIPT_SIGNATURE_REQUIRED",
+        );
+      }
+    } else if (
       !await verifyReceiptJws(
         verifiedBody.receipt_jws,
         verifiedBody.receipt,
@@ -935,7 +952,9 @@ export class Vizier {
    * Require a signed delegation and an ALLOW from the configured trusted service.
    * This does not execute an action. It asks for `receipt_jws` and verifies it
    * against the published JWKS when the service returns one; a service without
-   * a receipt key omits it and the unsigned receipt is then trusted as before. The caller must bind its protected operation to the same
+   * a receipt key omits it and the unsigned receipt is then trusted as before,
+   * unless `requireReceiptJws` makes a missing JWS an error. The caller must
+   * bind its protected operation to the same
    * request and enforce one-time or transactional execution separately.
    */
   async authorize(

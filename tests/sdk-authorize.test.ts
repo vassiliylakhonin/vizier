@@ -112,4 +112,26 @@ describe("SDK authorize", () => {
     const client = new Vizier({ baseUrl: "https://example.test", apiKey: "test", fetch: mock });
     await expect(client.authorize(structuredClone(input))).rejects.toMatchObject({ code: "RECEIPT_SIGNATURE_INVALID" });
   });
+
+  it("tolerates an absent receipt_jws by default and rejects it when required", async () => {
+    const unsignedFetch = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body)) as VerificationRequest;
+      return Response.json(await serviceResponse(request));
+    });
+    const client = new Vizier({ baseUrl: "https://example.test", apiKey: "test", fetch: unsignedFetch });
+    expect((await client.authorize(structuredClone(input))).decision).toBe("ALLOW");
+    await expect(client.authorize(structuredClone(input), { requireReceiptJws: true })).rejects.toMatchObject({ code: "RECEIPT_SIGNATURE_REQUIRED" });
+    await expect(client.verify(structuredClone(input), { requireReceiptJws: true })).rejects.toMatchObject({ code: "RECEIPT_SIGNATURE_REQUIRED" });
+  });
+
+  it("requests and accepts a signed receipt when requireReceiptJws is set", async () => {
+    const mock = await signedFetch(await receiptKey());
+    const client = new Vizier({ baseUrl: "https://example.test", apiKey: "test", fetch: mock });
+    expect((await client.authorize(structuredClone(input), { requireReceiptJws: true })).decision).toBe("ALLOW");
+    expect((await client.verify(structuredClone(input), { requireReceiptJws: true })).decision).toBe("ALLOW");
+    const verifyCalls = mock.mock.calls.filter(([url]) => String(url).endsWith("/v1/verify"));
+    for (const call of verifyCalls) {
+      expect((call[1]?.headers as Record<string, string>)["X-Vizier-Receipt"]).toBe("jws");
+    }
+  });
 });

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- SDK: opt-in `requireReceiptJws` on `verify()` and `authorize()`. A response without `receipt_jws` then throws `RECEIPT_SIGNATURE_REQUIRED` instead of being trusted unsigned, and the option implies the `X-Vizier-Receipt: jws` request header. The default behavior is unchanged. `risk_score` gains weights for `GRANT_REQUIRED`, `GRANT_POLICY_MISCONFIGURED` (0.5 each) and `IRREVERSIBLE_ACTION_REVIEW` (0.3), so a BLOCK no longer reports a zero score on those paths; the score remains diagnostic and decisions are unchanged.
+
 - Single-use grants fail closed without D1. An enforcing transport (REST, MCP, A2A) with no D1 binding now answers `BLOCK` / `GRANT_SINGLE_USE_STATE_UNAVAILABLE` for a grant signed `single_use: true` instead of consuming it in per-isolate memory, which a restart or a second isolate could silently replay. The per-isolate memory fallback for single-use consumption is removed. Evaluation-only paths never consumed and are unchanged, reusable grants are unaffected, and the D1-backed semantics (spend at `ALLOW`, then `GRANT_ALREADY_USED`) are unchanged.
 
 - Python SDK: `VizierClient.verify()` / `AsyncVizierClient.verify()` verify a returned `receipt_jws` against the published JWKS (ES256, signs the exact returned receipt) and raise `RECEIPT_SIGNATURE_INVALID` on failure; absence is tolerated. New `request_receipt_jws=` argument sends `X-Vizier-Receipt: jws`. Verification uses the new optional extra `vizier-guard[receipts]` (`cryptography`); a signed response without it fails closed (`RECEIPT_VERIFICATION_UNAVAILABLE`). Core install stays dependency-free. Python has no `authorize()`; this applies to `verify()`.
