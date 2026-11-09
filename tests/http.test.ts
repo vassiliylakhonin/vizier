@@ -64,6 +64,15 @@ describe("REST transport", () => {
     expect(await response.text()).toContain(expectedText);
   });
 
+  it("does not promise ALLOW to anonymous callers in /examples", async () => {
+    const body = (await (await handleHttpRequest(new Request("https://vizier.example/examples"))).json()) as Record<string, any>;
+    expect(JSON.stringify(body)).not.toContain('"expected_decision":"ALLOW"');
+    expect(body.allow.expected_decision_with_valid_grant).toBe("ALLOW");
+    expect(body.allow.expected_anonymous_decision_required_mode).toBe("BLOCK");
+    expect(body.allow.expected_anonymous_reason_required_mode).toBe("GRANT_REQUIRED");
+    expect(body.note).toContain("Anonymous evaluation never returns ALLOW");
+  });
+
   it("serves interactive HTML playground on /playground and when Accept includes text/html", async () => {
     const htmlResponse = await handleHttpRequest(
       new Request("https://vizier.example/", {

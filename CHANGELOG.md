@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `/examples` no longer promises ALLOW to anonymous callers. Fields are now `expected_decision_with_valid_grant`; the allow scenario adds the anonymous required-mode outcome (BLOCK, GRANT_REQUIRED) and a top-level note. Renamed from `expected_decision`.
+
 - SDK `authorize()` now sends `X-Vizier-Receipt: jws` and verifies a returned `receipt_jws` (ES256, `application/vizier-receipt+jwt`) against the published JWKS, checking it signs the exact returned `receipt`. Failure throws `RECEIPT_SIGNATURE_INVALID`; an absent `receipt_jws` is tolerated. `verify()` verifies it whenever it is present. `VerifyOptions.requestReceiptJws` opts `verify()` into requesting it.
 
 - `runCovenantGatedDeploy` takes an optional `signAcceptance` callback that signs the exact draft hash (`acceptance_jws`). The gated-deploy CLI enables it with `VIZIER_ACCEPTANCE_KEY` (path to the principal's ES256 JWK). Without it, acceptance stays an integration assertion and a service with `VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true` refuses activation.

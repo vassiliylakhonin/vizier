@@ -1231,21 +1231,24 @@ function docsDocument(options: TransportOptions): Response {
 
 function examplesDocument(): Response {
   return jsonResponse({
+    note: "These are synthetic policy scenarios, not grants. expected_decision_with_valid_grant is the decision when the caller holds a valid principal-signed delegation grant. Anonymous evaluation never returns ALLOW; where the deployment requires grants (required mode) it returns BLOCK with GRANT_REQUIRED for every scenario, including the allow one.",
     allow: {
       description: "Purchase 8,200 USD under a 10,000 USD limit.",
       file: "examples/allow.json",
-      expected_decision: "ALLOW",
+      expected_decision_with_valid_grant: "ALLOW",
+      expected_anonymous_decision_required_mode: "BLOCK",
+      expected_anonymous_reason_required_mode: "GRANT_REQUIRED",
     },
     block: {
       description: "Purchase 18,000 USD under a 10,000 USD limit.",
       file: "examples/block.json",
-      expected_decision: "BLOCK",
+      expected_decision_with_valid_grant: "BLOCK",
       expected_reason: "AUTHORITY_LIMIT_EXCEEDED",
     },
     review: {
       description: "External message without explicit sensitive-action authority.",
       file: "examples/review.json",
-      expected_decision: "REVIEW",
+      expected_decision_with_valid_grant: "REVIEW",
       expected_reason: "SENSITIVE_ACTION_REVIEW",
     },
   });
