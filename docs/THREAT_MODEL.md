@@ -159,7 +159,10 @@ or network failure.
   There is no exchange-rate conversion or unit handling.
 - `action.is_reversible` is supplied by the authenticated integration and is
   not independently established. Requiring review for an omitted or false value
-  is a policy guardrail, not proof that a true value is correct.
+  is a policy guardrail, not proof that a true value is correct. The opt-in SDK
+  ban-account guard (`guardBanAccount`) pins reversibility per integration and
+  derives the evaluated action from the actual executor call for that one
+  workflow; other callers are unchanged.
 - The open A2A and MCP surfaces support one synchronous operation. They do not
   implement streaming, tasks beyond the immediate response, push delivery, or
   legacy protocol versions.

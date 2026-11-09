@@ -1197,3 +1197,9 @@ export class Vizier {
     return receipt;
   }
 }
+
+export { guardBanAccount } from "./ban-account-guard.js";
+export type {
+  BanAccountGuardOptions,
+  BanExecutor,
+} from "./ban-account-guard.js";

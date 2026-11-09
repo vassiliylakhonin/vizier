@@ -109,3 +109,9 @@ isolation test or a real moderation integration.
 These are the same limits stated in [FIRST_BLOCK.md](FIRST_BLOCK.md); the
 demo extends the pattern from "block everything without a grant" to "allow
 exactly the delegated list, block the rest."
+
+The SDK ships an opt-in typed adapter for this workflow,
+[`guardBanAccount`](../packages/sdk/README.md#typed-guard-account-bans-opt-in),
+which builds the evaluated action from the actual executor call (target,
+reversibility, parameters) instead of a separately assembled request, so the
+checked values are the ones that run.

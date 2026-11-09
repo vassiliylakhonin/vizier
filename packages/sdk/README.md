@@ -66,6 +66,37 @@ signed `receipt_jws`: a response without one then throws
 `RECEIPT_SIGNATURE_REQUIRED` instead of being trusted unsigned. The default
 stays compatible with services that have no receipt key configured.
 
+## Typed guard: account bans (opt-in)
+
+`guardBanAccount` wraps a ban executor so the action Vizier evaluates is built
+from the arguments of the actual executor call, not from a separately assembled
+request: the target, reversibility and parameters the guard checks are the ones
+that will run, and the executor is invoked only after `authorize()` establishes
+an ALLOW. A refusal propagates as a `VizierError` and nothing executes.
+
+```ts
+import { guardBanAccount, Vizier } from "@agenda-intelligence/vizier-sdk";
+
+const vizier = new Vizier({ baseUrl, apiKey });
+const guarded = guardBanAccount(vizier, {
+  agentId: "moderation-agent-01",
+  principalId: "community-owner",
+  grant: process.env.VIZIER_GRANT_JWS!,
+  authority: {
+    allowed_actions: ["ban_account"],
+    constraints: { allowed_targets: ["fake-user-001"] },
+  },
+}, executor); // { ban(target: string, ...args) }
+
+await guarded.ban("fake-user-001"); // ALLOW: executor runs for this exact target
+await guarded.ban("fake-user-009"); // BLOCK: throws, executor never called
+```
+
+This closes the gap where a call site asks Vizier about one account and bans
+another, or marks a ban reversible per call. It does not isolate the host: the
+guard is an enforcement point only when the agent has no other path to the
+executor. Callers that do not opt in are unchanged.
+
 ---
 
 The hosted service requires a valid owner-signed grant; an API key alone is not
