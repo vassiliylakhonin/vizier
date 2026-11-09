@@ -1,0 +1,154 @@
+{
+  "oae_commit": "812af3ff59167ab63d5d848f60c5cdb338534824",
+  "origin": "https://127.0.0.1:50072",
+  "captured_at": "2026-11-09T04:45:45.191Z",
+  "execution_age_policy_ms": 60000,
+  "mock_executor_calls": 1,
+  "access_controls": {
+    "unauthenticated_detail": 401,
+    "requester_cannot_decide": 403
+  },
+  "cases": [
+    {
+      "name": "changed_arguments",
+      "task_id": "3c406f84-6336-48f1-9c1f-0666c820cd4e",
+      "outcome": "OAE_ACTION_MISMATCH"
+    },
+    {
+      "name": "approved_after_decision_deadline",
+      "task_id": "3c406f84-6336-48f1-9c1f-0666c820cd4e",
+      "outcome": "mock_executed_once",
+      "projection": {
+        "id": "3c406f84-6336-48f1-9c1f-0666c820cd4e",
+        "kind": "approval",
+        "state": "completed",
+        "approval": {
+          "action": {
+            "arguments": {
+              "a": {
+                "x": 1,
+                "y": 2
+              },
+              "z": [
+                {
+                  "a": 1,
+                  "b": 2
+                },
+                [
+                  "x",
+                  {
+                    "α": null,
+                    "β": true
+                  }
+                ]
+              ]
+            },
+            "name": "nested",
+            "type": "tool_call"
+          },
+          "reviewer": "pilot-reviewer-b552fa39@oae.test",
+          "expiresAt": "2026-11-09T04:45:36.411Z",
+          "digest": "5c545d4785b95fcc5dd412b2450dfa237dd925612d40e1c21f676fd069c83603"
+        },
+        "result": {
+          "decision": "approved",
+          "digest": "5c545d4785b95fcc5dd412b2450dfa237dd925612d40e1c21f676fd069c83603",
+          "reviewer": "pilot-reviewer-b552fa39@oae.test",
+          "decidedAt": "2026-11-09T04:45:24.650Z"
+        }
+      }
+    },
+    {
+      "name": "duplicate_after_reopen",
+      "task_id": "3c406f84-6336-48f1-9c1f-0666c820cd4e",
+      "outcome": "OAE_APPROVAL_ALREADY_RESERVED"
+    },
+    {
+      "name": "rejected_but_completed",
+      "task_id": "830b65d0-8983-4254-b69c-0f64486216e3",
+      "outcome": "OAE_APPROVAL_NOT_GRANTED",
+      "projection": {
+        "id": "830b65d0-8983-4254-b69c-0f64486216e3",
+        "kind": "approval",
+        "state": "completed",
+        "approval": {
+          "action": {
+            "arguments": {
+              "a": {
+                "x": 1,
+                "y": 2
+              },
+              "z": [
+                {
+                  "a": 1,
+                  "b": 2
+                },
+                [
+                  "x",
+                  {
+                    "α": null,
+                    "β": true
+                  }
+                ]
+              ]
+            },
+            "name": "nested",
+            "type": "tool_call"
+          },
+          "reviewer": "pilot-reviewer-b552fa39@oae.test",
+          "expiresAt": "2026-11-09T04:46:06.560Z",
+          "digest": "5c545d4785b95fcc5dd412b2450dfa237dd925612d40e1c21f676fd069c83603"
+        },
+        "result": {
+          "decision": "rejected",
+          "digest": "5c545d4785b95fcc5dd412b2450dfa237dd925612d40e1c21f676fd069c83603",
+          "reviewer": "pilot-reviewer-b552fa39@oae.test",
+          "decidedAt": "2026-11-09T04:45:36.725Z"
+        }
+      }
+    },
+    {
+      "name": "expired_materialized_on_read",
+      "task_id": "e84cf7ce-f6bf-423b-9485-4f9218e4ce79",
+      "outcome": "OAE_APPROVAL_NOT_GRANTED",
+      "projection": {
+        "id": "e84cf7ce-f6bf-423b-9485-4f9218e4ce79",
+        "kind": "approval",
+        "state": "failed",
+        "approval": {
+          "action": {
+            "arguments": {
+              "a": {
+                "x": 1,
+                "y": 2
+              },
+              "z": [
+                {
+                  "a": 1,
+                  "b": 2
+                },
+                [
+                  "x",
+                  {
+                    "α": null,
+                    "β": true
+                  }
+                ]
+              ]
+            },
+            "name": "nested",
+            "type": "tool_call"
+          },
+          "reviewer": "pilot-reviewer-b552fa39@oae.test",
+          "expiresAt": "2026-11-09T04:45:44.907Z",
+          "digest": "5c545d4785b95fcc5dd412b2450dfa237dd925612d40e1c21f676fd069c83603"
+        },
+        "result": {
+          "decision": "expired",
+          "digest": "5c545d4785b95fcc5dd412b2450dfa237dd925612d40e1c21f676fd069c83603",
+          "expiredAt": "2026-11-09T04:45:45.041Z"
+        }
+      }
+    }
+  ]
+}
