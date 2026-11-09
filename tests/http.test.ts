@@ -65,7 +65,14 @@ describe("REST transport", () => {
   });
 
   it("does not promise ALLOW to anonymous callers in /examples", async () => {
-    const body = (await (await handleHttpRequest(new Request("https://vizier.example/examples"))).json()) as Record<string, any>;
+    const body = (await (await handleHttpRequest(new Request("https://vizier.example/examples"))).json()) as {
+      note: string;
+      allow: {
+        expected_decision_with_valid_grant: string;
+        expected_anonymous_decision_required_mode: string;
+        expected_anonymous_reason_required_mode: string;
+      };
+    };
     expect(JSON.stringify(body)).not.toContain('"expected_decision":"ALLOW"');
     expect(body.allow.expected_decision_with_valid_grant).toBe("ALLOW");
     expect(body.allow.expected_anonymous_decision_required_mode).toBe("BLOCK");
