@@ -1,0 +1,31 @@
+name: Wallet observation
+
+# Read the latest scheduled Worker scan; never initiate another RPC scan,
+# deploy code, enable a policy or authorize a transaction.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wallet-observation
+  cancel-in-progress: false
+
+jobs:
+  observation:
+    name: Read-only wallet history status
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Check observation (unknown history remains a failure)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node scripts/check-wallet-monitor.mjs

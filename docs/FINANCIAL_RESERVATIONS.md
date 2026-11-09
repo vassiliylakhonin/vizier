@@ -132,10 +132,12 @@ The verification trusts a single RPC operator, not a cryptographic light client.
 The existing daily Worker Cron also runs this finalized history collector for
 the wallet named by the Cloudflare-only `VIZIER_MONITORED_WALLET` secret. The
 latest observation or failure is stored in `wallet_history_monitor`; it is
-never consulted to admit spending. The existing scheduled GitHub drift job
-fails if the observation is missing, older than 18 hours, failed, or the
-wallet's financial policy is enabled. The monitoring secret contains only the
-public address; the reviewer key is not stored in GitHub Actions.
+never consulted to admit spending. The separate GitHub **Wallet observation**
+workflow checks it at 04:17 UTC and fails if the observation is missing, older
+than 18 hours, failed, malformed, or the wallet's financial policy is enabled.
+The Deploy workflow now reports only deployment and production drift, not wallet
+observation status. A green Deploy is not evidence of healthy wallet monitoring.
+The monitoring secret contains only the public address; the reviewer key is not stored in GitHub Actions.
 
 History failures store `MONITOR_HISTORY_UNAVAILABLE:<category>` in the monitor
 row and emit the same fixed category in the scheduled log's `diagnostic` field.
@@ -144,6 +146,26 @@ incomplete history/logs, finality changes and subrequest exhaustion; unrecognize
 errors become `UNKNOWN`. Provider messages, URLs and credentials are never
 persisted. The check remains failed until a complete fresh observation succeeds;
 diagnostics never enable the wallet policy or authorize spending.
+
+The observation workflow emits a fixed outcome in its log, error annotation and
+job summary. All outcomes except `OBSERVED` exit nonzero:
+
+| Outcome | Meaning and next check |
+| --- | --- |
+| `PROVIDER_UNAVAILABLE` | HTTP 429/5xx or explicit RPC timeout. The provider did not supply complete evidence. History is unknown, not healthy. Wait for the existing bounded scheduled scan; investigate persistent throttling. |
+| `EVIDENCE_UNAVAILABLE` | Collection could not complete or evidence failed validation. Inspect the fixed diagnostic, including incomplete logs, wrong chain, finality change or RPC envelope error. Provider-specific JSON-RPC codes are not automatically called rate limits. |
+| `MISSING_OBSERVATION` / `STALE_OBSERVATION` | No record or no fresh record. Check Worker cron execution and monitor configuration. |
+| `POLICY_UNSAFE` / `CONFIGURATION_ERROR` | The policy is enabled, missing or invalid. Investigate separately from RPC availability. |
+| `INVALID_EVIDENCE` / `MONITOR_FAILURE` | Malformed stored evidence or an unrecognized failure. Inspect monitor records and Worker logs. |
+| `CHECK_UNAVAILABLE` | The workflow could not read D1. Neither the monitor status nor wallet history is known. |
+| `OBSERVED` | A complete fresh observation exists and the financial policy is disabled. This is not permission to spend. |
+
+The workflow can be run manually to **read the existing D1 record**. It does not
+trigger a new provider scan and cannot repair unavailable history. Provider
+failures remain red until a complete fresh scheduled observation succeeds;
+there is no `continue-on-error` or successful fallback to an older observation.
+Only fixed diagnostic categories are printed; raw provider/command errors, URLs
+and credentials are not included in annotations or summaries.
 
 The read-only scheduled monitor uses the fixed Base endpoint
 `https://base-rpc.publicnode.com`. Its window accounts for Base Denim's switch
