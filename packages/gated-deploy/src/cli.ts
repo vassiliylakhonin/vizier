@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import process from "node:process";
 
 import { Vizier } from "@agenda-intelligence/vizier-sdk";
@@ -15,6 +16,57 @@ const KEYCHAIN_ACCOUNT = "VIZIER_API_KEY";
 const KEYCHAIN_SERVICE = "com.vizier.gated-deploy";
 const VERIFY_TIMEOUT_MS = 10_000;
 const BOOTSTRAP_ENV = "VIZIER_V0_2_BOOTSTRAP";
+/** Path to the principal's private ES256 JWK. Optional; enables signed acceptance. */
+const ACCEPTANCE_KEY_ENV = "VIZIER_ACCEPTANCE_KEY";
+const ACCEPTANCE_TYP = "vizier-covenant-acceptance+jws";
+
+function base64url(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64url");
+}
+
+function canonicalJson(value: Record<string, string>): string {
+  return JSON.stringify(
+    Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1))),
+  );
+}
+
+async function createAcceptanceSigner(
+  keyPath: string,
+): Promise<
+  (input: {
+    principalId: string;
+    draftHash: string;
+    acceptedAt: string;
+  }) => Promise<string>
+> {
+  const jwk = JSON.parse(await readFile(keyPath, "utf8")) as Record<string, unknown> & {
+    kid?: string;
+  };
+  if (typeof jwk.kid !== "string" || jwk.kid.length === 0) {
+    throw new Error("Acceptance key JWK needs a kid.");
+  }
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk as never,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+  const kid = jwk.kid;
+  return async ({ principalId, draftHash, acceptedAt }) => {
+    const header = { alg: "ES256", kid, typ: ACCEPTANCE_TYP };
+    const payload = { iss: principalId, draft_hash: draftHash, accepted_at: acceptedAt };
+    const input = `${base64url(new TextEncoder().encode(JSON.stringify(header)))}.${base64url(
+      new TextEncoder().encode(canonicalJson(payload)),
+    )}`;
+    const signature = await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      new TextEncoder().encode(input),
+    );
+    return `${input}.${base64url(new Uint8Array(signature))}`;
+  };
+}
 
 function readCommand(command: string, args: readonly string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -120,8 +172,14 @@ async function main(): Promise<number> {
     return result.status === "stopped" ? 2 : result.exitCode;
   }
 
+  const acceptanceKeyPath = process.env[ACCEPTANCE_KEY_ENV];
+  const signAcceptance =
+    acceptanceKeyPath === undefined || acceptanceKeyPath === ""
+      ? undefined
+      : await createAcceptanceSigner(acceptanceKeyPath);
   const result = await runCovenantGatedDeploy({
     metadata,
+    ...(signAcceptance === undefined ? {} : { signAcceptance }),
     gate: {
       activateCovenant: (request) =>
         withTimeout((signal) => vizier.activateCovenant(request, { signal })),

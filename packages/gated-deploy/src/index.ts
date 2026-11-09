@@ -168,6 +168,18 @@ export interface CovenantGatedDeployOptions {
   readonly gate: CovenantGate;
   readonly execute: (authorizationReceiptId: string) => Promise<number>;
   readonly now?: () => Date;
+  /**
+   * Optional principal signer. When set, the acceptance is signed over the exact
+   * draft hash (`acceptance_jws`) and the service verifies it against the
+   * registered principal key. Without it the acceptance is the integration's
+   * own assertion, and a service run with VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true
+   * will refuse to activate the covenant.
+   */
+  readonly signAcceptance?: (input: {
+    readonly principalId: string;
+    readonly draftHash: string;
+    readonly acceptedAt: string;
+  }) => Promise<string>;
 }
 
 export type CovenantGatedDeployResult =
@@ -202,13 +214,24 @@ export async function runCovenantGatedDeploy(
   const now = options.now ?? (() => new Date());
   const observedAt = now();
   const draft = createDeployCovenantDraft(options.metadata, observedAt);
+  const draftHash = await hashActionCovenantDraft(draft);
+  const acceptedAt = observedAt.toISOString();
+  const acceptanceJws =
+    options.signAcceptance === undefined
+      ? undefined
+      : await options.signAcceptance({
+          principalId: draft.principal.id,
+          draftHash,
+          acceptedAt,
+        });
   const covenant = await options.gate.activateCovenant({
     draft,
     acceptance: {
       accepted_by: draft.principal,
-      accepted_at: observedAt.toISOString(),
-      draft_hash: await hashActionCovenantDraft(draft),
+      accepted_at: acceptedAt,
+      draft_hash: draftHash,
     },
+    ...(acceptanceJws === undefined ? {} : { acceptance_jws: acceptanceJws }),
   });
   const authorization = await options.gate.authorizeCovenant({
     covenant,

@@ -40,3 +40,14 @@ an exact plan and approval using a separate client capability. Scope, grant,
 Vizier credentials and Cloudflare credentials stay in the operator process.
 Run it under a separate OS identity/container; same-user unrestricted shell
 access defeats this boundary. See the [isolation and recovery guide](https://github.com/vassiliylakhonin/vizier/blob/main/docs/WORKER_DEPLOY_GATEWAY.md).
+
+## Signed acceptance for covenant deploys
+
+`runCovenantGatedDeploy` accepts an optional `signAcceptance` callback. When set,
+the principal signs the exact covenant draft hash (`acceptance_jws`) and the
+service verifies it against the registered principal key. The CLI enables this
+when `VIZIER_ACCEPTANCE_KEY` points to the principal's private ES256 JWK file.
+Without a signer the acceptance is the integration's own assertion, and a
+service running with `VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true` rejects activation
+with `ACCEPTANCE_SIGNATURE_REQUIRED`. A signature proves the key holder accepted
+that draft hash, not that a human read it.
