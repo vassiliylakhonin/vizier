@@ -210,6 +210,8 @@ The [maintainer's Worker deployment demo](docs/WORKER_DEPLOY_DEMO.md) records ei
 | Python | [Python SDK, function guards, and adapters](packages/python-sdk/README.md) |
 | MCP tools | [Enforcement proxy](packages/mcp-proxy/README.md) |
 | Infrastructure deployment | [Adapter](packages/gated-deploy/README.md) · [Operator guide](docs/WORKER_DEPLOY_PILOT.md) |
+| Human approval by email | [Vizier + OAE worked example](docs/WORKED_EXAMPLE_VIZIER_OAE.md) |
+| Anonymous path | [Public evidence](docs/ANONYMOUS_PATH_EVIDENCE.md) |
 | REST and A2A | [API reference](https://vizier.agendamcp.dpdns.org/docs) · [OpenAPI](https://vizier.agendamcp.dpdns.org/openapi.json) · [Agent card](https://vizier.agendamcp.dpdns.org/.well-known/agent-card.json) |
 | Architecture and scope | [Architecture](docs/ARCHITECTURE.md) · [Claim ledger](docs/CLAIMS.md) · [Pilot scope](docs/PILOT.md) |
 

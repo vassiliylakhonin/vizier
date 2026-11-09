@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Docs: add the worked example "Vizier + OAE: signed human approval by email before an agent action" and the anonymous path evidence (playground, missing-grant BLOCK, 401 without token; checked 2026-11-09).
+
 - `/examples` no longer promises ALLOW to anonymous callers. Fields are now `expected_decision_with_valid_grant`; the allow scenario adds the anonymous required-mode outcome (BLOCK, GRANT_REQUIRED) and a top-level note. Renamed from `expected_decision`.
 
 - SDK `authorize()` now sends `X-Vizier-Receipt: jws` and verifies a returned `receipt_jws` (ES256, `application/vizier-receipt+jwt`) against the published JWKS, checking it signs the exact returned `receipt`. Failure throws `RECEIPT_SIGNATURE_INVALID`; an absent `receipt_jws` is tolerated. `verify()` verifies it whenever it is present. `VerifyOptions.requestReceiptJws` opts `verify()` into requesting it.
