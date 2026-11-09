@@ -28,7 +28,30 @@ Use the TypeScript or Python client, protect existing tools with the MCP proxy, 
 
 ## Quick start
 
-Try [the browser playground](https://vizier.agendamcp.dpdns.org/playground), or prepare a deployment review locally with **Node.js 24+**:
+Try [the browser playground](https://vizier.agendamcp.dpdns.org/playground), or run the
+[reproducible first-BLOCK walkthrough](docs/FIRST_BLOCK.md). It starts a disposable
+local Worker, sends the same request through the TypeScript and Python clients,
+and proves that both clients reject a tampered receipt. No account, production
+API key, Cloudflare account, deployment, or payment is needed.
+
+From a source checkout, with Node.js 24+ and Python 3.9+:
+
+```sh
+npm ci
+python3 -m venv .venv
+.venv/bin/python -m pip install -e 'packages/python-sdk[receipts]'
+VIZIER_DEMO_PYTHON="$PWD/.venv/bin/python" npm run demo:first-block -- --signed
+```
+
+Expected: `BLOCK (GRANT_REQUIRED)` in both languages, verified request hashes and
+ES256 signatures, followed by rejection of tampered receipts. This checks current
+source. The [published-package path](docs/FIRST_BLOCK.md#published-clients) tests
+npm `0.5.16` and PyPI `0.3.2` separately: they check request hashes, **not receipt
+JWS signatures**. Python `0.3.3` is not yet on PyPI.
+
+### Optional: prepare a deployment review
+
+To prepare a deployment review locally with **Node.js 24+**:
 
 ```sh
 mkdir vizier-demo
@@ -132,7 +155,7 @@ console.log("Authorized request:", result.receipt.id);
 
 Run `node authorize.mjs` after configuring those prerequisites. A valid authorization prints a receipt ID; a refusal throws. This example performs only the authorization request. Use the [deployment adapter](packages/gated-deploy/README.md) for the separate, version-specific execution workflow.
 
-`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the unsigned `receipt` object is not itself a signature. When the Worker has a receipt signing key and the request sends `X-Vizier-Receipt: jws`, enforcement responses also carry `receipt_jws` (ES256, verifiable against `/.well-known/jwks.json`), and `authorize()` requests it and verifies it against the JWKS when present (absence is tolerated). Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
+`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the unsigned `receipt` object is not itself a signature. When the Worker has a receipt signing key and the request sends `X-Vizier-Receipt: jws`, enforcement responses also carry `receipt_jws` (ES256, verifiable against `/.well-known/jwks.json`), and the current source SDK requests it and verifies it against the JWKS when present (absence is tolerated). The pinned npm `0.5.16` release does not implement that JWS verification; it checks request binding only. See the [versioned walkthrough](docs/FIRST_BLOCK.md). Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
 
 ## Connect through MCP
 

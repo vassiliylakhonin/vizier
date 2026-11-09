@@ -22,7 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "pilot:worker-deploy": "npm run build --workspace @agenda-intelligence/vizier-sdk && vitest run tests/worker-version-deploy.test.ts --reporter=verbose",
-    "typecheck": "wrangler types --check && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p packages/sdk/tsconfig.json --noEmit && tsc -p packages/gated-deploy/tsconfig.json --noEmit && tsc -p packages/mcp-proxy/tsconfig.json --noEmit"
+    "typecheck": "wrangler types --check && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p packages/sdk/tsconfig.json --noEmit && tsc -p packages/gated-deploy/tsconfig.json --noEmit && tsc -p packages/mcp-proxy/tsconfig.json --noEmit",
+    "demo:first-block": "npm run build --workspace @agenda-intelligence/vizier-sdk && node scripts/first-block.mjs"
   },
   "dependencies": {
     "zod": "4.6.7"

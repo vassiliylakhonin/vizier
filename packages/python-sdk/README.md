@@ -13,12 +13,15 @@ Vizier is a deterministic policy kernel that evaluates proposed AI agent actions
 ## Installation
 
 ```bash
-pip install vizier-guard
+pip install vizier-guard==0.3.2
 ```
 
 Zero external dependencies required out of the box (uses Python standard library).
 
-Optional: `pip install "vizier-guard[receipts]"` adds `cryptography`, used only to verify signed receipts (`receipt_jws`, see below).
+**Version boundary:** PyPI currently has `0.3.2`. This checkout is `0.3.3`, which
+is not yet published. Receipt-JWS verification and the `receipts` extra described
+below require installing this checkout with `pip install -e 'packages/python-sdk[receipts]'`
+from the repository root. Do not expect `pip install vizier-guard` to provide them.
 
 ---
 
@@ -87,36 +90,27 @@ stateless `2026-07-28` through initialize. Use the hosted HTTP endpoint's
 
 ---
 
-## 30-Second Quickstart: `@vizier_guard` Decorator
+## First BLOCK, with a checked receipt
 
-Wrap any dangerous tool or Python function with deterministic policy rules:
+Start with the [local TypeScript + Python walkthrough](../../docs/FIRST_BLOCK.md).
+It needs no production credential, runs a real local Worker, and checks that an
+unsigned request hash or a signed receipt cannot be tampered with undetected.
+It never calls a protected tool. Use the published-client path for `0.3.2` and
+the source path for `0.3.3` signed-receipt verification.
 
-```python
-from vizier import VizierClient, vizier_guard
+### Before connecting a real tool
 
-client = VizierClient(
-    base_url="https://vizier.agendamcp.dpdns.org",
-    api_key="your-vizier-api-key"
-)
+An API key identifies an integration; it does not grant the owner's permission.
+In required-grant mode, a request without a valid owner-signed delegation is
+`BLOCK` with `GRANT_REQUIRED`, even if the amount and target satisfy the policy.
+Use `VizierClient.verify()` or `check(..., grant=...)` with the exact signed
+authority after [operator setup](../../docs/DELEGATION_GRANTS.md).
 
-@vizier_guard(
-    client=client,
-    action_type="purchase",
-    max_amount=500.0,
-    currency="USD",
-    allowed_targets=["approved-hotel.com", "supplier-corp.com"]
-)
-def book_hotel(amount: float, target: str):
-    # This only runs if Vizier returns ALLOW
-    print(f"Booking confirmed at {target} for ${amount}")
-    return {"status": "booked", "amount": amount}
-
-# Allowed: $350 <= $500 to approved target
-book_hotel(amount=350.0, target="approved-hotel.com")
-
-# Blocked: $1200 > $500 (raises ActionBlockedError)
-book_hotel(amount=1200.0, target="approved-hotel.com")
-```
+The decorator and framework examples below illustrate policy wiring, not a
+complete required-grant integration. The current `vizier_guard` decorator does
+not accept or forward a delegation grant. It therefore cannot produce an ALLOW
+against the required-grant hosted service. Do not work around this by disabling
+grant requirements, and never treat a local HITL callback as an owner-signed grant.
 
 ---
 
@@ -179,7 +173,7 @@ else:
     print(f"Action rejected ({decision.decision}): {decision.explanation}")
 ```
 
-### Signed receipts (`receipt_jws`)
+### Signed receipts (`receipt_jws`, source 0.3.3 only)
 
 If the service signs its receipt, `verify()` checks the ES256 signature against the published keys (`/.well-known/jwks.json`) and confirms it covers the exact receipt returned. Failure raises `VizierError` with code `RECEIPT_SIGNATURE_INVALID`. A response without `receipt_jws` is accepted as before. Pass `request_receipt_jws=True` to ask the service to sign (`X-Vizier-Receipt: jws`).
 

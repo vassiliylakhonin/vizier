@@ -45,6 +45,18 @@ jobs:
           python-version: "3.11"
       - run: pip install pytest cryptography
       - run: pytest packages/python-sdk
+      - name: First BLOCK with source SDKs and signed receipts
+        run: node scripts/first-block.mjs --signed
+        env:
+          PYTHONPATH: packages/python-sdk/src
+      - name: First BLOCK with published SDKs (hash checks, no JWS support)
+        run: |
+          npm install --prefix "$RUNNER_TEMP/vizier-published" --no-save @agenda-intelligence/vizier-sdk@0.5.16
+          python -m venv "$RUNNER_TEMP/vizier-published-py"
+          "$RUNNER_TEMP/vizier-published-py/bin/python" -m pip install vizier-guard==0.3.2
+          VIZIER_DEMO_SDK="$RUNNER_TEMP/vizier-published/node_modules/@agenda-intelligence/vizier-sdk/dist/index.js" \
+          VIZIER_DEMO_PYTHON="$RUNNER_TEMP/vizier-published-py/bin/python" \
+          PYTHONPATH= node scripts/first-block.mjs
 
   deployment-isolation:
     runs-on: ubuntu-latest

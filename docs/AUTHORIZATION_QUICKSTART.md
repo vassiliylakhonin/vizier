@@ -7,6 +7,13 @@ execution grant. Your own trusted guard must require a Vizier ALLOW for the exac
 action before invoking the protected tool, and enforce its own transaction and
 replay controls.
 
+## First BLOCK with both SDKs
+
+For a checked, copy-paste path with no production account, start with the
+[TypeScript and Python walkthrough](FIRST_BLOCK.md). It distinguishes released
+request-hash validation from source-only receipt-JWS verification and includes
+negative tamper checks.
+
 ## Try three local examples
 
 With Node 24+, run `npm ci` and `npm run dev`, then in another terminal:
@@ -61,7 +68,9 @@ requires a configured integration credential and grant, validates the service
 response and request hash, and refuses REVIEW, BLOCK, wrong identities, expired
 grants and caller-asserted provenance. The configured service and its HTTPS
 connection must be trusted: the legacy `/v1/verify` receipt is unsigned and this
-helper does not verify it as a JWS.
+published `0.5.16` helper does not verify it as a JWS. The current source helper
+requests and verifies `receipt_jws` when present, but still tolerates an unsigned
+response. See the [version table](FIRST_BLOCK.md#what-this-proves).
 
 ```ts
 import { readFile } from "node:fs/promises";

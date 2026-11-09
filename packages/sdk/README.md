@@ -16,6 +16,13 @@ npm install @agenda-intelligence/vizier-sdk@0.5.16
 
 ---
 
+## First BLOCK without an account
+
+The [local walkthrough](../../docs/FIRST_BLOCK.md) runs TypeScript and Python
+against a disposable local Worker and detects receipt tampering. It separates
+the published npm `0.5.16` client (request-hash checks) from the current source
+client (optional ES256 receipt-JWS verification). No protected tool runs.
+
 ## 🚀 Quickstart
 
 ```ts
