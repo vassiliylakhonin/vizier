@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- SDK `authorize()` now sends `X-Vizier-Receipt: jws` and verifies a returned `receipt_jws` (ES256, `application/vizier-receipt+jwt`) against the published JWKS, checking it signs the exact returned `receipt`. Failure throws `RECEIPT_SIGNATURE_INVALID`; an absent `receipt_jws` is tolerated. `verify()` verifies it whenever it is present. `VerifyOptions.requestReceiptJws` opts `verify()` into requesting it.
+
 - `runCovenantGatedDeploy` takes an optional `signAcceptance` callback that signs the exact draft hash (`acceptance_jws`). The gated-deploy CLI enables it with `VIZIER_ACCEPTANCE_KEY` (path to the principal's ES256 JWK). Without it, acceptance stays an integration assertion and a service with `VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true` refuses activation.
 
 - Add opt-in principal-signed covenant acceptance: `acceptance_jws` on covenant activation, verified against `VIZIER_PRINCIPAL_KEYS`, recorded as `acceptance_proof` inside the hashed covenant; `VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true` makes it mandatory. `scripts/mint-grant.mjs accept` signs it. The SDK schema accepts the new optional fields and includes the proof in its covenant hash check. Unsigned acceptance and existing covenant hashes are unchanged.

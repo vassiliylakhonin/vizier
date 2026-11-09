@@ -2,6 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 import { Vizier, type VerificationRequest, type VerificationResponse } from "../packages/sdk/src/index";
 import { verificationRequestSchema, verifyAction } from "../src/core/index";
 import { canonicalize, sha256 } from "../src/core/receipts";
+import { webcrypto } from "node:crypto";
+import { createJwks, signCompactJws } from "../src/crypto/jws";
+
+async function receiptKey() {
+  const pair = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const priv = await webcrypto.subtle.exportKey("jwk", pair.privateKey);
+  return JSON.stringify({ ...priv, alg: "ES256", kid: "receipt-1", use: "sig" });
+}
+
+async function signedFetch(signingKey: string, tamper: "none" | "receipt" | "key" = "none") {
+  return vi.fn<typeof fetch>().mockImplementation(async (url, init) => {
+    if (String(url).endsWith("/.well-known/jwks.json")) return Response.json(createJwks(signingKey));
+    const request = JSON.parse(String(init?.body)) as VerificationRequest;
+    const response = await serviceResponse(request);
+    const jws = await signCompactJws(
+      { iss: "vizier-action-firewall", iat: 1, engine: "vizier_verify", receipt: response.receipt },
+      tamper === "key" ? await receiptKey() : signingKey,
+      "application/vizier-receipt+jwt",
+    );
+    if (tamper === "receipt") response.receipt.id = "vrf_tampered";
+    return Response.json({ ...response, receipt_jws: jws });
+  });
+}
 
 const input: VerificationRequest = {
   agent: { id: "agent", owner: "owner" },
@@ -74,5 +97,19 @@ describe("SDK authorize", () => {
     });
     const client = new Vizier({ baseUrl: "https://example.test", apiKey: "test", fetch: fetchMock });
     expect((await client.authorize(request)).decision).toBe("ALLOW");
+  });
+
+  it("verifies receipt_jws against the published JWKS and asks for it", async () => {
+    const mock = await signedFetch(await receiptKey());
+    const client = new Vizier({ baseUrl: "https://example.test", apiKey: "test", fetch: mock });
+    expect((await client.authorize(structuredClone(input))).decision).toBe("ALLOW");
+    const verifyCall = mock.mock.calls.find(([url]) => String(url).endsWith("/v1/verify"));
+    expect((verifyCall?.[1]?.headers as Record<string, string>)["X-Vizier-Receipt"]).toBe("jws");
+  });
+
+  it.each(["receipt", "key"] as const)("rejects a receipt_jws that fails verification (%s)", async (tamper) => {
+    const mock = await signedFetch(await receiptKey(), tamper);
+    const client = new Vizier({ baseUrl: "https://example.test", apiKey: "test", fetch: mock });
+    await expect(client.authorize(structuredClone(input))).rejects.toMatchObject({ code: "RECEIPT_SIGNATURE_INVALID" });
   });
 });

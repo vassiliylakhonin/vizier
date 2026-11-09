@@ -72,6 +72,8 @@ export interface VerificationResponse {
   reason_codes: string[];
   explanation: string;
   policy_results: PolicyResult[];
+  /** Present when the service signed the receipt (`X-Vizier-Receipt: jws`). Verified by the SDK. */
+  receipt_jws?: string;
   receipt: {
     id: string;
     created_at: string;
@@ -263,6 +265,8 @@ export interface VizierOptions {
 
 export interface VerifyOptions {
   signal?: AbortSignal;
+  /** Send `X-Vizier-Receipt: jws` so enforcement responses carry a signed `receipt_jws`. */
+  requestReceiptJws?: boolean;
 }
 
 export class VizierError extends Error {
@@ -627,6 +631,51 @@ async function verifyCompactJws(
   }
 }
 
+const VERIFY_RECEIPT_JWS_TYPE = "application/vizier-receipt+jwt";
+
+/**
+ * Verifies a `/v1/verify` `receipt_jws` against the published JWKS and checks
+ * that it signs exactly the unsigned `receipt` object that was returned.
+ */
+async function verifyReceiptJws(
+  token: string,
+  receipt: unknown,
+  jwks: z.infer<typeof jwksSchema>,
+): Promise<boolean> {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const [encodedHeader, encodedPayload, encodedSignature] = parts;
+    if (!encodedHeader || !encodedPayload || !encodedSignature) return false;
+    const decode = (part: string): unknown =>
+      JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(base64urlDecode(part)));
+    const header = decode(encodedHeader);
+    const payload = decode(encodedPayload);
+    if (
+      !isRecord(header) || header.alg !== "ES256" ||
+      header.typ !== VERIFY_RECEIPT_JWS_TYPE || typeof header.kid !== "string" ||
+      !isRecord(payload) || payload.iss !== "vizier-action-firewall" ||
+      payload.engine !== "vizier_verify" ||
+      canonicalize(payload.receipt) !== canonicalize(receipt)
+    ) {
+      return false;
+    }
+    const key = jwks.keys.find((candidate) => candidate.kid === header.kid);
+    if (key === undefined) return false;
+    const cryptoKey = await crypto.subtle.importKey(
+      "jwk", key, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"],
+    );
+    return crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      cryptoKey,
+      base64urlDecode(encodedSignature),
+      new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function parseVerificationResponse(
   value: unknown,
   request: VerificationRequest,
@@ -830,6 +879,7 @@ export class Vizier {
         ...(this.#apiKey === undefined
           ? {}
           : { Authorization: `Bearer ${this.#apiKey}` }),
+        ...(options.requestReceiptJws === true ? { "X-Vizier-Receipt": "jws" } : {}),
       },
       body: JSON.stringify(normalizedRequest),
       signal: options.signal,
@@ -863,13 +913,29 @@ export class Vizier {
         "INVALID_RESPONSE",
       );
     }
+    // Optional: a receipt_jws is verified when present and ignored when absent.
+    if (
+      verifiedBody.receipt_jws !== undefined &&
+      !await verifyReceiptJws(
+        verifiedBody.receipt_jws,
+        verifiedBody.receipt,
+        await this.#fetchJwks(options),
+      )
+    ) {
+      throw new VizierError(
+        "The signed receipt does not verify against the published keys or does not match the returned receipt.",
+        response.status,
+        "RECEIPT_SIGNATURE_INVALID",
+      );
+    }
     return verifiedBody;
   }
 
   /**
    * Require a signed delegation and an ALLOW from the configured trusted service.
-   * This does not execute an action or independently verify the legacy unsigned
-   * response receipt. The caller must bind its protected operation to the same
+   * This does not execute an action. It asks for `receipt_jws` and verifies it
+   * against the published JWKS when the service returns one; a service without
+   * a receipt key omits it and the unsigned receipt is then trusted as before. The caller must bind its protected operation to the same
    * request and enforce one-time or transactional execution separately.
    */
   async authorize(
@@ -888,7 +954,7 @@ export class Vizier {
     if (!snapshot.grant?.trim() || !snapshot.principal?.id || !snapshot.agent?.id) {
       throw new VizierError("The serialized request must contain the principal, agent and signed grant.", 0, "AUTHORIZATION_INPUT_REQUIRED");
     }
-    const result = await this.verify(snapshot, options);
+    const result = await this.verify(snapshot, { ...options, requestReceiptJws: true });
     const grant = result.receipt.grant;
     if (
       result.decision !== "ALLOW" ||

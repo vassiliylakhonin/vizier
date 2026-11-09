@@ -132,7 +132,7 @@ console.log("Authorized request:", result.receipt.id);
 
 Run `node authorize.mjs` after configuring those prerequisites. A valid authorization prints a receipt ID; a refusal throws. This example performs only the authorization request. Use the [deployment adapter](packages/gated-deploy/README.md) for the separate, version-specific execution workflow.
 
-`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the unsigned `receipt` object is not itself a signature. When the Worker has a receipt signing key and the request sends `X-Vizier-Receipt: jws`, enforcement responses also carry `receipt_jws` (ES256, verifiable against `/.well-known/jwks.json`), but `authorize()` does not verify it yet. Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
+`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the unsigned `receipt` object is not itself a signature. When the Worker has a receipt signing key and the request sends `X-Vizier-Receipt: jws`, enforcement responses also carry `receipt_jws` (ES256, verifiable against `/.well-known/jwks.json`), and `authorize()` requests it and verifies it against the JWKS when present (absence is tolerated). Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
 
 ## Connect through MCP
 

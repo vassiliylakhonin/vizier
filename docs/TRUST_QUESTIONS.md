@@ -122,8 +122,10 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 - The integration reports the outcome. Vizier does not observe the effect, so a
   signed outcome proves what was reported, not what happened. (The financial
   reservation review is an experimental exception for EVM wallets.)
-- The SDK `authorize()` helper does not yet verify `receipt_jws`; it trusts the
-  configured service over HTTPS.
+- The SDK `authorize()` helper requests `receipt_jws` and verifies it against the
+  published JWKS, including that it signs the exact returned `receipt`. If the
+  service returns none, `authorize()` tolerates that and trusts the configured
+  service over HTTPS as before.
 - Grants are reusable by default. A principal can sign `single_use: true`,
   which spends the grant at `ALLOW` (atomic in D1). It is spent on the decision,
   not on execution success, and execution idempotency is still the
@@ -137,4 +139,4 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 | --- | --- | --- |
 | 1 | Principal-signed revocation; making signed acceptance the default | [FUTURE.md](../FUTURE.md) |
 | 3 | A second independent approval transport (OpenAgentEmail consumer, draft PR) | PR #132 |
-| 4 | SDK-side `receipt_jws` verification, execution-confirmed (not decision-time) single-use spend, transparency log | not started |
+| 4 | Execution-confirmed (not decision-time) single-use spend, transparency log | not started |

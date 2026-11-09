@@ -255,8 +255,7 @@ Vizier only and is not forwarded to the upstream tool or included in proxy logs.
 
 Even an ALLOW must carry `principal_signed` provenance, the intended identities,
 an unexpired grant and a receipt hash bound to the exact request, before strict
-proxy forwarding. The legacy `/v1/verify` `receipt` object is unsigned; `receipt_jws` is an additive offline-verifiable signature, but the SDK `authorize()` path does not check it yet and still trusts the
-configured verifier over HTTPS. Signature and
+proxy forwarding. The legacy `/v1/verify` `receipt` object is unsigned; `receipt_jws` is an additive offline-verifiable signature, and the SDK `authorize()` path requests it and verifies it against the published JWKS when present (an absent `receipt_jws` is tolerated, and the unsigned receipt is then trusted as before via the configured verifier over HTTPS). Signature and
 receipt binding do not independently prove source truth or prevent direct tool
 access. External executors still need idempotency to prevent duplicate effects.
 
