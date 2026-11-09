@@ -4,7 +4,9 @@ This fixture implements the contract confirmed in
 [OpenAgentEmail #55](https://github.com/openagentemail/openagentemail/issues/55#issuecomment-6720914852).
 It reads a task-detail projection using the requester's identity token,
 checks the approved action, and reserves one executor attempt in SQLite.
-The API response, scope check and executor are injected test implementations.
+The deterministic tests inject the API response, scope check and executor.
+A separate [live local probe](OPENAGENTEMAIL_LIVE_PILOT.md) exercises the same
+consumer against a real OAE API and mail backend.
 
 The implementation is in
 [the reference consumer](../tests/fixtures/openagentemail-handoff.ts), with
@@ -78,7 +80,9 @@ and the executor. A real integration must connect the callback to the
 operator's current delegated scope and bind it to the same action snapshot.
 The OAE API's authenticated projection is the trust boundary for this
 example. Native Vizier human-review tokens retain their own signature and
-envelope contract. Live OAE and executor integration remains a follow-up.
+envelope contract. The live local probe now covers OAE authentication and
+task-detail reads. Connecting the scope gate and executor to an actual
+delegated operation remains a follow-up.
 
 Local validation on 8 November 2026 passed 75 tests across the handoff,
 canonical-vector, native human-review and MCP-proxy suites, plus TypeScript
