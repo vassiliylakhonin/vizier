@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { D1Database, KVNamespace } from "@cloudflare/workers-types";
 
+import { webcrypto } from "node:crypto";
 import { handleHttpRequest } from "../src/transport/http";
+import { verifyCompactJws } from "../src/crypto/jws";
 
 const TEST_API_KEY = "test-enforcement-key";
 
@@ -118,6 +120,65 @@ describe("REST transport", () => {
     expect(result.decision).toBe("ALLOW");
     expect(result.receipt.id).toMatch(/^vrf_/);
     expect(result.receipt.request_hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  describe("signed /v1/verify receipts", () => {
+    async function signingKey(): Promise<string> {
+      const pair = await webcrypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign", "verify"],
+      );
+      const jwk = await webcrypto.subtle.exportKey("jwk", pair.privateKey);
+      return JSON.stringify({ ...jwk, alg: "ES256", kid: "receipt-test", use: "sig" });
+    }
+    function verify(receiptSigningKey?: string, optIn = true): Promise<Response> {
+      return handleHttpRequest(
+        new Request("https://vizier.example/v1/verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${TEST_API_KEY}`,
+            ...(optIn ? { "X-Vizier-Receipt": "jws" } : {}),
+          },
+          body: JSON.stringify(requestBody()),
+        }),
+        { apiKey: TEST_API_KEY, receiptSigningKey },
+      );
+    }
+
+    it("adds receipt_jws (opt-in via X-Vizier-Receipt: jws) that verifies against the receipt key and binds the returned receipt", async () => {
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const key = await signingKey();
+      const body = (await (await verify(key)).json()) as {
+        receipt: Record<string, unknown>;
+        receipt_jws: string;
+      };
+      const payload = JSON.parse(
+        Buffer.from(body.receipt_jws.split(".")[1]!, "base64url").toString("utf8"),
+      ) as Record<string, unknown>;
+      expect(payload.receipt).toEqual(body.receipt);
+      expect(
+        await verifyCompactJws(body.receipt_jws, payload, key, "application/vizier-receipt+jwt"),
+      ).toBe(true);
+    });
+
+    it("omits receipt_jws without opt-in header, without a signing key, and for evaluation", async () => {
+      vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const unsigned = (await (await verify()).json()) as Record<string, unknown>;
+      expect(unsigned.receipt_jws).toBeUndefined();
+      const noOptIn = (await (await verify(await signingKey(), false)).json()) as Record<string, unknown>;
+      expect(noOptIn.receipt_jws).toBeUndefined();
+      const evaluation = await handleHttpRequest(
+        new Request("https://vizier.example/v1/verify/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody()),
+        }),
+        { apiKey: TEST_API_KEY, receiptSigningKey: await signingKey() },
+      );
+      expect(((await evaluation.json()) as Record<string, unknown>).receipt_jws).toBeUndefined();
+    });
   });
 
   it("downgrades open evaluation requests to REVIEW", async () => {

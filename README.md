@@ -132,7 +132,7 @@ console.log("Authorized request:", result.receipt.id);
 
 Run `node authorize.mjs` after configuring those prerequisites. A valid authorization prints a receipt ID; a refusal throws. This example performs only the authorization request. Use the [deployment adapter](packages/gated-deploy/README.md) for the separate, version-specific execution workflow.
 
-`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the legacy verification receipt itself is unsigned. Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
+`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the unsigned `receipt` object is not itself a signature. When the Worker has a receipt signing key and the request sends `X-Vizier-Receipt: jws`, enforcement responses also carry `receipt_jws` (ES256, verifiable against `/.well-known/jwks.json`), but `authorize()` does not verify it yet. Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
 
 ## Connect through MCP
 
@@ -188,7 +188,7 @@ The hosted verification service does not intercept your other tools automaticall
 ## Trust boundaries
 
 - **Authorization scope:** Vizier checks permissions and policy rules. It does not establish factual truth, legal clearance, payment settlement, or successful tool execution.
-- **Receipts:** `/v1/verify` receipts bind a decision to a request hash but are unsigned. The delegation grant is owner-signed. [Action Covenants](docs/ADR-0001-ACTION-COVENANTS.md) have separate signed formats and compatibility limits.
+- **Receipts:** `/v1/verify` receipts bind a decision to a request hash. The `receipt` object is unsigned; when a receipt signing key is configured and the caller sends `X-Vizier-Receipt: jws`, enforcement responses (not anonymous evaluation) add `receipt_jws`, a compact ES256 JWS over that exact receipt, verifiable with the published JWKS. The delegation grant is owner-signed. [Action Covenants](docs/ADR-0001-ACTION-COVENANTS.md) have separate signed formats and compatibility limits.
 - **Execution:** a guard protects only the path it controls. An agent or operator with direct tool credentials can bypass it. Short-lived grants are not single-use execution reservations.
 - **Deployment review:** claiming an approval and performing a cloud deployment are not atomic. Reconcile uncertain outcomes before retrying; see [recovery guidance](docs/WORKER_DEPLOY_PILOT.md).
 - **Self-hosting:** optional grant mode permits caller-asserted authority. Those receipts do not establish owner delegation; choose the intended mode explicitly.

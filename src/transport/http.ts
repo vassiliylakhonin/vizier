@@ -2,6 +2,7 @@ import { assertEvaluationCannotAllow, EVALUATION_HEADERS } from "./evaluation-bo
 import { logServiceAccess, hasAccessObservation } from "./access-telemetry";
 import { grantReadiness } from "./onboarding";
 import { canonicalize, sha256 } from "../core/receipts";
+import type { Receipt } from "../core/types";
 import { createReviewConsole } from "../reviews/console";
 import { handleReviews } from "../reviews/api";
 import { z } from "zod";
@@ -422,7 +423,46 @@ async function handleVerify(
     (db) => storeReceipt(db, normalizedRequest, result.receipt),
   );
   if (authorization === "evaluation") assertEvaluationCannotAllow(result.decision);
-  return jsonResponse(result, 200, authorization === "evaluation" ? EVALUATION_HEADERS : undefined);
+  const receiptJws =
+    authorization === "evaluation" ||
+    request.headers.get("X-Vizier-Receipt")?.toLowerCase() !== "jws"
+      ? undefined
+      : await signVerifyReceipt(result.receipt, options.receiptSigningKey);
+  return jsonResponse(
+    receiptJws === undefined ? result : { ...result, receipt_jws: receiptJws },
+    200,
+    authorization === "evaluation" ? EVALUATION_HEADERS : undefined,
+  );
+}
+
+/**
+ * Signs the exact receipt object returned by /v1/verify with the published
+ * receipt key (ES256, verifiable against /.well-known/jwks.json). Opt-in via
+ * `X-Vizier-Receipt: jws` so existing strict-schema clients are unaffected.
+ * The unsigned `receipt` field is unchanged. Evaluation-mode receipts are never
+ * signed. A signing failure is logged and the field is omitted, matching the
+ * other receipt-signing paths.
+ */
+async function signVerifyReceipt(
+  receipt: Receipt,
+  signingKey: string | undefined,
+): Promise<string | undefined> {
+  if (signingKey === undefined || signingKey.length === 0) return undefined;
+  try {
+    return await signCompactJws(
+      {
+        iss: "vizier-action-firewall",
+        iat: Math.floor(Date.parse(String(receipt.created_at)) / 1000),
+        engine: "vizier_verify",
+        receipt,
+      },
+      signingKey,
+      "application/vizier-receipt+jwt",
+    );
+  } catch (jwsErr) {
+    console.error("Failed to sign /v1/verify receipt:", jwsErr);
+    return undefined;
+  }
 }
 
 async function handleVerifyEvaluate(
@@ -1246,7 +1286,7 @@ async function handleHttpRequestInner(
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Vizier-Key, X-Upstream-Key, X-Upstream-Url, X-Session-Id, X-Quorum-Proposal-Id, X-Quorum-Actions",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Vizier-Key, X-Vizier-Receipt, X-Upstream-Key, X-Upstream-Url, X-Session-Id, X-Quorum-Proposal-Id, X-Quorum-Actions",
         },
       });
     }

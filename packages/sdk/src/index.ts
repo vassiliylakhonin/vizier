@@ -285,6 +285,7 @@ const verificationResponseSchema = z.strictObject({
   reason_codes: z.array(reasonCodeSchema).max(100),
   explanation: z.string().min(1).max(2_048),
   policy_results: z.array(policyResultSchema).min(1).max(100),
+  receipt_jws: z.string().max(16_384).optional(),
   receipt: z.strictObject({
     id: z.string().min(1).max(256),
     created_at: z.iso.datetime({ offset: true }),

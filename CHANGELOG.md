@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add opt-in `receipt_jws` to authenticated `/v1/verify` responses (request header `X-Vizier-Receipt: jws`, receipt signing key configured; opt-in so strict-schema SDK clients are unaffected). The SDK response schema now tolerates the optional field. It is an ES256 compact JWS (`typ application/vizier-receipt+jwt`) over the exact returned receipt, verifiable with the published JWKS. The unsigned `receipt` field is unchanged; anonymous `/v1/verify/evaluate` is never signed.
+
 - Put a runnable synthetic MCP check and its stateless request beside the public connection instructions.
 
 - Add a runnable synthetic missing-grant example to the A2A card and public playground. The example always runs without trusted authority and cannot authorize an action.

@@ -15,7 +15,7 @@ Vizier checked the proposed action against that block and returned an unsigned
 audit receipt bound to the request. Nothing in the exchange showed that
 `acme-corp` had delegated anything. An integration credential holder could name
 any principal and limit; the receipt did not prove the owner approved them.
-Delegation grants are signed; legacy `/v1/verify` receipts are not.
+Delegation grants are signed; the legacy `/v1/verify` `receipt` object is not, but enforcement responses add a `receipt_jws` signed with the receipt key when one is configured and the caller sends `X-Vizier-Receipt: jws`.
 
 That is a calculator, not a control. A delegation grant makes it a control.
 
@@ -242,8 +242,8 @@ Vizier only and is not forwarded to the upstream tool or included in proxy logs.
 
 Even an ALLOW must carry `principal_signed` provenance, the intended identities,
 an unexpired grant and a receipt hash bound to the exact request, before strict
-proxy forwarding. Legacy `/v1/verify` receipts are unsigned: this path trusts the
-configured verifier over HTTPS, not an offline receipt signature. Signature and
+proxy forwarding. The legacy `/v1/verify` `receipt` object is unsigned; `receipt_jws` is an additive offline-verifiable signature, but the SDK `authorize()` path does not check it yet and still trusts the
+configured verifier over HTTPS. Signature and
 receipt binding do not independently prove source truth or prevent direct tool
 access. External executors still need idempotency to prevent duplicate effects.
 
