@@ -120,7 +120,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install build and test tools
-        run: pip install build twine pytest
+        run: pip install build twine pytest cryptography
 
       - name: Run Python test suite
         run: python -m pytest packages/python-sdk -v

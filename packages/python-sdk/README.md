@@ -18,6 +18,8 @@ pip install vizier-guard
 
 Zero external dependencies required out of the box (uses Python standard library).
 
+Optional: `pip install "vizier-guard[receipts]"` adds `cryptography`, used only to verify signed receipts (`receipt_jws`, see below).
+
 ---
 
 ## Model Context Protocol (MCP) Server (Claude Desktop, Cursor: untested examples)
@@ -176,6 +178,12 @@ if decision.is_allowed:
 else:
     print(f"Action rejected ({decision.decision}): {decision.explanation}")
 ```
+
+### Signed receipts (`receipt_jws`)
+
+If the service signs its receipt, `verify()` checks the ES256 signature against the published keys (`/.well-known/jwks.json`) and confirms it covers the exact receipt returned. Failure raises `VizierError` with code `RECEIPT_SIGNATURE_INVALID`. A response without `receipt_jws` is accepted as before. Pass `request_receipt_jws=True` to ask the service to sign (`X-Vizier-Receipt: jws`).
+
+This needs `cryptography` (`pip install "vizier-guard[receipts]"`). Without it, a signed response fails closed with `RECEIPT_VERIFICATION_UNAVAILABLE` rather than being trusted unchecked. The base package stays dependency-free.
 
 ---
 

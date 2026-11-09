@@ -18,6 +18,7 @@ from .models import (
     VerificationResponse,
 )
 from .canonical import sha256_canonical_json
+from .receipt_jws import ReceiptCryptoUnavailable, verify_receipt_jws
 
 class VizierError(Exception):
     def __init__(self, message: str, status: int = 0, code: str = "ERROR", details: Any = None):
@@ -52,9 +53,29 @@ class VizierClient:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def _request(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _fetch_jwks(self) -> Dict[str, Any]:
+        url = f"{self.base_url}/.well-known/jwks.json"
+        req = urllib.request.Request(url, headers=self._get_headers(), method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as err:
+            raise VizierError(
+                message=f"Could not fetch published keys to verify receipt_jws: {err}",
+                status=0,
+                code="RECEIPT_KEYS_UNAVAILABLE",
+            ) from err
+
+    def _request(
+        self,
+        path: str,
+        data: Dict[str, Any],
+        extra_headers: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
         headers = self._get_headers()
+        if extra_headers:
+            headers.update(extra_headers)
         payload_bytes = json.dumps(data).encode("utf-8")
         req = urllib.request.Request(url, data=payload_bytes, headers=headers, method="POST")
 
@@ -84,10 +105,20 @@ class VizierClient:
         self,
         request: Union[VerificationRequest, Dict[str, Any]],
         verify_receipt_hash: bool = True,
+        request_receipt_jws: bool = False,
     ) -> VerificationResponse:
         """
         Submit a proposed agent action to Vizier for deterministic authorization.
         Returns VerificationResponse with decision: ALLOW, REVIEW, or BLOCK.
+
+        If the response carries a ``receipt_jws`` it is verified against the
+        published JWKS and must sign exactly the returned receipt, otherwise
+        VizierError(code="RECEIPT_SIGNATURE_INVALID") is raised. A response
+        without ``receipt_jws`` is accepted as before. Set
+        ``request_receipt_jws=True`` to ask the service to sign (header
+        ``X-Vizier-Receipt: jws``). Verification needs ``cryptography``
+        (``pip install vizier-guard[receipts]``); without it a signed response
+        fails closed with code RECEIPT_VERIFICATION_UNAVAILABLE.
         """
         payload: Dict[str, Any]
         if isinstance(request, VerificationRequest):
@@ -103,8 +134,28 @@ class VizierClient:
         else:
             payload["context"]["source"] = "rest"
 
-        raw_response = self._request("/v1/verify", payload)
+        raw_response = self._request(
+            "/v1/verify",
+            payload,
+            {"X-Vizier-Receipt": "jws"} if request_receipt_jws else None,
+        )
         resp = VerificationResponse.from_dict(raw_response)
+
+        receipt_jws = raw_response.get("receipt_jws")
+        if receipt_jws is not None:
+            try:
+                ok = verify_receipt_jws(receipt_jws, raw_response.get("receipt"), self._fetch_jwks())
+            except ReceiptCryptoUnavailable as err:
+                raise VizierError(
+                    message=str(err), status=200, code="RECEIPT_VERIFICATION_UNAVAILABLE"
+                ) from err
+            if not ok:
+                raise VizierError(
+                    message="The signed receipt does not verify against the published keys or does not match the returned receipt.",
+                    status=200,
+                    code="RECEIPT_SIGNATURE_INVALID",
+                )
+            resp.receipt_jws = receipt_jws
 
         # Cryptographic digest and receipt integrity check
         if verify_receipt_hash:

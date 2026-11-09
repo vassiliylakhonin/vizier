@@ -211,6 +211,7 @@ class VerificationResponse:
     explanation: str
     policy_results: List[PolicyResult]
     receipt: Receipt
+    receipt_jws: Optional[str] = None
 
     @property
     def is_allowed(self) -> bool:

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Python SDK: `VizierClient.verify()` / `AsyncVizierClient.verify()` verify a returned `receipt_jws` against the published JWKS (ES256, signs the exact returned receipt) and raise `RECEIPT_SIGNATURE_INVALID` on failure; absence is tolerated. New `request_receipt_jws=` argument sends `X-Vizier-Receipt: jws`. Verification uses the new optional extra `vizier-guard[receipts]` (`cryptography`); a signed response without it fails closed (`RECEIPT_VERIFICATION_UNAVAILABLE`). Core install stays dependency-free. Python has no `authorize()`; this applies to `verify()`.
+
 - Docs: add the worked example "Vizier + OAE: signed human approval by email before an agent action" and the anonymous path evidence (playground, missing-grant BLOCK, 401 without token; checked 2026-11-09).
 
 - `/examples` no longer promises ALLOW to anonymous callers. Fields are now `expected_decision_with_valid_grant`; the allow scenario adds the anonymous required-mode outcome (BLOCK, GRANT_REQUIRED) and a top-level note. Renamed from `expected_decision`.

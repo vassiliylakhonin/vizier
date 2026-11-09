@@ -42,6 +42,7 @@ class AsyncVizierClient:
         self,
         request: Union[VerificationRequest, Dict[str, Any]],
         verify_receipt_hash: bool = True,
+        request_receipt_jws: bool = False,
     ) -> VerificationResponse:
         """
         Asynchronously submit a proposed agent action to Vizier for deterministic authorization.
@@ -51,6 +52,7 @@ class AsyncVizierClient:
             self._sync_client.verify,
             request,
             verify_receipt_hash,
+            request_receipt_jws,
         )
 
     async def screen_sanctions(

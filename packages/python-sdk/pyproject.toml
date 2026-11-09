@@ -32,9 +32,11 @@ dependencies = []
 [project.optional-dependencies]
 pydantic = ["pydantic>=2.0"]
 httpx = ["httpx>=0.24.0"]
+receipts = ["cryptography>=41.0"]
 langchain = ["langchain-core>=0.1.0"]
 test = [
     "pytest>=7.0.0",
+    "cryptography>=41.0",
 ]
 
 [project.urls]
