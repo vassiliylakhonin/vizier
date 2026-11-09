@@ -129,7 +129,9 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 - Grants are reusable by default. A principal can sign `single_use: true`,
   which spends the grant at `ALLOW` (atomic in D1). It is spent on the decision,
   not on execution success, and execution idempotency is still the
-  integration's job.
+  integration's job. Without the D1 binding, enforcement of a single-use
+  grant fails closed (`BLOCK`, `GRANT_SINGLE_USE_STATE_UNAVAILABLE`) rather
+  than trusting per-isolate memory.
 - No transparency log, independent timestamp or durable full-receipt store.
   Callers hold their receipts.
 

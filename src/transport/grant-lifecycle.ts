@@ -16,17 +16,19 @@ import type { TransportOptions } from "./shared";
  * Revocation sources: the operator's `VIZIER_REVOKED_GRANTS` (a JSON array of
  * jti strings) and, when D1 is bound, rows written by `POST /v1/grants/revoke`.
  * Single-use is requested by the principal inside the signed grant
- * (`single_use: true`); consumption is an atomic insert into D1. Without D1 the
- * state is per-isolate memory: it works in tests and local runs but is neither
- * durable nor shared, and the response says nothing different, so production
- * deployments that rely on this must bind D1.
+ * (`single_use: true`); consumption is an atomic insert into D1. Without D1
+ * there is no durable, shared consumption state: per-isolate memory loses the
+ * spend on restart and is invisible to other isolates, so a replayed grant
+ * could be ALLOWed again. Enforcement therefore fails closed — a single-use
+ * grant presented to an enforcing transport without D1 is BLOCK with
+ * GRANT_SINGLE_USE_STATE_UNAVAILABLE, never ALLOW. Evaluation-only paths do
+ * not consume and are unaffected, as are reusable grants.
  */
 
 /** A grant may live 365 days (see grants.ts); keep state a little past that. */
 export const GRANT_STATE_MAX_SECONDS = 366 * 24 * 60 * 60;
 
 const memoryRevoked = new Map<string, number>();
-const memoryConsumed = new Map<string, number>();
 
 interface UnverifiedGrantHints {
   readonly jti: string;
@@ -114,13 +116,11 @@ async function claimConsumption(
   options: TransportOptions,
   hints: UnverifiedGrantHints,
 ): Promise<boolean> {
+  // Unreachable today: an enforcing transport without D1 BLOCKs the grant in
+  // the kernel before any ALLOW. If that ever changes, fail closed here.
+  if (options.db === undefined) return false;
   const now = Math.floor(Date.now() / 1000);
   const keepUntil = Math.min(Math.max(hints.exp, now) + 120, now + GRANT_STATE_MAX_SECONDS);
-  if (options.db === undefined) {
-    if (memHas(memoryConsumed, hints.jti, now)) return false;
-    memoryConsumed.set(hints.jti, keepUntil);
-    return true;
-  }
   // Expired rows are pruned daily; clear this id's own expired row first so a
   // reused id after expiry cannot be blocked by a stale row.
   await options.db
@@ -168,10 +168,8 @@ export async function verifyWithGrantLifecycle(
     options.db === undefined
       ? Promise.resolve(memHas(memoryRevoked, hints.jti, now))
       : dbHas(options.db, "revoked_grants", hints.jti, now),
-    hints.singleUse
-      ? options.db === undefined
-        ? Promise.resolve(memHas(memoryConsumed, hints.jti, now))
-        : dbHas(options.db, "consumed_grants", hints.jti, now)
+    hints.singleUse && options.db !== undefined
+      ? dbHas(options.db, "consumed_grants", hints.jti, now)
       : Promise.resolve(false),
   ]);
   if (isRevoked) revoked.add(hints.jti);
@@ -181,6 +179,9 @@ export async function verifyWithGrantLifecycle(
     ...verifyOptions,
     revokedGrantIds: revoked,
     usedGrantIds: usedIds,
+    // Enforcement without a durable store fails single-use grants closed.
+    // Evaluation-only paths do not consume, so they keep their old semantics.
+    ...(lifecycle.enforce ? { singleUseStateDurable: options.db !== undefined } : {}),
   });
   const result = await verifyAction(request, withState(used));
 
@@ -202,5 +203,4 @@ export async function verifyWithGrantLifecycle(
 /** Test hook: clear per-isolate fallback state. */
 export function resetGrantLifecycleMemory(): void {
   memoryRevoked.clear();
-  memoryConsumed.clear();
 }

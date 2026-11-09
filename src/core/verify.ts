@@ -26,6 +26,12 @@ export interface VerificationOptions extends PolicyOptions, ReceiptOptions {
   readonly revokedGrantIds?: ReadonlySet<string>;
   /** Consumed single-use grant ids, resolved by the transport before the call. */
   readonly usedGrantIds?: ReadonlySet<string>;
+  /**
+   * Whether single-use consumption state is durable and shared (D1-backed).
+   * Transports pass `false` when no such store is bound, so a single-use
+   * grant fails closed instead of relying on per-isolate memory.
+   */
+  readonly singleUseStateDurable?: boolean;
 }
 
 const EXPLANATIONS: Readonly<Record<Decision, string>> = Object.freeze({
@@ -75,6 +81,9 @@ export async function verifyAction(
           ...(options.audience === undefined ? {} : { audience: options.audience }),
           ...(options.revokedGrantIds === undefined ? {} : { revokedGrantIds: options.revokedGrantIds }),
           ...(options.usedGrantIds === undefined ? {} : { usedGrantIds: options.usedGrantIds }),
+          ...(options.singleUseStateDurable === undefined
+            ? {}
+            : { singleUseStateDurable: options.singleUseStateDurable }),
           ...(options.now === undefined ? {} : { now: options.now() }),
         });
 

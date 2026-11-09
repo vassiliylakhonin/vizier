@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Single-use grants fail closed without D1. An enforcing transport (REST, MCP, A2A) with no D1 binding now answers `BLOCK` / `GRANT_SINGLE_USE_STATE_UNAVAILABLE` for a grant signed `single_use: true` instead of consuming it in per-isolate memory, which a restart or a second isolate could silently replay. The per-isolate memory fallback for single-use consumption is removed. Evaluation-only paths never consumed and are unchanged, reusable grants are unaffected, and the D1-backed semantics (spend at `ALLOW`, then `GRANT_ALREADY_USED`) are unchanged.
+
 - Python SDK: `VizierClient.verify()` / `AsyncVizierClient.verify()` verify a returned `receipt_jws` against the published JWKS (ES256, signs the exact returned receipt) and raise `RECEIPT_SIGNATURE_INVALID` on failure; absence is tolerated. New `request_receipt_jws=` argument sends `X-Vizier-Receipt: jws`. Verification uses the new optional extra `vizier-guard[receipts]` (`cryptography`); a signed response without it fails closed (`RECEIPT_VERIFICATION_UNAVAILABLE`). Core install stays dependency-free. Python has no `authorize()`; this applies to `verify()`.
 
 - Docs: add the worked example "Vizier + OAE: signed human approval by email before an agent action" and the anonymous path evidence (playground, missing-grant BLOCK, 401 without token; checked 2026-11-09).

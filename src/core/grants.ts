@@ -58,6 +58,7 @@ export type GrantFailureCode =
   | "GRANT_EXPIRED"
   | "GRANT_REVOKED"
   | "GRANT_ALREADY_USED"
+  | "GRANT_SINGLE_USE_STATE_UNAVAILABLE"
   | "GRANT_LIFETIME_EXCESSIVE"
   | "GRANT_ISSUER_MISMATCH"
   | "GRANT_SUBJECT_MISMATCH"
@@ -161,6 +162,14 @@ export interface GrantVerificationInput {
   readonly revokedGrantIds?: ReadonlySet<string>;
   /** Ids of single-use grants that were already consumed. Resolved by the caller. */
   readonly usedGrantIds?: ReadonlySet<string>;
+  /**
+   * Whether the caller resolves single-use consumption against a durable,
+   * shared store (D1). `false` fails a single-use grant closed: per-isolate
+   * memory is neither durable nor shared, so an ALLOW from it could be
+   * replayed after a restart or honored by a second isolate. Omitted (the
+   * kernel's own default) means the caller vouches for its state source.
+   */
+  readonly singleUseStateDurable?: boolean;
 }
 
 function failure(
@@ -252,6 +261,9 @@ export async function verifyDelegationGrant(
   // cannot probe which ids are revoked or used.
   if (input.revokedGrantIds?.has(claims.jti) === true) {
     return failure("GRANT_REVOKED", { jti: claims.jti });
+  }
+  if (claims.single_use === true && input.singleUseStateDurable === false) {
+    return failure("GRANT_SINGLE_USE_STATE_UNAVAILABLE", { jti: claims.jti });
   }
   if (claims.single_use === true && input.usedGrantIds?.has(claims.jti) === true) {
     return failure("GRANT_ALREADY_USED", { jti: claims.jti });

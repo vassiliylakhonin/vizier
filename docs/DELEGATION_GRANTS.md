@@ -169,7 +169,10 @@ score risk 1.0, because each of them is an attempt rather than an accident.
   Vizier returns `ALLOW`, not when the action finishes: if the integration does
   not execute, or fails after the `ALLOW`, the grant is already spent and the
   principal must issue a new one. Evaluation-only paths never consume. Without
-  the D1 binding, state is per-isolate memory and is neither durable nor shared.
+  the D1 binding there is no durable, shared consumption state, so enforcement
+  fails closed: a single-use grant is `BLOCK` with
+  `GRANT_SINGLE_USE_STATE_UNAVAILABLE` instead of an `ALLOW` that per-isolate
+  memory could replay after a restart. Reusable grants are unaffected.
 - **Clock skew** is tolerated at 60 seconds on `nbf` and `exp`.
 - **A grant proves delegation, not intent.** It says the principal authorised
   this shape of action for this agent. It does not say a human looked at this

@@ -131,11 +131,40 @@ describe("grant lifecycle", () => {
     expect(results.filter((r) => r.reason_codes.includes("GRANT_ALREADY_USED"))).toHaveLength(2);
   });
 
-  it("works without D1 using per-isolate memory", async () => {
+  it("single-use fails closed without D1: every presentation BLOCKs, none consumes", async () => {
     const { grant, principalKeySource } = await setup({ singleUse: true });
-    const first = (await (await post("/v1/verify", body(grant), { principalKeySource })).json()) as Decision;
-    const second = (await (await post("/v1/verify", body(grant), { principalKeySource })).json()) as Decision;
-    expect([first.decision, second.decision]).toEqual(["ALLOW", "BLOCK"]);
+    for (let i = 0; i < 2; i += 1) {
+      const out = (await (await post("/v1/verify", body(grant), { principalKeySource })).json()) as Decision;
+      expect(out.decision).toBe("BLOCK");
+      expect(out.reason_codes).toContain("GRANT_SINGLE_USE_STATE_UNAVAILABLE");
+    }
+    // The fail-closed BLOCKs must not spend the grant: with D1 bound, the
+    // same grant still ALLOWs exactly once.
+    const opts = { principalKeySource, db: createD1() };
+    const first = (await (await post("/v1/verify", body(grant), opts)).json()) as Decision;
+    const second = (await (await post("/v1/verify", body(grant), opts)).json()) as Decision;
+    expect(first.decision).toBe("ALLOW");
+    expect(second.decision).toBe("BLOCK");
+    expect(second.reason_codes).toContain("GRANT_ALREADY_USED");
+  });
+
+  it("a reusable grant still ALLOWs without D1", async () => {
+    const { grant, principalKeySource } = await setup();
+    const out = (await (await post("/v1/verify", body(grant), { principalKeySource })).json()) as Decision;
+    expect(out.decision).toBe("ALLOW");
+  });
+
+  it("evaluation without D1 keeps its semantics and does not consume", async () => {
+    const { grant, principalKeySource } = await setup({ singleUse: true });
+    const evaluation = (await (
+      await post("/v1/verify/evaluate", body(grant), { principalKeySource }, false)
+    ).json()) as Decision;
+    expect(evaluation.decision).not.toBe("ALLOW");
+    expect(evaluation.reason_codes).not.toContain("GRANT_SINGLE_USE_STATE_UNAVAILABLE");
+    const real = (await (
+      await post("/v1/verify", body(grant), { principalKeySource, db: createD1() })
+    ).json()) as Decision;
+    expect(real.decision).toBe("ALLOW");
   });
 
   it("evaluation never consumes a single-use grant", async () => {
