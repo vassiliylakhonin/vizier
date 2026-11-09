@@ -159,7 +159,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
   return Object.freeze({
     name: "Vizier",
     description:
-      "Try the free example: Show why an action without a signed grant is blocked. Vizier evaluates proposed agent actions against caller-supplied authority; anonymous calls cannot authorize ALLOW. An authenticated integration is required for enforcement receipts. Not factuality verification or independent execution proof; REVIEW requires a human decision.",
+      "For teams shipping AI agents that take real actions: check each proposed tool call against the principal's signed, scoped grant before execution, and get an explainable ALLOW, REVIEW or BLOCK decision with a request-bound receipt. Try the free example: it shows why an action without a signed grant is blocked. Anonymous A2A calls are evaluation-only: anonymous calls cannot authorize ALLOW. An authenticated integration is required for enforcement receipts. Not factuality verification or independent execution proof; REVIEW requires a human decision.",
     provider: {
       organization: "Vassiliy Lakhonin",
       url: "https://github.com/vassiliylakhonin",
