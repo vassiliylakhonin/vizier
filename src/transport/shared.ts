@@ -32,6 +32,8 @@ export interface TransportOptions {
    */
   readonly principalKeySource?: string;
   readonly signedGrantModeSource?: string;
+  /** `VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true`: covenant activation needs a principal-signed acceptance. */
+  readonly requireSignedAcceptanceSource?: string;
   /** `VIZIER_REVOKED_GRANTS`: JSON array of revoked grant ids (jti). */
   readonly revokedGrantSource?: string;
   readonly mcpCorrelationKey?: string;

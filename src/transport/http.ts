@@ -922,12 +922,17 @@ async function handleCovenantActivation(
       validationDetails(parsed.error),
     );
   }
-  const covenant = await activateActionCovenant(parsed.data);
+  const covenant = await activateActionCovenant(parsed.data, {
+    principalKeys: resolvePrincipalKeys(options),
+    requireSignedAcceptance:
+      options.requireSignedAcceptanceSource?.trim().toLowerCase() === "true",
+  });
   console.log(
     JSON.stringify({
       event: "vizier.covenant.activated",
       covenant_id: covenant.id,
       principal_id: covenant.draft.principal.id,
+      acceptance: covenant.acceptance_proof === undefined ? "integration_asserted" : "principal_signed",
       expires_at: covenant.draft.expires_at,
     }),
   );

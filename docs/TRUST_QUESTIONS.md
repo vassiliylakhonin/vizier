@@ -25,6 +25,8 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 
 **Implemented**
 
+- Optional principal-signed covenant acceptance (`acceptance_jws`), verified
+  against the same out-of-band key registry and stored inside the hashed covenant.
 - Delegation grants are compact ES256 JWS tokens, `typ vizier-delegation+jws`,
   signed by the principal and verified against keys registered out of band
   (`VIZIER_PRINCIPAL_KEYS`). Decisions make no network call for keys.
@@ -48,8 +50,11 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
   operator is the root of trust for which principals exist.
 - Optional grant mode (the self-hosting default) still accepts caller-asserted
   authority. Receipts from that mode do not establish owner delegation.
-- Acceptance of a covenant draft is still an integration assertion, not a
-  principal signature. ([FUTURE.md](../FUTURE.md))
+- Covenant acceptance is principal-signed only when the integration sends
+  `acceptance_jws`; unsigned acceptance remains an integration assertion unless
+  the operator sets `VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true`. A signature proves
+  the key holder accepted that draft hash, not that a human read it.
+  ([FUTURE.md](../FUTURE.md))
 
 ## 2. What exact action does it cover?
 
@@ -130,6 +135,6 @@ the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 
 | Question | Next step | Tracking |
 | --- | --- | --- |
-| 1 | Principal-signed revocation and principal-signed covenant acceptance | [FUTURE.md](../FUTURE.md) |
+| 1 | Principal-signed revocation; making signed acceptance the default | [FUTURE.md](../FUTURE.md) |
 | 3 | A second independent approval transport (OpenAgentEmail consumer, draft PR) | PR #132 |
 | 4 | SDK-side `receipt_jws` verification, execution-confirmed (not decision-time) single-use spend, transparency log | not started |

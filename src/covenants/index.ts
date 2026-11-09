@@ -29,6 +29,11 @@ export type {
   SignedOutcomeReceipt,
 } from "./schemas";
 export {
+  COVENANT_ACCEPTANCE_TYP,
+  mintCovenantAcceptance,
+  verifyCovenantAcceptance,
+} from "./acceptance";
+export {
   activateActionCovenant,
   ActionCovenantError,
   authorizeActionCovenant,

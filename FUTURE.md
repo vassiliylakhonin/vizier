@@ -6,8 +6,6 @@ fit MVP:
 - global reputation network or Vizier Score
 - registry scraping and automatic agent discovery
 - blockchain, payment settlement, or per-call payments
-- principal-signed **covenant acceptance** (delegation itself shipped in v0.3;
-  acceptance of a specific drafted action is still an integration assertion)
 - durable full-receipt storage, key revocation, transparency logging, or independent
   timestamping
 - fetching principal keys at decision time from a `.well-known` JWKS: keys are
@@ -40,3 +38,20 @@ likely reason a first evaluator would decline, so the evidence that would have
 released the deferral could not arrive while the deferral held.
 
 Shipped 2026-09-07 in v0.3.0. The rest of the list stands.
+
+## Principal-signed covenant acceptance
+
+Shipped as opt-in. Add `acceptance_jws` (typ `vizier-covenant-acceptance+jws`,
+ES256, payload `{iss, draft_hash, accepted_at}`) to the activation request. Vizier
+verifies it against the key registered for the principal in
+`VIZIER_PRINCIPAL_KEYS`, requires `iss`, draft hash and `accepted_at` to match the
+request, and records `acceptance_proof` (key id and the token) inside the
+covenant, so it is covered by `covenant_hash`. Set
+`VIZIER_REQUIRE_SIGNED_ACCEPTANCE=true` to refuse unsigned acceptances. Without
+that setting the old integration-asserted acceptance still works and nothing
+changes for existing callers. Sign with
+`node scripts/mint-grant.mjs accept --key principal.jwk.json --principal <id> --draft-hash <hex>`.
+
+Limits: a signature proves the key holder accepted that draft hash, not that a
+human read it. The same signed acceptance can activate the same draft more than
+once, producing separate covenants.

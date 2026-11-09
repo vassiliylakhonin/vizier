@@ -5,6 +5,7 @@ interface ExtendedEnv extends Env {
   readonly VIZIER_PRINCIPAL_KEYS?: string;
   readonly VIZIER_SIGNED_GRANT_MODE?: string;
   readonly VIZIER_REVOKED_GRANTS?: string;
+  readonly VIZIER_REQUIRE_SIGNED_ACCEPTANCE?: string;
   readonly VIZIER_REVIEWER_KEY?: string;
   readonly VIZIER_MONITORED_WALLET?: string;
   readonly VIZIER_MCP_CORRELATION_KEY?: string;
@@ -22,6 +23,7 @@ export default {
       principalKeySource: env.VIZIER_PRINCIPAL_KEYS,
       signedGrantModeSource: env.VIZIER_SIGNED_GRANT_MODE,
       revokedGrantSource: env.VIZIER_REVOKED_GRANTS,
+      requireSignedAcceptanceSource: env.VIZIER_REQUIRE_SIGNED_ACCEPTANCE,
       mcpCorrelationKey: env.VIZIER_MCP_CORRELATION_KEY,
       db: env.DB,
       ctx,

@@ -136,9 +136,17 @@ export interface CovenantAcceptance {
   draft_hash: string;
 }
 
+export interface CovenantAcceptanceProof {
+  type: "principal_signed";
+  key_id: string;
+  token: string;
+}
+
 export interface ActionCovenantActivationRequest {
   draft: ActionCovenantDraft;
   acceptance: CovenantAcceptance;
+  /** Compact JWS signed by the principal over the draft hash (optional). */
+  acceptance_jws?: string;
 }
 
 export interface ActionCovenant {
@@ -148,6 +156,8 @@ export interface ActionCovenant {
   activated_at: string;
   draft: ActionCovenantDraft;
   acceptance: CovenantAcceptance;
+  /** Present only when the principal signed the acceptance. */
+  acceptance_proof?: CovenantAcceptanceProof;
   covenant_hash: string;
 }
 
@@ -418,6 +428,13 @@ const actionCovenantSchema = z.strictObject({
   activated_at: timestampSchema,
   draft: actionCovenantDraftSchema,
   acceptance: covenantAcceptanceSchema,
+  acceptance_proof: z
+    .strictObject({
+      type: z.literal("principal_signed"),
+      key_id: identifierSchema,
+      token: z.string().min(1).max(4_096),
+    })
+    .optional(),
   covenant_hash: hashSchema,
 });
 const authorizationReceiptPayloadSchema = z.strictObject({
@@ -912,6 +929,9 @@ export class Vizier {
       activated_at: covenant.activated_at,
       draft: covenant.draft,
       acceptance: covenant.acceptance,
+      ...(covenant.acceptance_proof === undefined
+        ? {}
+        : { acceptance_proof: covenant.acceptance_proof }),
     };
     const [expectedCovenantHash, requestDraftHash, responseDraftHash] =
       await Promise.all([

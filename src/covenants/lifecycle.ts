@@ -5,6 +5,8 @@ import { calculateRiskScore } from "../core/risk";
 import type { VerificationRequest } from "../core/schemas";
 import type { Decision, PolicyResult } from "../core/types";
 import { signCompactJws, verifyCompactJws } from "../crypto/jws";
+import type { PrincipalKeyRegistry } from "../core/grants";
+import { verifyCovenantAcceptance } from "./acceptance";
 import type {
   ActionCovenant,
   ActionCovenantActivationRequest,
@@ -40,6 +42,10 @@ interface IdentityOptions {
 
 export interface ActivationOptions extends IdentityOptions {
   readonly maxClockSkewMs?: number;
+  /** Registered principal public keys, used to verify `acceptance_jws`. */
+  readonly principalKeys?: PrincipalKeyRegistry;
+  /** Refuse activation unless the principal signed the acceptance. */
+  readonly requireSignedAcceptance?: boolean;
 }
 
 export interface AuthorizationOptions extends IdentityOptions, PolicyOptions {
@@ -87,6 +93,10 @@ async function hashActionCovenant(covenant: ActionCovenant): Promise<string> {
       activated_at: covenant.activated_at,
       draft: covenant.draft,
       acceptance: covenant.acceptance,
+      // Added only when present so covenants without a proof keep their hash.
+      ...(covenant.acceptance_proof === undefined
+        ? {}
+        : { acceptance_proof: covenant.acceptance_proof }),
     }),
   );
 }
@@ -130,6 +140,30 @@ export async function activateActionCovenant(
     );
   }
 
+  let acceptanceProof: ActionCovenant["acceptance_proof"];
+  if (request.acceptance_jws !== undefined) {
+    const verified = await verifyCovenantAcceptance({
+      token: request.acceptance_jws,
+      registry: options.principalKeys ?? new Map(),
+      principalId: request.draft.principal.id,
+      draftHash,
+      acceptedAt: request.acceptance.accepted_at,
+    });
+    if (!verified.ok) {
+      throw new ActionCovenantError(verified.code, verified.message);
+    }
+    acceptanceProof = {
+      type: "principal_signed",
+      key_id: verified.keyId,
+      token: request.acceptance_jws,
+    };
+  } else if (options.requireSignedAcceptance === true) {
+    throw new ActionCovenantError(
+      "ACCEPTANCE_SIGNATURE_REQUIRED",
+      "This deployment requires the principal to sign the acceptance (acceptance_jws).",
+    );
+  }
+
   const createId = options.createId ?? (() => `acv_${crypto.randomUUID()}`);
   const unsignedCovenant = {
     id: createId(),
@@ -138,6 +172,7 @@ export async function activateActionCovenant(
     activated_at: now.toISOString(),
     draft: request.draft,
     acceptance: request.acceptance,
+    ...(acceptanceProof === undefined ? {} : { acceptance_proof: acceptanceProof }),
   };
   return Object.freeze({
     ...unsignedCovenant,

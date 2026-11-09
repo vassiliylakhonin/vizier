@@ -142,16 +142,48 @@ async function sign() {
   stdout.write(`${signingInput}.${base64url(new Uint8Array(signature))}\n`);
 }
 
+// Sign the principal's acceptance of one covenant draft (see
+// src/covenants/acceptance.ts). The draft hash is the SHA-256 the SDK's
+// hashActionCovenantDraft returns for the exact draft being accepted.
+async function accept() {
+  const keyPath = flag("key");
+  const principal = flag("principal");
+  const draftHash = flag("draft-hash");
+  if (!keyPath || !principal || !draftHash || !/^[a-f0-9]{64}$/.test(draftHash)) {
+    fail("accept needs --key <private jwk>, --principal <id> and --draft-hash <64 hex chars>");
+  }
+  const signingKey = JSON.parse(await readFile(keyPath, "utf8"));
+  const acceptedAt = new Date(flag("accepted-at", new Date().toISOString())).toISOString();
+  const header = { alg: "ES256", kid: signingKey.kid, typ: "vizier-covenant-acceptance+jws" };
+  const payload = { iss: principal, draft_hash: draftHash, accepted_at: acceptedAt };
+  const signingInput = `${base64url(new TextEncoder().encode(JSON.stringify(header)))}.${base64url(
+    new TextEncoder().encode(canonicalize(payload)),
+  )}`;
+  const cryptoKey = await crypto.subtle.importKey(
+    "jwk", signingKey, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" }, cryptoKey, new TextEncoder().encode(signingInput),
+  );
+  stdout.write(`${JSON.stringify({
+    accepted_at: acceptedAt,
+    acceptance_jws: `${signingInput}.${base64url(new Uint8Array(signature))}`,
+  }, null, 2)}\n`);
+}
+
 const command = argv[2];
 if (command === "keygen") {
   await keygen();
 } else if (command === "sign") {
   await sign();
+} else if (command === "accept") {
+  await accept();
 } else {
   stderr.write(
     "usage:\n" +
       "  node scripts/mint-grant.mjs keygen --kid <key-id> [--out principal.jwk.json]\n" +
-      "  node scripts/mint-grant.mjs sign --key <private jwk> --grant <claims json> [--ttl 3600]\n",
+      "  node scripts/mint-grant.mjs sign --key <private jwk> --grant <claims json> [--ttl 3600]\n" +
+      "  node scripts/mint-grant.mjs accept --key <private jwk> --principal <id> --draft-hash <hex>\n",
   );
   exit(command === undefined ? 1 : 1);
 }

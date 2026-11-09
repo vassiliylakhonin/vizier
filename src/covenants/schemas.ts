@@ -89,9 +89,18 @@ export const covenantAcceptanceSchema = z.strictObject({
   draft_hash: hashSchema,
 });
 
+export const covenantAcceptanceProofSchema = z.strictObject({
+  type: z.literal("principal_signed"),
+  key_id: identifierSchema,
+  /** The principal's signed acceptance (compact JWS), kept for offline verification. */
+  token: z.string().min(1).max(4_096),
+});
+
 export const actionCovenantActivationRequestSchema = z.strictObject({
   draft: actionCovenantDraftSchema,
   acceptance: covenantAcceptanceSchema,
+  /** Optional: compact JWS signed by the principal over the draft hash. */
+  acceptance_jws: z.string().min(1).max(4_096).optional(),
 });
 
 export const actionCovenantSchema = z.strictObject({
@@ -101,6 +110,8 @@ export const actionCovenantSchema = z.strictObject({
   activated_at: timestampSchema,
   draft: actionCovenantDraftSchema,
   acceptance: covenantAcceptanceSchema,
+  /** Present only when the principal signed the acceptance. */
+  acceptance_proof: covenantAcceptanceProofSchema.optional(),
   covenant_hash: hashSchema,
 });
 
