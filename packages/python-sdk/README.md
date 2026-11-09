@@ -1,12 +1,12 @@
 <!-- mcp-name: io.github.vassiliylakhonin/vizier-guard -->
 # Vizier Guard (Python SDK)
 
-Deterministic Authorization & Audit Firewall for AI Agent Actions.
+Python client for Vizier, a deterministic authorization service for AI agent actions. Calls go to a hosted (or self-hosted) Vizier service over HTTPS.
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](pyproject.toml)
 
-Vizier is an ultra-low-latency (sub-2ms) deterministic policy kernel that evaluates proposed AI agent actions before they cause external side-effects (payments, database mutations, external messages, code execution, worker deployments).
+Vizier is a deterministic policy kernel that evaluates proposed AI agent actions before they cause external side-effects (payments, database mutations, external messages, code execution, worker deployments). The policy decision itself is local to the service and uses no model; every client call is still a network request to the service, so end-to-end latency includes your network round trip and has not been benchmarked here.
 
 ---
 
@@ -20,15 +20,15 @@ Zero external dependencies required out of the box (uses Python standard library
 
 ---
 
-## 🛡️ Model Context Protocol (MCP) Server for Claude Desktop & Cursor
+## Model Context Protocol (MCP) Server (Claude Desktop, Cursor: untested examples)
 
-`vizier-guard` includes a first-class MCP server that equips **Claude Desktop**, **Cursor**, **Zed**, and **Windsurf** with deterministic authorization and audit tools:
+`vizier-guard` includes a first-class MCP server that equips **Claude Desktop**, **Cursor**, **Zed**, and **Windsurf** with deterministic authorization and audit tools. The configurations below are examples and have **not been tested** on each of these clients; only the stdio MCP server itself is covered by this package's tests:
 
-- `vizier_screen_action`: Screens proposed tool calls, shell executions, or writes before execution; returns cryptographic ALLOW / BLOCK receipts.
+- `vizier_screen_action`: Screens proposed tool calls, shell executions, or writes before execution; returns ALLOW / BLOCK / REVIEW decisions with a receipt. Receipts from `/v1/verify` are unsigned unless the service is configured with a receipt signing key and the request opts in (`X-Vizier-Receipt: jws`).
 - `vizier_verify_receipt`: Validates cryptographic JWS receipts and action hash bindings.
 - `vizier_check_policy`: Scans inputs/parameters for leaked API keys (DLP), sanctions matches, or loop storms.
 
-### Claude Desktop Configuration (`claude_desktop_config.json`)
+### Claude Desktop Configuration (`claude_desktop_config.json`, untested)
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
@@ -70,7 +70,7 @@ counter-offers `2025-11-25` for an unsupported revision. It does not negotiate
 stateless `2026-07-28` through initialize. Use the hosted HTTP endpoint's
 `server/discover` sequence when you need that separate protocol era.
 
-### Cursor Configuration (`.cursor/mcp.json`)
+### Cursor Configuration (`.cursor/mcp.json`, untested)
 
 ```json
 {
@@ -310,11 +310,11 @@ except CircuitTrippedError as err:
 
 ---
 
-## 🛡️ Pre-Action Sanctions & Anti-Fraud Gate (OFAC / EU / Crypto)
+## Pre-Action Sanctions & Anti-Fraud Gate (snapshot-based, not a clearance)
 
-Prevent autonomous agents from interacting with sanctioned entities, flagged crypto mixers (Tornado Cash, Lazarus, Garantex, SUEX), rogue vendor domains, or blacklisted IBANs.
+Reduce the chance that autonomous agents interact with sanctioned entities, flagged crypto mixers (Tornado Cash, Lazarus, Garantex, SUEX), rogue vendor domains, or blacklisted IBANs.
 
-All screening is evaluated deterministically in sub-2ms edge latency with zero outbound HTTP requests at evaluation time.
+Screening is deterministic and runs inside the Vizier service with no outbound lookup at decision time. It matches against a built-in static list plus, where enabled, a periodically synced snapshot of the OFAC SDN list; it is not a live feed. The built-in list is small and hand-picked (one EU entry, a few dozen OFAC entries) and does not cover the EU or UN lists in full, so a clean result is not a sanctions clearance. Check the service's snapshot date and coverage before relying on it for compliance. The Python client itself makes an HTTPS request for each screen.
 
 ### 1. Screening via `@vizier_guard`
 
@@ -354,7 +354,7 @@ if not result["clean"]:
 
 AI agents invoking external tools (Google search, Slack, email, external APIs) risk exfiltrating sensitive credentials or personal data—either via prompt hallucinations or Indirect Prompt Injection attacks.
 
-Vizier provides deterministic, sub-millisecond Data Loss Prevention (DLP) screening for every tool call:
+Vizier provides deterministic pattern-based Data Loss Prevention (DLP) screening for tool calls:
 
 * **API Keys & Secrets:** OpenAI (`sk-...`), Anthropic (`sk-ant-...`), AWS Access & Secret Keys, GitHub PATs, Stripe Live Keys, Slack tokens, Google Cloud keys, Private Key PEM blocks, and JWT tokens.
 * **PII:** Payment Cards (validated via Luhn algorithm to prevent false positives), US Social Security Numbers (SSN).

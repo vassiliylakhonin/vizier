@@ -6,7 +6,7 @@ export function createConsoleHtml(origin: string, scriptNonce: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vizier Security Console — AI Agent Governance & Guardrails</title>
+  <title>Vizier Security Console — Agent Action Authorization</title>
   <style>
     :root {
       --bg: #090d16;
