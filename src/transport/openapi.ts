@@ -28,6 +28,7 @@ import {
 import {
   actionCovenantAuthorizationResponseContractSchema,
   apiErrorContractSchema,
+  auditChainVerificationContractSchema,
   auditInsightsContractSchema,
   verificationResponseContractSchema,
 } from "./contracts";
@@ -60,6 +61,7 @@ const schemas: ReadonlyArray<readonly [string, ZodType]> = [
   ["SignedAuthorizationReceipt", signedAuthorizationReceiptSchema],
   ["ActionCovenantAuthorizationResponse", actionCovenantAuthorizationResponseContractSchema],
   ["AuditInsights", auditInsightsContractSchema],
+  ["AuditChainVerification", auditChainVerificationContractSchema],
   ["ExecutionOutcome", executionOutcomeSchema],
   ["OutcomeRecordingRequest", outcomeRecordingRequestSchema],
   ["OutcomeReceiptPayload", outcomeReceiptPayloadSchema],
@@ -329,6 +331,21 @@ export function createOpenApiDocument(
             "Returns authenticated operational aggregates. The audit store excludes action parameters, evidence, signals, outcome effects, credentials, and JWS tokens. Counts are best-effort instrumentation, not proof of adoption or complete execution history.",
           responses: {
             "200": successResponse("Metadata-only audit aggregates.", "AuditInsights"),
+            "401": { $ref: "#/components/responses/Unauthorized" },
+            "500": { $ref: "#/components/responses/InternalError" },
+            "503": { $ref: "#/components/responses/ServiceUnavailable" },
+          },
+        },
+      },
+      "/v1/audit/chain": {
+        get: {
+          operationId: "verifyAuditChain",
+          tags: ["Audit"],
+          summary: "Verify the hash-chained audit receipt log",
+          description:
+            "Recomputes every stored verification receipt hash and chain link, oldest first. Detects modification, insertion, reordering, and deletion of any chained row that still has a chained successor; a silent deletion of the newest rows is not detectable without an external anchor. Rows stored before the chain migration carry no hash and are reported as legacy. Concurrent writers can fork the chain; verification reports the fork at the second link.",
+          responses: {
+            "200": successResponse("Audit chain verification result.", "AuditChainVerification"),
             "401": { $ref: "#/components/responses/Unauthorized" },
             "500": { $ref: "#/components/responses/InternalError" },
             "503": { $ref: "#/components/responses/ServiceUnavailable" },

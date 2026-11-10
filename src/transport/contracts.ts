@@ -81,6 +81,14 @@ export const auditInsightsContractSchema = z.strictObject({
   }),
 });
 
+export const auditChainVerificationContractSchema = z.strictObject({
+  ok: z.boolean(),
+  checked: z.number().int().nonnegative(),
+  legacy: z.number().int().nonnegative(),
+  first_broken_id: z.string().trim().min(1).optional(),
+  reason: z.enum(["PREV_MISMATCH", "HASH_MISMATCH"]).optional(),
+});
+
 export const apiErrorContractSchema = z.strictObject({
   error: z.strictObject({
     code: z.string().trim().min(1).max(128),

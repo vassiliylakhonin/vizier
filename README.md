@@ -224,6 +224,22 @@ See the [threat model](docs/THREAT_MODEL.md) and [security review](docs/SECURITY
 
 The [maintainer's Worker deployment demo](docs/WORKER_DEPLOY_DEMO.md) records eight scenarios, including changed versions, out-of-scope targets, expired grants, missing approval, and replay. The report includes a [sanitized trace](docs/worker-deploy-live-demo-2026-10-13.json) and explains its limitations. It is owner-run testing, not independent customer adoption.
 
+## Authorization requirements coverage
+
+A 2026 review of authorization architectures for tool-using agents ([arXiv:2609.15906](https://arxiv.org/abs/2609.15906), 89 sources) defines seven structural requirements for agent authorization. Where Vizier stands against them, mapped to code:
+
+| Requirement | Status | What Vizier does | What it does not do |
+| --- | --- | --- | --- |
+| R1 Attributability | Partial | Every receipt records `authority_provenance` (`principal_signed`, `trusted_integration`, or `unverified`, which cannot produce `ALLOW`) and, for signed grants, the verified `jti`, issuer, subject, key id, and expiry. | Reconstruct a multi-hop principal chain across organizations; the immediate grant is the whole chain. |
+| R2 Explicit delegation | Covered (single hop) | Owner-signed ES256 grants bind this agent, these action types, these constraint values, and an expiry, verified offline against operator-registered keys; a caller-asserted API key is never enough in required-grant mode. | Evaluate natural-language task scope; constraints are structured values only. |
+| R3 Monotonic attenuation | Not done | Grants are single-hop; nothing is delegated onward, so there is no chain to attenuate. | Chained delegation with enforced scope narrowing, and provenance of arguments drawn from untrusted content (the direction of e.g. [arXiv:2611.00729](https://arxiv.org/abs/2611.00729)). |
+| R4 Aggregation bounds | Not done | Per-call authorization only. The review identifies this as the least satisfied requirement across the field, not just here. | Bound cumulative information use against the original task scope. |
+| R5 Temporal validity | Partial | Grant expiry is enforced (60s skew), revocation by `jti` via `POST /v1/grants/revoke` (D1) or the `VIZIER_REVOKED_GRANTS` secret, and single-use grants are spent at `ALLOW`, failing closed without the D1 binding. | Task-lifecycle revalidation: an unexpired grant stays valid if the workflow around it changes. Revocation is operator-driven, not principal-signed. |
+| R6 Runtime enforcement | Covered for guarded paths | Deterministic policy evaluation at the invocation layer (REST, MCP, A2A, and the MCP proxy) with no LLM in the decision; evaluation mode cannot return `ALLOW`. | Cover paths that bypass the guard: a caller holding direct tool credentials never traverses Vizier (see [Trust boundaries](#trust-boundaries)). |
+| R7 Tamper-resistant, attributable audit | Partial | Metadata-only D1 audit log (no caller payloads), opt-in `receipt_jws` verifiable against the published JWKS, and hash-chained stored receipts: each row's `receipt_hash` covers its own metadata and the previous row's hash (migration 0012), re-verified end to end by `GET /v1/audit/chain`. | The chain is best-effort single-writer: concurrent writers can fork it (verification reports the fork), rows written before migration 0012 are unchained, and a silent deletion of the newest rows is not detectable without an external anchor. No cross-organization audit correlation. |
+
+Statuses describe this repository's code and tests; live deployment state must be checked against the deployed service.
+
 ## Documentation and packages
 
 | Need | Reference |

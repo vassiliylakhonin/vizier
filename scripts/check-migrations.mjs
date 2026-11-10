@@ -55,6 +55,8 @@ assert.deepEqual(columns("audit_receipts"), [
   "policy_rule_ids",
   "action_type",
   "source",
+  "receipt_hash",
+  "prev_receipt_hash",
 ]);
 assert.deepEqual(columns("action_covenants"), [
   "id",

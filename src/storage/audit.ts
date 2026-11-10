@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 
+import { canonicalize, sha256 } from "../core/receipts";
 import type { VerificationRequest } from "../core/schemas";
 import type { Decision, Receipt } from "../core/types";
 import type {
@@ -53,27 +54,136 @@ export interface AuditPruneResult {
   };
 }
 
+/**
+ * The exact metadata a stored verification receipt is hashed over. The hash
+ * covers the same columns the audit insert writes plus the previous chain
+ * link, so any later change to a stored row invalidates its hash.
+ */
+export interface ChainedReceiptRow {
+  readonly id: string;
+  readonly created_at: string;
+  readonly request_hash: string;
+  readonly decision: Decision;
+  readonly risk_score: number;
+  readonly reason_codes: string;
+  readonly policy_rule_ids: string;
+  readonly action_type: string;
+  readonly source: string;
+  readonly prev_receipt_hash: string;
+}
+
+export async function auditReceiptHash(row: ChainedReceiptRow): Promise<string> {
+  return sha256(canonicalize({ ...row }));
+}
+
+export type AuditChainBreakReason = "PREV_MISMATCH" | "HASH_MISMATCH";
+
+export interface AuditChainVerification {
+  readonly ok: boolean;
+  /** Chained rows whose hash and link verified, in order, up to the first break. */
+  readonly checked: number;
+  /** Rows written before migration 0012; they carry no hash and are skipped. */
+  readonly legacy: number;
+  readonly first_broken_id?: string;
+  readonly reason?: AuditChainBreakReason;
+}
+
 export async function storeReceipt(
   db: D1Database,
   request: VerificationRequest,
   receipt: Receipt,
 ): Promise<void> {
+  const reasonCodes = JSON.stringify(receipt.reason_codes);
+  const policyRuleIds = JSON.stringify(receipt.policy_rule_ids);
+  const actionType = request.action.type;
+  const source = request.context.source;
+  const latest = await db
+    .prepare(
+      "SELECT receipt_hash FROM audit_receipts WHERE receipt_hash != '' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+    )
+    .first<{ receipt_hash: string }>();
+  const row: ChainedReceiptRow = {
+    id: receipt.id,
+    created_at: receipt.created_at,
+    request_hash: receipt.request_hash,
+    decision: receipt.decision,
+    risk_score: receipt.risk_score,
+    reason_codes: reasonCodes,
+    policy_rule_ids: policyRuleIds,
+    action_type: actionType,
+    source,
+    prev_receipt_hash: latest?.receipt_hash ?? "",
+  };
+  const receiptHash = await auditReceiptHash(row);
   await db
     .prepare(
-      "INSERT INTO audit_receipts (id, created_at, request_hash, decision, risk_score, reason_codes, policy_rule_ids, action_type, source) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+      "INSERT INTO audit_receipts (id, created_at, request_hash, decision, risk_score, reason_codes, policy_rule_ids, action_type, source, receipt_hash, prev_receipt_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
     )
     .bind(
-      receipt.id,
-      receipt.created_at,
-      receipt.request_hash,
-      receipt.decision,
-      receipt.risk_score,
-      JSON.stringify(receipt.reason_codes),
-      JSON.stringify(receipt.policy_rule_ids),
-      request.action.type,
-      request.context.source,
+      row.id,
+      row.created_at,
+      row.request_hash,
+      row.decision,
+      row.risk_score,
+      row.reason_codes,
+      row.policy_rule_ids,
+      row.action_type,
+      row.source,
+      receiptHash,
+      row.prev_receipt_hash,
     )
     .run();
+}
+
+/**
+ * Recomputes the audit receipt chain over every stored row, oldest first.
+ * Detects modification, insertion, reordering, and deletion of any chained
+ * row that still has a chained successor; a silent deletion of the newest
+ * rows is not detectable without an external anchor, and rows written before
+ * migration 0012 carry no hash and are skipped as legacy. Writers are
+ * best-effort: two concurrent writes can fork the chain by linking to the
+ * same predecessor, and verification reports the fork at the second link
+ * rather than hiding it.
+ */
+export async function verifyAuditChain(
+  db: D1Database,
+): Promise<AuditChainVerification> {
+  const result = await db
+    .prepare(
+      "SELECT id, created_at, request_hash, decision, risk_score, reason_codes, policy_rule_ids, action_type, source, receipt_hash, prev_receipt_hash FROM audit_receipts ORDER BY created_at, rowid",
+    )
+    .all<ChainedReceiptRow & { readonly receipt_hash: string }>();
+  let checked = 0;
+  let legacy = 0;
+  let expectedPrev = "";
+  for (const row of result.results) {
+    if (row.receipt_hash === "") {
+      legacy += 1;
+      continue;
+    }
+    if (row.prev_receipt_hash !== expectedPrev) {
+      return {
+        ok: false,
+        checked,
+        legacy,
+        first_broken_id: row.id,
+        reason: "PREV_MISMATCH",
+      };
+    }
+    const { receipt_hash, ...fields } = row;
+    if ((await auditReceiptHash(fields)) !== receipt_hash) {
+      return {
+        ok: false,
+        checked,
+        legacy,
+        first_broken_id: row.id,
+        reason: "HASH_MISMATCH",
+      };
+    }
+    expectedPrev = row.receipt_hash;
+    checked += 1;
+  }
+  return { ok: true, checked, legacy };
 }
 
 export async function storeCovenant(

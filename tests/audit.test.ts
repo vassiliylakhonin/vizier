@@ -46,6 +46,8 @@ describe("metadata-only D1 audit", () => {
             writes.push({ query, values });
           },
         }),
+        first: async () => undefined,
+        all: async () => ({ results: [] }),
       }),
     }) as D1Database;
 

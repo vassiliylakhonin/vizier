@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Hash-chained audit receipts. Stored verification receipts now carry `receipt_hash` (SHA-256 over the canonical metadata row) and `prev_receipt_hash` (migration 0012), so modification, insertion, reordering, or deletion of a chained row that still has a chained successor breaks verification. `GET /v1/audit/chain` (authenticated, D1 required) recomputes the chain and reports the first broken link. The chain is best-effort single-writer: concurrent writes can fork it, which verification reports rather than hides; rows written before migration 0012 are skipped as legacy, and a silent deletion of the newest rows is not detectable without an external anchor.
+
+- README: add an authorization-requirements coverage table mapping the seven structural requirements of arXiv:2609.15906 to what Vizier does and does not do, including chained delegation with monotonic attenuation and argument provenance (AgentCap direction) as not done.
+
 - SDK: opt-in typed ban-account guard (`guardBanAccount`). It wraps an executor so the evaluated action (target, `is_reversible`, parameters) is derived from the actual executor call, and the executor runs only after `authorize()` establishes an ALLOW; a refusal propagates as a `VizierError` and nothing executes. Reversibility and the action type are pinned once per integration, not per call, so a call site cannot ask Vizier about one account and ban another. Defaults and callers that do not opt in are unchanged.
 
 - SDK: opt-in `requireReceiptJws` on `verify()` and `authorize()`. A response without `receipt_jws` then throws `RECEIPT_SIGNATURE_REQUIRED` instead of being trusted unsigned, and the option implies the `X-Vizier-Receipt: jws` request header. The default behavior is unchanged. `risk_score` gains weights for `GRANT_REQUIRED`, `GRANT_POLICY_MISCONFIGURED` (0.5 each) and `IRREVERSIBLE_ACTION_REVIEW` (0.3), so a BLOCK no longer reports a zero score on those paths; the score remains diagnostic and decisions are unchanged.

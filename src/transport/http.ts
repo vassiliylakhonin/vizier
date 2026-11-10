@@ -84,6 +84,7 @@ import {
   storeCovenant,
   storeOutcome,
   storeReceipt,
+  verifyAuditChain,
   recordAnonymousCall,
   type AnonymousSurface,
 } from "../storage/audit";
@@ -1044,6 +1045,21 @@ async function handleInsights(
   return jsonResponse(await getInsights(options.db));
 }
 
+async function handleAuditChain(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "Audit chain verification");
+  if (options.db === undefined) {
+    throw new TransportRequestError(
+      503,
+      "AUDIT_CHAIN_UNAVAILABLE",
+      "Audit chain verification requires a configured database.",
+    );
+  }
+  return jsonResponse(await verifyAuditChain(options.db));
+}
+
 const createApiKeyRequestSchema = z.strictObject({
   org_id: z.string().trim().min(1).max(128),
   name: z.string().trim().min(1).max(128),
@@ -1161,6 +1177,7 @@ function docsDocument(options: TransportOptions): Response {
       authorize_covenant_action: "POST /v1/authorizations",
       record_outcome: "POST /v1/outcomes",
       audit_insights: "GET /v1/insights",
+      audit_chain: "GET /v1/audit/chain",
     },
     content_type: "application/json",
     request_schema: {
@@ -1642,6 +1659,9 @@ async function handleHttpRequestInner(
     if (request.method === "GET" && url.pathname === "/v1/insights") {
       return await handleInsights(request, options);
     }
+    if (request.method === "GET" && url.pathname === "/v1/audit/chain") {
+      return await handleAuditChain(request, options);
+    }
     if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
       return await handleChatCompletions(request, options);
     }
@@ -1741,6 +1761,18 @@ async function handleHttpRequestInner(
         { Allow: "GET" },
       );
     }
+    if (url.pathname === "/v1/audit/chain") {
+      return jsonResponse(
+        {
+          error: {
+            code: "METHOD_NOT_ALLOWED",
+            message: "Use GET for this endpoint.",
+          },
+        },
+        405,
+        { Allow: "GET" },
+      );
+    }
     return jsonResponse(
       {
         error: {
@@ -1768,6 +1800,7 @@ async function handleHttpRequestInner(
               "POST /v1/covenants": "activate an accepted Action Covenant",
               "POST /v1/authorizations": "authorize an exact covenant action",
               "POST /v1/outcomes": "bind an execution outcome to an authorization",
+              "GET /v1/audit/chain": "recompute and verify the hash-chained audit receipt log",
               "GET /v1/insights": "authenticated metadata-only audit counts",
             },
             contact: "vassiliy.lakhonin@gmail.com",
