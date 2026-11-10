@@ -184,6 +184,28 @@ or network failure.
   uses the validating Vizier SDK, refuses redirects, and constrains destinations;
   another embedding must reproduce those controls.
 
+- Amount limits are per call. `max_amount` bounds a single proposed action
+  against an exact currency; there is no cumulative money ceiling as a policy
+  stage. The experimental Base native-USDC reservations add single and daily
+  limits for that one review workflow and are documented as not a complete
+  wallet spending limit. Execution idempotency and duplicate-effect prevention
+  remain the integration's responsibility: a single-use grant is spent at
+  `ALLOW`, which prevents grant replay, not a duplicate executor effect.
+- No adversarial bypass suite runs in CI. The tests and scripted demos cover
+  intended allow and block paths; nothing systematically attempts to
+  circumvent the decision boundary (compare the 48-vector bypass suite of
+  arXiv:2606.28679).
+- DLP screening covers secret and PII leak categories on verification-request
+  parameters and, in the proxy, on pre-LLM message content and post-LLM
+  tool-call arguments. Tool outputs and other content returned to the model
+  are not screened, and model text responses are not filtered beyond those
+  categories. Response-side filtering (screening tool results for injected
+  instructions, output policy on model text) is out of scope.
+- Delegation is single-hop. A grant cannot be delegated onward, so there is no
+  chain whose scope must narrow monotonically and no provenance record for
+  arguments drawn from untrusted content (the direction of arXiv:2611.00729;
+  requirement R3 in the README coverage table).
+
 ### Worker deployment gateway
 
 The optional `serve` mode exposes only a fixed-scope deployment operation over

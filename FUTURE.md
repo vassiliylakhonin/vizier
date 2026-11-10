@@ -55,3 +55,46 @@ changes for existing callers. Sign with
 Limits: a signature proves the key holder accepted that draft hash, not that a
 human read it. The same signed acceptance can activate the same draft more than
 once, producing separate covenants.
+
+## Recorded gaps against the per-call authorization literature (2026-11-10)
+
+Two 2026 papers define controls adjacent to Vizier. This section records, from
+the current code, what is not done. It follows the rule at the top of this
+file: these are documented gaps, not committed work, and each is reconsidered
+only when observed production use requires it.
+
+ScopeGate ([arXiv:2606.28679](https://arxiv.org/abs/2606.28679)) describes a
+five-stage gate for agent tool calls: scope, authorization, money ceiling,
+idempotency, default deny. Against that model:
+
+- Scope, per-call authorization, and default deny are implemented: the
+  evaluation kernel never returns `ALLOW` by default, and each call is checked
+  against structured authority.
+- Money ceiling is not a policy stage. `max_amount` bounds one proposed call
+  with an exact three-letter currency; no cross-call cumulative budget exists.
+  The experimental Base native-USDC review reservations add single and daily
+  limits for that one workflow only, and their own documentation states they
+  are not a complete wallet spending limit.
+- Idempotency is not a policy stage. Execution idempotency and duplicate-effect
+  prevention remain the integration's responsibility. A single-use grant is
+  spent at `ALLOW`; that stops grant replay, not a duplicate executor effect.
+- No adversarial bypass suite runs in CI. ScopeGate evaluates its control with
+  a 48-vector static bypass suite and a 40-iteration adaptive bypass run.
+  Vizier CI runs unit tests, two scripted demos, and an isolation sandbox;
+  none of them systematically attempts to circumvent the decision boundary.
+
+AgentCap ([arXiv:2611.00729](https://arxiv.org/abs/2611.00729)) delegates
+authority along session-bound parent-child chains that can only attenuate, and
+checks the provenance of security-sensitive arguments. Vizier grants are
+single-hop: nothing is delegated onward, so there is no chain to attenuate and
+no argument-provenance tracking. This is requirement R3 ("Not done") in the
+README authorization-requirements table; it is restated here because it is a
+deferral, not an oversight.
+
+Response-side filtering is out of scope. DLP screening covers secret and PII
+leak categories on verification-request parameters and, in the proxy, on
+pre-LLM message content and post-LLM tool-call arguments. Tool outputs and
+other content returned to the model are not screened, and model text responses
+are not filtered beyond those leak categories. Screening tool results for
+injected instructions, or enforcing output policy on model text, would be a
+separate component.
