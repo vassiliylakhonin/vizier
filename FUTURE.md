@@ -70,9 +70,11 @@ idempotency, default deny. Against that model:
 - Scope, per-call authorization, and default deny are implemented: the
   evaluation kernel never returns `ALLOW` by default, and each call is checked
   against structured authority.
-- Money ceiling is not a policy stage. `max_amount` bounds one proposed call
-  with an exact three-letter currency; no cross-call cumulative budget exists.
-  The experimental Base native-USDC review reservations add single and daily
+- Money ceiling: implemented locally and opt-in as `constraints.budget`
+  (docs/BUDGET_CEILING.md), pending D1 migration 0013 and deploy. Until that
+  ships, `max_amount` bounds one proposed call with an exact three-letter
+  currency and no cross-call cumulative budget exists. It counts admitted
+  spend at ALLOW, not settled spend. The experimental Base native-USDC review reservations add single and daily
   limits for that one workflow only, and their own documentation states they
   are not a complete wallet spending limit.
 - Idempotency is not a policy stage. Execution idempotency and duplicate-effect

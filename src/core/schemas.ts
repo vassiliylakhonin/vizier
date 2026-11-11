@@ -71,6 +71,19 @@ export const authoritySchema = z.strictObject({
     dlp_screening: z.boolean().optional(),
     allowed_dlp_categories: stringSetSchema.optional(),
     numeric_consistency: z.boolean().optional(),
+    /**
+     * Cumulative spend ceiling across calls. Needs a principal-signed grant
+     * and a durable ledger; see docs/BUDGET_CEILING.md.
+     */
+    budget: z
+      .strictObject({
+        id: identifierSchema,
+        ceiling: z.number().finite().nonnegative().max(1_000_000_000),
+        currency: z.string().regex(/^[A-Z]{3}$/),
+        /** Action types that spend. Other actions are outside this budget. */
+        actions: z.array(actionTypeSchema).min(1).max(64),
+      })
+      .optional(),
     quorum: z
       .strictObject({
         min_approvals: z.number().int().min(1).max(10),

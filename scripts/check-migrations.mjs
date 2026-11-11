@@ -99,4 +99,8 @@ assert.equal(schemaSql.includes("effects"), false);
 assert.equal(schemaSql.includes("principal_id"), false);
 assert.equal(schemaSql.includes("agent_id"), false);
 
+// Budget ledger (0013): empty at creation, increments only, never negative.
+db.exec("INSERT INTO budget_ledger VALUES ('k', 'USD', 5, 1, 0)");
+assert.throws(() => db.exec("UPDATE budget_ledger SET spent_micros = -1"), /CHECK/);
+
 console.log(`checked ${migrations.length} D1 migrations in order`);

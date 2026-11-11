@@ -145,6 +145,10 @@ curl -sS https://vizier.agendamcp.dpdns.org/v1/verify \
 | `GRANT_AUDIENCE_MISMATCH` | `aud` is set and is not this deployment |
 | `GRANT_AUTHORITY_MISMATCH` | The request's authority differs from the signed one |
 
+Budget ceiling reason codes (`BUDGET_CEILING_EXCEEDED`, `BUDGET_UNPRICED`,
+`BUDGET_REQUIRES_GRANT`, `BUDGET_STATE_UNAVAILABLE`, `BUDGET_CURRENCY_CONFLICT`)
+are described in [BUDGET_CEILING.md](BUDGET_CEILING.md).
+
 All of them produce `BLOCK`. Signature failure and the three binding mismatches
 score risk 1.0, because each of them is an attempt rather than an accident.
 
