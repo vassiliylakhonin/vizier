@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tests: pin the OAE task-detail approval/result contract captured against `812af3f` in a shared validator used by the opt-in live probe and offline regression tests. Changed field sets, types, decision/state pairs or digest linkage fail with `OAE_TASK_DETAIL_CONTRACT_DRIFT`. Replay covers the five recorded consumer outcomes; mutation tests prove drift failures. Ordinary CI remains offline and does not watch upstream OAE. The scope gate and executor remain mocks.
+
 - Docs: record in FUTURE.md and the threat model what Vizier does not do against the per-call authorization literature: money ceiling and idempotency as policy stages, an adversarial bypass suite in CI (ScopeGate five-stage model, arXiv:2606.28679), response-side filtering beyond the DLP leak categories, and chained delegation with monotonic attenuation and argument provenance (arXiv:2611.00729, already README requirement R3). Statuses are derived from current code; nothing here is a commitment to build.
 
 - Hash-chained audit receipts. Stored verification receipts now carry `receipt_hash` (SHA-256 over the canonical metadata row) and `prev_receipt_hash` (migration 0012), so modification, insertion, reordering, or deletion of a chained row that still has a chained successor breaks verification. `GET /v1/audit/chain` (authenticated, D1 required) recomputes the chain and reports the first broken link. The chain is best-effort single-writer: concurrent writes can fork it, which verification reports rather than hides; rows written before migration 0012 are skipped as legacy, and a silent deletion of the newest rows is not detectable without an external anchor.

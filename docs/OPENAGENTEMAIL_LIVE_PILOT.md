@@ -32,6 +32,35 @@ with the requester's token returns HTTP 403; the reviewer's token succeeds.
 The unchanged consumer accepts both server result shapes. No task-detail
 contract adjustment was needed.
 
+## Contract drift check
+
+`tests/fixtures/openagentemail-contract.ts` validates the selected contract
+captured against `812af3f`. It pins exact `approval` and `result` fields,
+including `decidedAt` for approved/rejected and `expiredAt` for expired.
+It checks the observed state/decision pairs: no result with `input-required`,
+`approved`/`rejected` with `completed`, and `expired` with `failed`.
+Unrelated top-level task fields are ignored. Additive fields inside
+`approval` or `result` deliberately fail until reviewed.
+
+The live probe applies this validator to every successful task-detail read,
+before waiting for a desired state. A mismatch throws
+`OAE_TASK_DETAIL_CONTRACT_DRIFT` instead of silently polling or accepting it.
+`tests/openagentemail-contract-drift.test.ts`, included in `npm test`, checks
+the recorded report, mutation failures and a replay of the five outcomes
+through the reference consumer. The scope gate and executor remain mocks;
+replay-only participant and creation-time fields are synthetic, not new
+server evidence. The recorded access-control results are pinned at 401/403;
+the live probe checks requester detail reads at 200 and reviewer decision
+success independently.
+
+Ordinary CI is offline: it detects regressions against the recorded fixture,
+not changes on a running upstream server. No upstream watcher is added.
+To check a newer OAE revision, explicitly update the probe's pinned health
+commit and run it against a disposable instance built from that revision.
+A drift failure requires review of the raw response, consumer compatibility
+and this validator before updating the baseline. Do not overwrite the
+historical report as though it came from a newer revision.
+
 ## Reproduce against a disposable local instance
 
 This is an explicit integration probe, outside `npm test`. It creates two

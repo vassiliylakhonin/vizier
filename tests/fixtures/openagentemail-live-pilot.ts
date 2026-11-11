@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { consumeOaeApproval, openOaeApprovalStore, type OaeAction } from "./openagentemail-handoff";
+import { assertOaeTaskDetailContract } from "./openagentemail-contract";
 
 const sourceCommit = "812af3ff59167ab63d5d848f60c5cdb338534824";
 interface Identity { address: string; token: string; }
@@ -60,7 +61,7 @@ async function main() {
         await response.body?.cancel();
       } else {
         assert.equal(response.status, 200);
-        const task = await response.json() as Task;
+        const task = assertOaeTaskDetailContract(await response.json());
         if (predicate(task)) return task;
       }
       await sleep(250);
