@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { handleMcpRequest } from "../src/transport/mcp";
+import { STATELESS_ACCEPTED_REVISIONS } from "../src/transport/mcp-profiles";
 import { handleHttpRequest } from "../src/transport/http";
 import { verificationRequestSchema, verificationResponseSchema } from "../src/core/index";
 import { SERVICE_VERSION } from "../src/version";
@@ -91,7 +92,7 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
     expect(response.status).toBe(200);
     expect(body.id).toBe("discover-01");
     expect(body.result.resultType).toBe("complete");
-    expect(body.result.supportedVersions).toEqual([MCP_VERSION]);
+    expect(body.result.supportedVersions).toEqual([...STATELESS_ACCEPTED_REVISIONS]);
     expect(body.result.capabilities.tools.listChanged).toBe(false);
   });
 
@@ -222,7 +223,7 @@ describe("MCP 2026-07-28 Streamable HTTP", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: -32022,
-        data: { supported: [MCP_VERSION], requested: "2099-01-01" },
+        data: { supported: [...STATELESS_ACCEPTED_REVISIONS], requested: "2099-01-01" },
       },
     });
   });
@@ -453,14 +454,21 @@ describe("MCP session profile for shipping clients", () => {
     expect(response.status).toBe(200);
   });
 
-  it("reports both profiles when the negotiated header revision is unknown", async () => {
-    const response = await handleMcpRequest(
+  it("answers any dated header revision and reports the published revisions for a non-dated one", async () => {
+    const dated = await handleMcpRequest(
       sessionRequest(
         { jsonrpc: "2.0", id: 7, method: "tools/list" },
         { "MCP-Protocol-Version": "2099-01-01" },
       ),
     );
+    expect(dated.status).toBe(200);
 
+    const response = await handleMcpRequest(
+      sessionRequest(
+        { jsonrpc: "2.0", id: 7, method: "tools/list" },
+        { "MCP-Protocol-Version": "private-revision" },
+      ),
+    );
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: {

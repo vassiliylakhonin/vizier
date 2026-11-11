@@ -4,6 +4,10 @@ export const SESSION_PROTOCOL_VERSIONS: readonly string[] = Object.freeze([
   "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05",
 ]);
 export const DEFAULT_SESSION_PROTOCOL_VERSION = "2025-11-25";
+/** Revisions the stateless profile accepts mirrored in `_meta` and headers: its own current revision plus every session revision, because the stateless methods behave identically across them. Unknown revisions stay refused. */
+export const STATELESS_ACCEPTED_REVISIONS: readonly string[] = Object.freeze([
+  MCP_PROTOCOL_VERSION, ...SESSION_PROTOCOL_VERSIONS,
+]);
 
 export type McpRejection = "accept_mismatch" | "invalid_request" | "invalid_json"
   | "header_mismatch" | "unsupported_version" | "profile_method_mismatch"
@@ -73,13 +77,14 @@ export function connectionGuide(observation?: McpConnectionObservation) {
       methods:["initialize","notifications/initialized","ping","tools/list","tools/call"] },
     stateless: {
       start_with: "server/discover", protocol_version: MCP_PROTOCOL_VERSION,
+      accepted_protocol_versions: STATELESS_ACCEPTED_REVISIONS,
       methods:["server/discover","tools/list","tools/call"],
       required_headers: ["MCP-Protocol-Version", "Mcp-Method"],
       params_meta: {
         "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientCapabilities": {},
       },
-      note: "Mirror the protocol version from params._meta and the request method in these headers. tools/call also requires Mcp-Name to match params.name. Do not use initialize in this profile.",
+      note: "Mirror the protocol version from params._meta and the request method in these headers; any accepted_protocol_versions revision works. tools/call also requires Mcp-Name to match params.name. initialize belongs to the session profile and is answered there even when it carries _meta.",
     },
   };
 }

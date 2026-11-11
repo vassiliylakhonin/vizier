@@ -40,23 +40,29 @@ describe("copyable MCP connection example", () => {
     expect(calls).toBe(2);
   });
   it.each([
-    ["2025-06-18", "unsupported_version", "session"],
-    ["2026-07-28", "profile_method_mismatch", "stateless"],
-  ])("exposes a safe recovery hint for a %s mixed-profile refusal", async (revision, reason, profile) => {
+    ["unsupported_version", {
+      headers: { "MCP-Protocol-Version": "private-client-revision", "Mcp-Method": "tools/list" },
+      body: { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: {
+        "io.modelcontextprotocol/protocolVersion": "private-client-revision", "io.modelcontextprotocol/clientCapabilities": {},
+      } } },
+    }],
+    ["profile_method_mismatch", {
+      headers: {},
+      body: { jsonrpc: "2.0", id: 1, method: "server/discover", params: {} },
+    }],
+  ] as const)("exposes a safe recovery hint for a %s refusal", async (reason, crafted) => {
     let calls = 0;
     const fetchImpl: typeof fetch = async (input, init) => {
       calls++;
       if (calls === 1) return handleHttpRequest(new Request(input, init));
       return handleHttpRequest(new Request("https://vizier.example/mcp", {
         method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream",
-          "MCP-Protocol-Version": revision, "Mcp-Method": "initialize" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { _meta: {
-          "io.modelcontextprotocol/protocolVersion": revision, "io.modelcontextprotocol/clientCapabilities": {},
-        } } }),
+          ...crafted.headers },
+        body: JSON.stringify(crafted.body),
       }));
     };
     await expect(connectMcp("https://vizier.example", "session", { fetchImpl })).rejects.toMatchObject({
-      reason, recommendedProfile: profile, recommendedVersion: revision,
+      reason, recommendedProfile: "session", recommendedVersion: "2025-11-25",
     });
     expect(calls).toBe(2);
   });

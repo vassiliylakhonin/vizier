@@ -17,7 +17,7 @@ import {
 } from "./shared";
 import { authorizeEnforcement } from "./auth";
 import { SERVICE_VERSION } from "../version";
-import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, toolDiscoveryHint, type McpRejection, type McpConnectionObservation, observedRevision, observedClientFamily } from "./mcp-profiles";
+import { MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, STATELESS_ACCEPTED_REVISIONS, DEFAULT_SESSION_PROTOCOL_VERSION, connectionHint, toolDiscoveryHint, type McpRejection, type McpConnectionObservation, observedRevision, observedClientFamily } from "./mcp-profiles";
 
 // Revisions that predate the stateless 2026-07-28 handshake. Shipping clients
 // (Claude Code, Cursor, the MCP Inspector) still open a session with
@@ -171,9 +171,25 @@ function validateOrigin(request: Request): boolean {
 }
 
 // The stateless profile is selected by the request itself: only 2026-07-28
-// carries the protocol version inside `params._meta`.
+// carries the protocol version inside `params._meta`. Session-lifecycle
+// methods are the exception: a client that mirrors its revision into `_meta`
+// still means a session when it sends initialize, and refusing it there
+// (profile_method_mismatch) stranded every measured external caller that
+// connected this way. Answer session-lifecycle methods on the session
+// profile regardless of `_meta`.
+const SESSION_LIFECYCLE_METHODS: ReadonlySet<string> = new Set([
+  "initialize",
+  "notifications/initialized",
+]);
+// Revision strings are dated (2024-11-05, 2025-11-25, ...); a dated value this
+// endpoint has not pinned still names an MCP revision, not garbage input.
+const DATED_REVISION = /^\d{4}-\d{2}-\d{2}$/;
 function usesStatelessProfile(input: unknown): boolean {
   if (typeof input !== "object" || input === null) {
+    return false;
+  }
+  const method = (input as { method?: unknown }).method;
+  if (typeof method === "string" && SESSION_LIFECYCLE_METHODS.has(method)) {
     return false;
   }
   const params = (input as { params?: unknown }).params;
@@ -211,13 +227,19 @@ function validateHeaders(request: Request, body: McpRequest): Response | null {
     );
   }
 
-  if (bodyVersion !== MCP_PROTOCOL_VERSION) {
+  // The stateless methods are identical across every published revision, so
+  // a caller mirroring a session revision into `_meta` is served instead of
+  // refused; only revisions outside the published set keep the hard error.
+  if (
+    typeof bodyVersion !== "string" ||
+    !STATELESS_ACCEPTED_REVISIONS.includes(bodyVersion)
+  ) {
     return mcpError(
       body.id,
       -32022,
       "The requested MCP protocol version is not supported.",
       400,
-      { supported: [MCP_PROTOCOL_VERSION], requested: bodyVersion },
+      { supported: [...STATELESS_ACCEPTED_REVISIONS], requested: bodyVersion },
       "unsupported_version",
     );
   }
@@ -372,7 +394,7 @@ async function handleStatelessRequest(
   switch (parsed.data.method) {
     case "server/discover":
       return mcpResult(parsed.data.id, {
-        supportedVersions: [MCP_PROTOCOL_VERSION],
+        supportedVersions: [...STATELESS_ACCEPTED_REVISIONS],
         capabilities: { tools: { listChanged: false } },
         instructions: grantInstructions(options),
         ttlMs: 300_000,
@@ -395,9 +417,18 @@ async function handleStatelessRequest(
 
 function negotiateSessionVersion(params: Record<string, unknown> | undefined): string {
   const requested = params?.protocolVersion;
-  return typeof requested === "string" &&
-    SESSION_PROTOCOL_VERSIONS.includes(requested)
-    ? requested
+  if (typeof requested === "string" && SESSION_PROTOCOL_VERSIONS.includes(requested)) {
+    return requested;
+  }
+  // A client that mirrored its revision into `_meta` instead of the
+  // initialize field asked for that revision; honor it when it is one this
+  // endpoint answers, rather than forcing the default.
+  const meta = params?._meta;
+  const mirrored = typeof meta === "object" && meta !== null
+    ? (meta as Record<string, unknown>)["io.modelcontextprotocol/protocolVersion"]
+    : undefined;
+  return typeof mirrored === "string" && SESSION_PROTOCOL_VERSIONS.includes(mirrored)
+    ? mirrored
     : DEFAULT_SESSION_PROTOCOL_VERSION;
 }
 
@@ -424,12 +455,14 @@ async function handleSessionRequest(
   const message: SessionMessage = parsed.data;
 
   // The header is absent on `initialize` and carries the negotiated revision
-  // afterwards. Reject only a revision this endpoint cannot answer.
+  // afterwards. Session behavior is identical across revisions, so any dated
+  // revision is answered; reject only a value that is no revision at all.
   const headerVersion = request.headers.get("MCP-Protocol-Version");
   if (
     headerVersion !== null &&
     headerVersion !== MCP_PROTOCOL_VERSION &&
-    !SESSION_PROTOCOL_VERSIONS.includes(headerVersion)
+    !SESSION_PROTOCOL_VERSIONS.includes(headerVersion) &&
+    !DATED_REVISION.test(headerVersion)
   ) {
     return mcpError(
       message.id,
@@ -532,7 +565,7 @@ async function handleMcpRequestInner(
   observation.connection = {
     mcp_profile: stateless ? "stateless" : "session",
     mcp_header_revision: observedRevision(request.headers.get("MCP-Protocol-Version")),
-    mcp_body_revision: observedRevision(stateless ? meta["io.modelcontextprotocol/protocolVersion"] : values.protocolVersion),
+    mcp_body_revision: observedRevision(stateless ? meta["io.modelcontextprotocol/protocolVersion"] : values.protocolVersion ?? meta["io.modelcontextprotocol/protocolVersion"]),
     mcp_client_family: observedClientFamily(
       typeof clientInfo === "object" && clientInfo !== null && "name" in clientInfo ? clientInfo.name : undefined,
       request.headers.get("User-Agent"),

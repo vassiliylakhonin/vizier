@@ -18,10 +18,9 @@ function post(method: string, params: Record<string, unknown> = {}, headers: Rec
 
 describe("MCP connection recovery", () => {
   it.each([
-    ['unsupported_version','initialize',{_meta:{...meta,'io.modelcontextprotocol/protocolVersion':'2025-06-18'}},
-      {'MCP-Protocol-Version':'2025-06-18','Mcp-Method':'initialize'},'protocolVersion'],
-    ['profile_method_mismatch','initialize',{_meta:meta},
-      {'MCP-Protocol-Version':STATELESS,'Mcp-Method':'initialize'},'server/discover'],
+    ['unsupported_version','tools/list',{_meta:{...meta,'io.modelcontextprotocol/protocolVersion':'private-client-revision'}},
+      {'MCP-Protocol-Version':'private-client-revision','Mcp-Method':'tools/list'},'_meta'],
+    ['profile_method_mismatch','server/discover',{},{},'server/discover'],
     ['invalid_request','notifications/initialized',{},
       {'MCP-Protocol-Version':VERSION},'JSON-RPC'],
   ] as const)('gives a targeted correction for %s while keeping the refusal',async(reason,method,params,headers,term)=>{
@@ -66,47 +65,48 @@ describe("MCP connection recovery", () => {
     }
   });
 
-  it("recommends stateless discovery for the current body revision and never echoes unknown revisions in hints",async()=>{
-    for (const revision of [STATELESS,"private-client-revision"]) {
-      const response=await handleHttpRequest(post("initialize",{_meta:{...meta,
-        "io.modelcontextprotocol/protocolVersion":revision}},{"MCP-Protocol-Version":revision,"Mcp-Method":"initialize"}));
-      const body=await response.json() as {error:{data:{connection_hint:{recommended_profile:string;
-        recovery_requests:{profile:string;headers:Record<string,string>;body:unknown;
-          follow_up_requests:{headers:Record<string,string>;body:unknown}[]}[]}}}};
-      const hint=body.error.data.connection_hint;
-      expect(hint.recommended_profile).toBe(revision===STATELESS?"stateless":"session");
-      expect(JSON.stringify(hint)).not.toContain("private-");
-      const recovery=hint.recovery_requests.find(r=>r.profile===hint.recommended_profile)!;
-      for(const step of [recovery,...recovery.follow_up_requests]) {
-        const recovered=await handleHttpRequest(new Request("https://vizier.example/mcp",{
-          method:"POST",headers:step.headers,body:JSON.stringify(step.body)}));
-        expect([200,202]).toContain(recovered.status);
-      }
+  it("serves the stateless profile to a caller mirroring any accepted revision and never echoes unknown revisions in hints",async()=>{
+    for (const revision of [STATELESS,"2025-06-18",VERSION]) {
+      const listed=await handleHttpRequest(post("tools/list",{_meta:{...meta,
+        "io.modelcontextprotocol/protocolVersion":revision}},{"MCP-Protocol-Version":revision,"Mcp-Method":"tools/list"}));
+      expect(listed.status).toBe(200);
+      expect(await listed.json()).toMatchObject({result:{tools:[{name:"vizier_verify_action"}]}});
+      const discovered=await handleHttpRequest(post("server/discover",{_meta:{...meta,
+        "io.modelcontextprotocol/protocolVersion":revision}},{"MCP-Protocol-Version":revision,"Mcp-Method":"server/discover"}));
+      expect(discovered.status).toBe(200);
+      expect(await discovered.json()).toMatchObject({result:{supportedVersions:expect.arrayContaining([revision,STATELESS])}});
+    }
+    const rejected=await handleHttpRequest(post("tools/list",{_meta:{...meta,
+      "io.modelcontextprotocol/protocolVersion":"private-client-revision"}},{"MCP-Protocol-Version":"private-client-revision","Mcp-Method":"tools/list"}));
+    expect(rejected.status).toBe(400);
+    const body=await rejected.json() as {error:{data:{connection_hint:{recommended_profile:string;
+      recovery_requests:{profile:string;headers:Record<string,string>;body:unknown;
+        follow_up_requests:{headers:Record<string,string>;body:unknown}[]}[]}}}};
+    const hint=body.error.data.connection_hint;
+    expect(hint.recommended_profile).toBe("session");
+    expect(JSON.stringify(hint)).not.toContain("private-");
+    const recovery=hint.recovery_requests.find(r=>r.profile===hint.recommended_profile)!;
+    for(const step of [recovery,...recovery.follow_up_requests]) {
+      const recovered=await handleHttpRequest(new Request("https://vizier.example/mcp",{
+        method:"POST",headers:step.headers,body:JSON.stringify(step.body)}));
+      expect([200,202]).toContain(recovered.status);
     }
   });
 
-  it("preserves a recognized session revision and supplies its full read-only recovery sequence", async () => {
+  it("answers an initialize that mirrors its revision in _meta and keeps that revision for the session", async () => {
     for (const revision of ["2025-06-18", VERSION]) {
-      const rejected=await handleHttpRequest(post("initialize",{_meta:{...meta,
+      const init=await handleHttpRequest(post("initialize",{_meta:{...meta,
         "io.modelcontextprotocol/protocolVersion":revision}},
         {"MCP-Protocol-Version":revision,"Mcp-Method":"initialize"}));
-      expect(rejected.status).toBe(400);
-      const body=await rejected.json() as {error:{data:{connection_hint:{recommended_profile:string;
-        recommended_protocol_version:string;automatic_retry:boolean;recovery_requests:{profile:string;headers:Record<string,string>;
-          body:unknown;follow_up_requests:{headers:Record<string,string>;body:unknown}[]}[]}}}};
-      const hint=body.error.data.connection_hint;
-      expect(hint.recommended_profile).toBe("session");
-      expect(hint.recommended_protocol_version).toBe(revision);
-      expect(hint.automatic_retry).toBe(false);
-      const recovery=hint.recovery_requests.find(item=>item.profile==="session")!;
-      expect(recovery.body).toMatchObject({method:"initialize",params:{protocolVersion:revision}});
-      for (const step of [recovery,...recovery.follow_up_requests]) {
-        const response=await handleHttpRequest(new Request("https://vizier.example/mcp",{
-          method:"POST",headers:step.headers,body:JSON.stringify(step.body)}));
-        expect([200,202]).toContain(response.status);
-        if(response.status===200)expect(await response.json()).toHaveProperty("result");
-      }
-      expect(JSON.stringify(recovery)).not.toContain("tools/call");
+      expect(init.status).toBe(200);
+      expect(await init.json()).toMatchObject({result:{protocolVersion:revision}});
+      const initialized=await handleHttpRequest(post("notifications/initialized",
+        {_meta:{...meta,"io.modelcontextprotocol/protocolVersion":revision}},
+        {"MCP-Protocol-Version":revision,"Mcp-Method":"notifications/initialized"},true));
+      expect(initialized.status).toBe(202);
+      const listed=await handleHttpRequest(post("tools/list",{},{"MCP-Protocol-Version":revision}));
+      expect(listed.status).toBe(200);
+      expect(await listed.json()).toMatchObject({result:{tools:[{name:"vizier_verify_action"}]}});
     }
   });
 
@@ -138,25 +138,23 @@ describe("MCP connection recovery", () => {
       expect(await listed.json()).toMatchObject({result:{tools:[{name:'vizier_verify_action'}]}});
     }
   });
-  it("provides executable read-only recovery requests for both mixed-profile failures", async () => {
-    for (const revision of ["2025-06-18", VERSION, STATELESS]) {
-      const response = await handleHttpRequest(post("initialize", {
-        _meta: { ...meta, "io.modelcontextprotocol/protocolVersion": revision },
-      }, { "MCP-Protocol-Version": revision, "Mcp-Method": "initialize" }));
-      expect(response.status).toBe(revision === STATELESS ? 404 : 400);
-      const body = await response.json() as { error: { data: { connection_hint: {
-        recovery_requests: { profile: string; headers: Record<string, string>; body: unknown }[];
-      } } } };
-      const requests = body.error.data.connection_hint.recovery_requests;
-      expect(requests).toHaveLength(2);
-      for (const recovery of requests) {
-        const recovered = await handleHttpRequest(new Request("https://vizier.example/mcp", {
-          method: "POST", headers: recovery.headers, body: JSON.stringify(recovery.body),
-        }));
-        expect(recovered.status).toBe(200);
-        expect(await recovered.json()).toHaveProperty("result");
-        expect(JSON.stringify(recovery)).not.toContain("tools/call");
-      }
+  it("provides executable read-only recovery requests for the remaining mixed-profile failure", async () => {
+    const response = await handleHttpRequest(post("server/discover", {}));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { error: { data: { connection_hint: {
+      reason: string;
+      recovery_requests: { profile: string; headers: Record<string, string>; body: unknown }[];
+    } } } };
+    expect(body.error.data.connection_hint.reason).toBe("profile_method_mismatch");
+    const requests = body.error.data.connection_hint.recovery_requests;
+    expect(requests).toHaveLength(2);
+    for (const recovery of requests) {
+      const recovered = await handleHttpRequest(new Request("https://vizier.example/mcp", {
+        method: "POST", headers: recovery.headers, body: JSON.stringify(recovery.body),
+      }));
+      expect(recovered.status).toBe(200);
+      expect(await recovered.json()).toHaveProperty("result");
+      expect(JSON.stringify(recovery)).not.toContain("tools/call");
     }
   });
 
@@ -175,16 +173,23 @@ describe("MCP connection recovery", () => {
     expect(await capabilities.json()).toMatchObject({ supported_protocol_versions: expect.arrayContaining([VERSION]) });
   });
 
-  it("explains a stateless initialize mismatch instead of leaving an opaque 404", async () => {
+  it("answers an initialize carrying stateless metadata on the session profile instead of refusing it", async () => {
     const result = await handleHttpRequest(post("initialize", { _meta: meta }, {
       "MCP-Protocol-Version": STATELESS, "Mcp-Method": "initialize",
     }));
-    expect(result.status).toBe(404);
-    expect(await result.json()).toMatchObject({ error: { code: -32601, data: { connection_hint: {
-      reason: "profile_method_mismatch", endpoint: "/mcp", method: "POST",
-      session: { start_with: "initialize", protocol_versions: expect.arrayContaining([VERSION]) },
-      stateless: { start_with: "server/discover", protocol_version: STATELESS },
-    } } } });
+    expect(result.status).toBe(200);
+    // 2026-07-28 names no session revision, so negotiation falls back to the default.
+    expect(await result.json()).toMatchObject({ result: { protocolVersion: VERSION } });
+  });
+
+  it("answers a session caller echoing any dated revision, known or not", async () => {
+    for (const revision of ["2026-03-26", VERSION]) {
+      const listed = await handleHttpRequest(post("tools/list", {}, { "MCP-Protocol-Version": revision }));
+      expect(listed.status).toBe(200);
+      expect(await listed.json()).toMatchObject({ result: { tools: [{ name: "vizier_verify_action" }] } });
+    }
+    const rejected = await handleHttpRequest(post("tools/list", {}, { "MCP-Protocol-Version": "private-revision" }));
+    expect(rejected.status).toBe(400);
   });
 
   it("gives the exact mirrored header names without accepting an incomplete stateless request", async () => {
@@ -243,9 +248,15 @@ describe('bounded MCP negotiation observations', () => {
   it('distinguishes a mixed stateless profile from an unknown session revision without client strings', async () => {
     const log=vi.spyOn(console,'log').mockImplementation(()=>{});
     try {
+      log.mockClear();
+      const accepted=await handleHttpRequest(post('tools/list',
+        {_meta:{...meta,'io.modelcontextprotocol/protocolVersion':VERSION}}, {'MCP-Protocol-Version':VERSION,'Mcp-Method':'tools/list'}));
+      expect(accepted.status).toBe(200);
+      const acceptedRows=log.mock.calls.map(c=>typeof c[0]==='string'?JSON.parse(c[0]):c[0]).filter(e=>e.event==='agenda_service_access');
+      expect(acceptedRows).toHaveLength(1);
+      expect(acceptedRows[0]).toMatchObject({mcp_profile:'stateless',mcp_header_revision:VERSION,mcp_body_revision:VERSION});
+      expect(acceptedRows[0].mcp_rejection ?? null).toBeNull();
       for (const [params,headers,expected] of [
-        [{_meta:{...meta,'io.modelcontextprotocol/protocolVersion':VERSION}}, {'MCP-Protocol-Version':VERSION,'Mcp-Method':'tools/list'},
-          {mcp_profile:'stateless',mcp_header_revision:VERSION,mcp_body_revision:VERSION}],
         [{private:'private-prompt'}, {'MCP-Protocol-Version':'private-revision'},
           {mcp_profile:'session',mcp_header_revision:'other',mcp_body_revision:'missing'}],
         [{_meta:meta}, {'MCP-Protocol-Version':VERSION,'Mcp-Method':'tools/list'},
