@@ -206,6 +206,25 @@ class VizierClient:
             payload["registration_number"] = registration_number
         return self._request("/v1/sanctions/screen-entity", payload)
 
+    def scan_numeric_consistency(
+        self,
+        text: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Compare labeled numbers and recompute upside, not factual truth.
+
+        No authorization is granted. An optional scan receipt is returned as an
+        opaque token and is not verified by this method.
+        """
+        if text is None and parameters is None:
+            raise ValueError("Either text or parameters must be provided")
+        payload: Dict[str, Any] = {}
+        if text is not None:
+            payload["text"] = text
+        if parameters is not None:
+            payload["parameters"] = parameters
+        return self._request("/v1/numeric-consistency/scan", payload)
+
     def scan_dlp(
         self,
         text: Optional[str] = None,
@@ -324,6 +343,7 @@ class VizierClient:
         proposal_id: Optional[str] = None,
         approvals: Optional[List[Union[QuorumApproval, Dict[str, Any]]]] = None,
         quorum: Optional[Union[QuorumConstraints, Dict[str, Any]]] = None,
+        numeric_consistency: Optional[bool] = None,
     ) -> VerificationResponse:
         """
         Convenience method: verify an action in a single line of code.
@@ -349,6 +369,7 @@ class VizierClient:
                     dlp_screening=dlp_screening,
                     allowed_dlp_categories=allowed_dlp_categories,
                     quorum=quorum,
+                    numeric_consistency=numeric_consistency,
                 ),
             ),
             context=Context(

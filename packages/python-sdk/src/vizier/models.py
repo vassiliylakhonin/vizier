@@ -92,6 +92,7 @@ class AuthorityConstraints:
     dlp_screening: Optional[bool] = None
     allowed_dlp_categories: Optional[List[str]] = None
     quorum: Optional[Union[QuorumConstraints, Dict[str, Any]]] = None
+    numeric_consistency: Optional[bool] = None
 
 @dataclass
 class Authority:
@@ -165,6 +166,8 @@ class VerificationRequest:
             cd["sanctions_screening"] = c.sanctions_screening
         if c.blocked_entities is not None:
             cd["blocked_entities"] = c.blocked_entities
+        if c.numeric_consistency is not None:
+            cd["numeric_consistency"] = c.numeric_consistency
         if c.dlp_screening is not None:
             cd["dlp_screening"] = c.dlp_screening
         if c.allowed_dlp_categories is not None:

@@ -29,6 +29,8 @@ export interface VerificationRequest {
       blocked_targets?: string[];
       allowed_sensitive_actions?: string[];
       require_review_for_irreversible?: boolean;
+      /** Opt-in internal numeric consistency heuristic; findings require REVIEW, never BLOCK by this rule. */
+      numeric_consistency?: boolean;
     };
   };
   context: {
@@ -86,6 +88,31 @@ export interface VerificationResponse {
     grant?: ReceiptGrant;
   };
 }
+
+/** Anonymous numeric preflight, separate from authorization and factual verification. */
+export type NumericConsistencyScanRequest =
+  | { text: string; parameters?: Record<string, JsonValue> }
+  | { text?: string; parameters: Record<string, JsonValue> };
+
+const numericMentionSchema = z.object({
+  label: z.string(), label_text: z.string(), value: z.number(),
+  unit: z.enum(["percent", "currency", "plain"]), currency: z.string().nullable(),
+  line: z.number().int().positive(), context: z.string(),
+  fraction_digits: z.number().int().nonnegative(), superseded: z.boolean(),
+});
+const numericFindingSchema = z.object({
+  kind: z.enum(["metric_conflict", "derived_value_mismatch"]),
+  label: z.string(), path: z.string(), detail: z.string(),
+  mentions: z.array(numericMentionSchema), expected: z.number().optional(),
+  stated: z.number().optional(), tolerance: z.number().optional(),
+});
+const numericScanResponseSchema = z.object({
+  consistent: z.boolean(), findings: z.array(numericFindingSchema),
+  mentions_count: z.number().int().nonnegative(), receipt: z.string().optional(),
+});
+export type NumericMention = z.infer<typeof numericMentionSchema>;
+export type NumericConsistencyFinding = z.infer<typeof numericFindingSchema>;
+export type NumericConsistencyScanResponse = z.infer<typeof numericScanResponseSchema>;
 
 export interface AuditInsights {
   decisions: Array<{ decision: Decision; count: number }>;
@@ -781,6 +808,23 @@ export class Vizier {
       );
     }
     return { body: responseBody, status: response.status };
+  }
+
+  /**
+   * Compare labeled numbers and recompute upside from the supplied text/parameters.
+   * A consistent result is not a fact check or authorization. The optional scan
+   * receipt is returned as an opaque token, not verified by this method.
+   */
+  async scanNumericConsistency(
+    request: NumericConsistencyScanRequest,
+    options: VerifyOptions = {},
+  ): Promise<NumericConsistencyScanResponse> {
+    const response = await this.#postJson("/v1/numeric-consistency/scan", request, options);
+    const parsed = numericScanResponseSchema.safeParse(response.body);
+    if (!parsed.success) {
+      throw new VizierError("Invalid numeric consistency scan response.", response.status, "INVALID_RESPONSE");
+    }
+    return parsed.data;
   }
 
   async #fetchJwks(options: VerifyOptions): Promise<z.infer<typeof jwksSchema>> {

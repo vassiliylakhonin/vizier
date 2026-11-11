@@ -89,6 +89,18 @@ class AsyncVizierClient:
             registration_number=registration_number,
         )
 
+    async def scan_numeric_consistency(
+        self,
+        text: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Async internal-consistency preflight, not fact checking or authorization."""
+        return await asyncio.to_thread(
+            self._sync_client.scan_numeric_consistency,
+            text=text,
+            parameters=parameters,
+        )
+
     async def scan_dlp(
         self,
         text: Optional[str] = None,
@@ -188,6 +200,7 @@ class AsyncVizierClient:
         proposal_id: Optional[str] = None,
         approvals: Optional[List[Union[QuorumApproval, Dict[str, Any]]]] = None,
         quorum: Optional[Union[QuorumConstraints, Dict[str, Any]]] = None,
+        numeric_consistency: Optional[bool] = None,
     ) -> VerificationResponse:
         """
         Asynchronously verify an action in a single line of code without blocking the event loop.
@@ -214,5 +227,6 @@ class AsyncVizierClient:
             proposal_id=proposal_id,
             approvals=approvals,
             quorum=quorum,
+            numeric_consistency=numeric_consistency,
         )
 

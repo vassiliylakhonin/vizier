@@ -130,3 +130,21 @@ locally retained request, then atomically consumes the operator's approval once.
 The client does not approve, sign, broadcast or change Financial Guard verdicts.
 Keep the separate reviewer key out of the integration. See the repository's
 human-review documentation and `/reviews` on your trusted Vizier origin.
+
+## Numeric consistency preflight
+
+```ts
+const vizier = new Vizier({ baseUrl: "https://vizier.agendamcp.dpdns.org" });
+const scan = await vizier.scanNumericConsistency({
+  text: "Target price: $100\nCurrent price: $80\nUpside: 25%",
+});
+console.log(scan.consistent, scan.findings);
+```
+
+The anonymous `POST /v1/numeric-consistency/scan` endpoint accepts `text`,
+`parameters`, or both. It compares labeled numbers and recomputes upside.
+It is a heuristic, not a fact check or permission to act. An optional `receipt`
+is returned as an opaque token, not verified by this scan method.
+For action verification, set `request.authority.constraints.numeric_consistency = true`
+before `verify()`. Findings add `REVIEW` / `NUMERIC_INCONSISTENCY`, never `BLOCK`
+from this rule; other authorization rules can still block. Default requests are unchanged.

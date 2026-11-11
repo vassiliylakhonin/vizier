@@ -456,3 +456,22 @@ def wire_funds(recipient: str, amount: float):
 
 
 
+
+## Numeric consistency preflight
+
+```python
+client = VizierClient(base_url="https://vizier.agendamcp.dpdns.org")
+scan = client.scan_numeric_consistency(
+    text="Target price: $100\nCurrent price: $80\nUpside: 25%"
+)
+print(scan["consistent"], scan["findings"])
+# AsyncVizierClient supports: await client.scan_numeric_consistency(...)
+```
+
+The anonymous scan accepts `text`, `parameters`, or both. It compares labeled
+numbers and recomputes upside, not factual truth. The optional scan `receipt`
+is returned as an opaque token, not verified by this method. No authorization is granted.
+For `/v1/verify`, use `AuthorityConstraints(numeric_consistency=True)` or
+`client.check(..., numeric_consistency=True)` (also supported by the async client).
+Findings add `REVIEW` / `NUMERIC_INCONSISTENCY`, never `BLOCK` from this rule;
+other authorization rules can still block. Default requests are unchanged.
