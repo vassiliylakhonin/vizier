@@ -1,6 +1,12 @@
 import type { D1Database } from "@cloudflare/workers-types";
 
 import { decodeCompactJws } from "../crypto/jws";
+import {
+  budgetKey,
+  ceilingToMicrosFloor,
+  priceAction,
+  type BudgetState,
+} from "../core/budget";
 import { verifyAction, type VerificationOptions } from "../core/index";
 import type { VerificationRequest } from "../core/schemas";
 import type { VerificationResponse } from "../core/types";
@@ -141,8 +147,87 @@ export async function pruneGrantLifecycle(db: D1Database, nowSeconds: number): P
 }
 
 export interface GrantLifecycleOptions {
-  /** Consume single-use grants on ALLOW. False for evaluation-only paths. */
+  /** Consume single-use grants and claim budget on ALLOW. False for evaluation-only paths. */
   readonly enforce: boolean;
+}
+
+interface BudgetClaim {
+  readonly key: string;
+  readonly currency: string;
+  readonly amountMicros: number;
+  readonly ceilingMicros: number;
+}
+
+/**
+ * Work out whether this request spends against a budget. Returns null when it
+ * does not, or when its cost cannot be read (the kernel refuses that case).
+ */
+async function readBudgetClaim(request: VerificationRequest): Promise<BudgetClaim | null> {
+  const budget = request.authority.constraints.budget;
+  if (budget === undefined || request.principal === null) return null;
+  if (!budget.actions.includes(request.action.type)) return null;
+  const pricing = priceAction(request, budget.currency);
+  if (!pricing.priced) return null;
+  return {
+    key: await budgetKey(request.principal.id, budget.id),
+    currency: budget.currency,
+    amountMicros: pricing.amountMicros,
+    ceilingMicros: ceilingToMicrosFloor(budget.ceiling),
+  };
+}
+
+async function readBudgetState(db: D1Database, claim: BudgetClaim): Promise<BudgetState> {
+  try {
+    const row = await db
+      .prepare("SELECT spent_micros, currency FROM budget_ledger WHERE budget_key = ?")
+      .bind(claim.key)
+      .first<{ spent_micros: number; currency: string }>();
+    return row === null || row === undefined
+      ? { available: true, spentMicros: 0, storedCurrency: null }
+      : { available: true, spentMicros: Number(row.spent_micros), storedCurrency: row.currency };
+  } catch {
+    // A missing table or a D1 error is "unknown", never "nothing spent".
+    return { available: false };
+  }
+}
+
+/**
+ * Admit the spend atomically. The ceiling check and the increment are one
+ * UPDATE, so two concurrent calls cannot both fit under the same headroom.
+ */
+async function claimBudget(db: D1Database, claim: BudgetClaim): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO budget_ledger (budget_key, currency, spent_micros, admissions, updated_at) " +
+          "VALUES (?, ?, 0, 0, ?)",
+      )
+      .bind(claim.key, claim.currency, now)
+      .run();
+    const outcome = await db
+      .prepare(
+        "UPDATE budget_ledger SET spent_micros = spent_micros + ?, admissions = admissions + 1, updated_at = ? " +
+          "WHERE budget_key = ? AND currency = ? AND spent_micros + ? <= ?",
+      )
+      .bind(claim.amountMicros, now, claim.key, claim.currency, claim.amountMicros, claim.ceilingMicros)
+      .run();
+    return Number(outcome.meta?.changes ?? 0) === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** Undo a claim when a later step (single-use) refuses the same call. */
+async function releaseBudget(db: D1Database, claim: BudgetClaim): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await db
+    .prepare(
+      "UPDATE budget_ledger SET spent_micros = spent_micros - ?, admissions = admissions - 1, updated_at = ? " +
+        "WHERE budget_key = ? AND spent_micros >= ? AND admissions >= 1",
+    )
+    .bind(claim.amountMicros, now, claim.key, claim.amountMicros)
+    .run();
 }
 
 /**
@@ -150,6 +235,11 @@ export interface GrantLifecycleOptions {
  * is ALLOWed is consumed atomically. If a concurrent request consumed it
  * first, the kernel is re-run with the grant marked used, so the loser gets a
  * BLOCK with GRANT_ALREADY_USED rather than a second ALLOW.
+ *
+ * A budgeted call is checked against the cumulative ledger before the kernel
+ * decides, and its amount is claimed atomically after an ALLOW. A losing race
+ * re-runs the kernel against the fresh ledger, so it gets BLOCK with
+ * BUDGET_CEILING_EXCEEDED rather than a second ALLOW.
  */
 export async function verifyWithGrantLifecycle(
   request: VerificationRequest,
@@ -164,40 +254,72 @@ export async function verifyWithGrantLifecycle(
   const now = Math.floor(Date.now() / 1000);
   const revoked = new Set(parseStaticRevocations(options.revokedGrantSource));
   const used = new Set<string>();
-  const [isRevoked, isUsed] = await Promise.all([
+  const budgetClaim = await readBudgetClaim(request);
+  const [isRevoked, isUsed, budgetState] = await Promise.all([
     options.db === undefined
       ? Promise.resolve(memHas(memoryRevoked, hints.jti, now))
       : dbHas(options.db, "revoked_grants", hints.jti, now),
     hints.singleUse && options.db !== undefined
       ? dbHas(options.db, "consumed_grants", hints.jti, now)
       : Promise.resolve(false),
+    budgetClaim !== null && options.db !== undefined
+      ? readBudgetState(options.db, budgetClaim)
+      : Promise.resolve<BudgetState | undefined>(undefined),
   ]);
   if (isRevoked) revoked.add(hints.jti);
   if (isUsed) used.add(hints.jti);
 
-  const withState = (usedIds: ReadonlySet<string>): VerificationOptions => ({
+  const withState = (
+    usedIds: ReadonlySet<string>,
+    budget: BudgetState | undefined,
+  ): VerificationOptions => ({
     ...verifyOptions,
     revokedGrantIds: revoked,
     usedGrantIds: usedIds,
+    ...(budget === undefined ? {} : { budget }),
     // Enforcement without a durable store fails single-use grants closed.
     // Evaluation-only paths do not consume, so they keep their old semantics.
     ...(lifecycle.enforce ? { singleUseStateDurable: options.db !== undefined } : {}),
   });
-  const result = await verifyAction(request, withState(used));
+  const result = await verifyAction(request, withState(used, budgetState));
 
-  if (
-    !lifecycle.enforce ||
-    !hints.singleUse ||
-    result.decision !== "ALLOW" ||
-    result.receipt.authority_provenance !== "principal_signed" ||
-    result.receipt.grant?.jti !== hints.jti
-  ) {
-    return result;
+  const signedAllow =
+    lifecycle.enforce &&
+    result.decision === "ALLOW" &&
+    result.receipt.authority_provenance === "principal_signed" &&
+    result.receipt.grant?.jti === hints.jti;
+  if (!signedAllow) return result;
+
+  const db = options.db;
+  let claimedBudget = false;
+  if (budgetClaim !== null && db !== undefined) {
+    if (await claimBudget(db, budgetClaim)) {
+      claimedBudget = true;
+    } else {
+      // Lost a race (or the ledger failed). Re-read and decide again; if the
+      // ledger still says it fits, force a refusal rather than an ALLOW.
+      const fresh = await readBudgetState(db, budgetClaim);
+      const forced: BudgetState = fresh.available
+        ? {
+            ...fresh,
+            spentMicros: Math.max(
+              fresh.spentMicros,
+              budgetClaim.ceilingMicros - budgetClaim.amountMicros + 1,
+            ),
+          }
+        : fresh;
+      return verifyAction(request, withState(used, forced));
+    }
   }
+
+  if (!hints.singleUse) return result;
   if (await claimConsumption(options, hints)) {
     return result;
   }
-  return verifyAction(request, withState(new Set([...used, hints.jti])));
+  if (claimedBudget && db !== undefined && budgetClaim !== null) {
+    await releaseBudget(db, budgetClaim);
+  }
+  return verifyAction(request, withState(new Set([...used, hints.jti]), budgetState));
 }
 
 /** Test hook: clear per-isolate fallback state. */

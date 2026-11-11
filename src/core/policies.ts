@@ -1,3 +1,4 @@
+import { ceilingToMicrosFloor, priceAction, type BudgetState } from "./budget";
 import type { EdgeCircuitBreakerResult } from "./circuit-breaker";
 import type { DlpEvaluationResult } from "./dlp";
 import type { NumericConsistencyEvaluationResult } from "./numeric-consistency";
@@ -35,6 +36,11 @@ export interface PolicyOptions {
   readonly dlp?: DlpEvaluationResult;
   readonly numericConsistency?: NumericConsistencyEvaluationResult;
   readonly quorum?: QuorumEvaluationResult;
+  /**
+   * Cumulative budget ledger state, read by the transport before the call.
+   * Absent means no durable ledger is bound: a budgeted request fails closed.
+   */
+  readonly budget?: BudgetState;
 }
 
 function result(
@@ -200,6 +206,54 @@ function evaluateSensitiveAction(
       );
 }
 
+function evaluateBudget(
+  request: VerificationRequest,
+  grant: GrantVerification | undefined,
+  state: BudgetState | undefined,
+): PolicyResult | null {
+  const budget = request.authority.constraints.budget;
+  if (budget === undefined) return null;
+  const rule = "authority.budget.ceiling";
+  if (!budget.actions.includes(request.action.type)) {
+    return result(rule, "PASS", null, { applicable: false });
+  }
+  // The ledger key comes from the principal and the budget id. Unsigned
+  // authority could name a fresh id on every call and never reach a ceiling.
+  if (grant?.ok !== true) {
+    return result(rule, "FAIL", "BUDGET_REQUIRES_GRANT");
+  }
+  const pricing = priceAction(request, budget.currency);
+  if (!pricing.priced) {
+    // Unknown cost is not zero cost. The call is refused and the ledger is
+    // untouched, so it is also not counted: coverage of the total is partial.
+    return result(rule, "FAIL", "BUDGET_UNPRICED", {
+      unpriced: true,
+      coverage: "partial",
+      reason: pricing.reason,
+      budget_currency: budget.currency,
+    });
+  }
+  if (state === undefined || !state.available) {
+    return result(rule, "FAIL", "BUDGET_STATE_UNAVAILABLE");
+  }
+  if (state.storedCurrency !== null && state.storedCurrency !== budget.currency) {
+    return result(rule, "FAIL", "BUDGET_CURRENCY_CONFLICT", {
+      budget_currency: budget.currency,
+      ledger_currency: state.storedCurrency,
+    });
+  }
+  const ceilingMicros = ceilingToMicrosFloor(budget.ceiling);
+  const details = {
+    budget_currency: budget.currency,
+    ceiling_micros: ceilingMicros,
+    spent_micros: state.spentMicros,
+    requested_micros: pricing.amountMicros,
+  };
+  return state.spentMicros + pricing.amountMicros <= ceilingMicros
+    ? result(rule, "PASS", null, details)
+    : result(rule, "FAIL", "BUDGET_CEILING_EXCEEDED", details);
+}
+
 export function evaluateReversibility(request: VerificationRequest): PolicyResult {
   const requiresReversible = request.authority.constraints.require_review_for_irreversible ?? false;
   if (!requiresReversible) {
@@ -227,6 +281,9 @@ export function evaluatePolicies(
     evaluateSensitiveAction(request, sensitiveActions),
     evaluateReversibility(request),
   ];
+
+  const budgetResult = evaluateBudget(request, grantVerification, options.budget);
+  if (budgetResult !== null) results.push(budgetResult);
 
   if (options.signedGrantMode === "invalid") {
     results.push(result("authority.grant.required", "FAIL", "GRANT_POLICY_MISCONFIGURED"));

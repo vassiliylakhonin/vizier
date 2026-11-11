@@ -184,9 +184,11 @@ or network failure.
   uses the validating Vizier SDK, refuses redirects, and constrains destinations;
   another embedding must reproduce those controls.
 
-- Amount limits are per call. `max_amount` bounds a single proposed action
-  against an exact currency; there is no cumulative money ceiling as a policy
-  stage. The experimental Base native-USDC reservations add single and daily
+- Amount limits are per call unless a signed `budget` is used. `max_amount`
+  bounds a single proposed action against an exact currency. The opt-in
+  cumulative `budget` constraint (docs/BUDGET_CEILING.md, needs D1 migration
+  0013) bounds admitted spend per principal and budget id; it does not refund
+  failed executions and trusts the caller-supplied `amount`. The experimental Base native-USDC reservations add single and daily
   limits for that one review workflow and are documented as not a complete
   wallet spending limit. Execution idempotency and duplicate-effect prevention
   remain the integration's responsibility: a single-use grant is spent at
