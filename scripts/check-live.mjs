@@ -181,16 +181,27 @@ try {
     discovered.body.result?.supportedVersions?.includes(STATELESS_VERSION) ===
       true,
   );
-  // Replay only server-authored read-only recovery, always on this same origin.
-  const mixed = await mcp({jsonrpc:"2.0", id:"live-recovery", method:"initialize", params:{_meta:{
-    "io.modelcontextprotocol/protocolVersion":"2025-06-18",
+  // The refusal that used to answer this request was the largest measured
+  // external leak: an initialize carrying stateless metadata is now served
+  // on the session profile instead of refused.
+  const mixed = await mcp({jsonrpc:"2.0", id:"live-mixed", method:"initialize", params:{_meta:{
+    "io.modelcontextprotocol/protocolVersion":STATELESS_VERSION,
     "io.modelcontextprotocol/clientCapabilities":{},
-  }}}, {"MCP-Protocol-Version":"2025-06-18", "Mcp-Method":"initialize"});
-  const hint = mixed.body.error?.data?.connection_hint;
+  }}}, {"MCP-Protocol-Version":STATELESS_VERSION, "Mcp-Method":"initialize"});
+  check("initialize carrying stateless metadata is answered on the session profile",
+    mixed.status === 200 && typeof mixed.body.result?.protocolVersion === "string",
+    `status ${mixed.status}`);
+  // The remaining mixed-profile failure: server/discover with no profile
+  // markers at all. Replay only server-authored read-only recovery, always
+  // on this same origin.
+  const ambiguous = await mcp({jsonrpc:"2.0", id:"live-recovery", method:"server/discover", params:{}}, {});
+  const hint = ambiguous.body.error?.data?.connection_hint;
   const recovery = hint?.recovery_requests;
-  check("mixed MCP profile is refused with executable recovery", mixed.status === 400 && Array.isArray(recovery) && recovery.length === 2);
-  check("recovery preserves the recognized session revision without automatic retry",
-    hint?.recommended_profile === "session" && hint?.recommended_protocol_version === "2025-06-18" && hint?.automatic_retry === false);
+  check("server/discover without profile markers keeps executable recovery",
+    ambiguous.status === 200 && hint?.reason === "profile_method_mismatch" && Array.isArray(recovery) && recovery.length === 2,
+    JSON.stringify(ambiguous.body).slice(0, 200));
+  check("recovery recommends a session without automatic retry",
+    hint?.recommended_profile === "session" && hint?.recommended_protocol_version === SESSION_VERSION && hint?.automatic_retry === false);
   if (Array.isArray(recovery) && recovery.length === 2) {
     for (const next of recovery) {
       const expected = next.profile === "session" ? "initialize" : next.profile === "stateless" ? "server/discover" : null;
