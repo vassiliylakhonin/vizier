@@ -1,5 +1,6 @@
 import type { EdgeCircuitBreakerResult } from "./circuit-breaker";
 import type { DlpEvaluationResult } from "./dlp";
+import type { NumericConsistencyEvaluationResult } from "./numeric-consistency";
 import type { GrantVerification } from "./grants";
 import type { PolicyResult } from "./types";
 import type { QuorumEvaluationResult } from "./quorum";
@@ -32,6 +33,7 @@ export interface PolicyOptions {
   readonly circuitBreaker?: EdgeCircuitBreakerResult;
   readonly sanctions?: SanctionsEvaluationResult;
   readonly dlp?: DlpEvaluationResult;
+  readonly numericConsistency?: NumericConsistencyEvaluationResult;
   readonly quorum?: QuorumEvaluationResult;
 }
 
@@ -305,6 +307,23 @@ export function evaluatePolicies(
       );
     } else {
       results.push(result("security.dlp", "PASS", null));
+    }
+  }
+
+  if (options.numericConsistency !== undefined) {
+    // Numeric inconsistency is a quality signal that needs human judgment:
+    // it routes to REVIEW and never blocks on its own.
+    if (
+      !options.numericConsistency.consistent &&
+      options.numericConsistency.findings.length > 0
+    ) {
+      results.push(
+        result("quality.numeric_consistency", "REVIEW", "NUMERIC_INCONSISTENCY", {
+          findings: options.numericConsistency.findings,
+        }),
+      );
+    } else {
+      results.push(result("quality.numeric_consistency", "PASS", null));
     }
   }
 

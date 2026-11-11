@@ -26,10 +26,15 @@ import {
   resetEdgeCircuitBreaker,
   scanDlpParameters,
   scanDlpText,
+  analyzeNumericConsistency,
+  evaluateNumericConsistency,
+  scanNumericConsistencyParameters,
   verificationRequestSchema,
   verifyAction,
   type DlpEvaluationResult,
   type DlpFinding,
+  type NumericConsistencyEvaluationResult,
+  type NumericConsistencyFinding,
   type EdgeCircuitBreakerResult,
   type QuorumEvaluationResult,
   type SanctionsEvaluationResult,
@@ -340,6 +345,10 @@ async function executeVerificationPipeline(
     normalizedRequest.authority.constraints.dlp_screening !== false
       ? evaluateDlp(normalizedRequest)
       : undefined;
+  const numericConsistencyResult: NumericConsistencyEvaluationResult | undefined =
+    normalizedRequest.authority.constraints.numeric_consistency === true
+      ? evaluateNumericConsistency(normalizedRequest)
+      : undefined;
   const [circuitBreakerResult, sanctionsResult, quorumResult] = await Promise.all([
     circuitBreakerPromise,
     sanctionsPromise,
@@ -355,6 +364,7 @@ async function executeVerificationPipeline(
       circuitBreaker: circuitBreakerResult,
       sanctions: sanctionsResult,
       dlp: dlpResult,
+      numericConsistency: numericConsistencyResult,
       quorum: quorumResult,
     },
     params.options,
@@ -818,6 +828,73 @@ async function handleDlpScan(
     clean,
     findings,
     total_leaks_prevented: findings.length,
+    ...(receiptToken ? { receipt: receiptToken } : {}),
+  });
+}
+
+const numericConsistencyScanRequestSchema = z
+  .strictObject({
+    text: z.string().max(65536).optional(),
+    parameters: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((data) => data.text !== undefined || data.parameters !== undefined, {
+    message: "Either text or parameters must be provided.",
+  });
+
+async function handleNumericConsistencyScan(
+  request: Request,
+  options?: TransportOptions,
+): Promise<Response> {
+  const parsedJson = await readLimitedJson(request);
+  const parsed = numericConsistencyScanRequestSchema.safeParse(parsedJson);
+  if (!parsed.success) {
+    throw new TransportRequestError(
+      422,
+      "VALIDATION_ERROR",
+      "Numeric consistency scan request failed schema validation.",
+      validationDetails(parsed.error),
+    );
+  }
+  const findings: NumericConsistencyFinding[] = [];
+  let mentionsCount = 0;
+  if (parsed.data.text !== undefined) {
+    const result = analyzeNumericConsistency(parsed.data.text, "text");
+    findings.push(...result.findings);
+    mentionsCount += result.mentions.length;
+  }
+  if (parsed.data.parameters !== undefined) {
+    findings.push(
+      ...scanNumericConsistencyParameters(parsed.data.parameters, "parameters"),
+    );
+  }
+  const consistent = findings.length === 0;
+  let receiptToken: string | null = null;
+  if (options?.receiptSigningKey) {
+    try {
+      const receiptPayload = {
+        iss: "vizier-action-firewall",
+        sub: "numeric-consistency-scan",
+        scope: "numeric_consistency_scan_only",
+        input_sha256: await sha256(canonicalize(parsed.data)),
+        iat: Math.floor(Date.now() / 1000),
+        engine: "vizier_numeric_consistency",
+        consistent,
+        findings_count: findings.length,
+        finding_kinds: Array.from(new Set(findings.map((f) => f.kind))),
+      };
+      receiptToken = await signCompactJws(
+        receiptPayload,
+        options.receiptSigningKey,
+        "application/vizier-receipt+jwt",
+      );
+    } catch (jwsErr) {
+      console.error("Failed to sign clearance receipt in numeric-consistency-scan:", jwsErr);
+    }
+  }
+  return jsonResponse({
+    consistent,
+    findings,
+    mentions_count: mentionsCount,
     ...(receiptToken ? { receipt: receiptToken } : {}),
   });
 }
@@ -1637,6 +1714,9 @@ async function handleHttpRequestInner(
     if (request.method === "POST" && url.pathname === "/v1/dlp/scan") {
       return await handleDlpScan(request, options);
     }
+    if (request.method === "POST" && url.pathname === "/v1/numeric-consistency/scan") {
+      return await handleNumericConsistencyScan(request, options);
+    }
     if (request.method === "POST" && url.pathname === "/v1/quorum/propose") {
       return await handleQuorumPropose(request, options);
     }
@@ -1720,6 +1800,7 @@ async function handleHttpRequestInner(
       url.pathname === "/v1/sanctions/screen-entity" ||
       url.pathname === "/v1/sanctions/entries" ||
       url.pathname === "/v1/dlp/scan" ||
+      url.pathname === "/v1/numeric-consistency/scan" ||
       url.pathname === "/v1/quorum/propose" ||
       url.pathname === "/v1/quorum/approve" ||
       url.pathname === "/v1/covenants" ||
@@ -1797,6 +1878,7 @@ async function handleHttpRequestInner(
               "POST /v1/sanctions/screen-entity": "OFAC 50% Rule and aggregated beneficial ownership screening",
               "POST /v1/sanctions/entries": "operator ingestion of custom sanctions entries",
               "POST /v1/dlp/scan": "pre-flight PII and secret leak scan",
+              "POST /v1/numeric-consistency/scan": "pre-flight numeric consistency check (conflicting metrics, upside recomputation)",
               "POST /v1/covenants": "activate an accepted Action Covenant",
               "POST /v1/authorizations": "authorize an exact covenant action",
               "POST /v1/outcomes": "bind an execution outcome to an authorization",

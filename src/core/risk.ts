@@ -34,6 +34,7 @@ export const RISK_WEIGHTS = Object.freeze({
   GRANT_REQUIRED: 0.5,
   GRANT_POLICY_MISCONFIGURED: 0.5,
   IRREVERSIBLE_ACTION_REVIEW: 0.3,
+  NUMERIC_INCONSISTENCY: 0.3,
 } as const);
 
 // The score is diagnostic context for the decision, which comes from the

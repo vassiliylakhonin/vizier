@@ -70,6 +70,7 @@ export const authoritySchema = z.strictObject({
     blocked_entities: stringSetSchema.optional(),
     dlp_screening: z.boolean().optional(),
     allowed_dlp_categories: stringSetSchema.optional(),
+    numeric_consistency: z.boolean().optional(),
     quorum: z
       .strictObject({
         min_approvals: z.number().int().min(1).max(10),
