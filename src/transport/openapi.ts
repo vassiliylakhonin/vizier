@@ -430,6 +430,17 @@ export function createOpenApiDocument(
           },
         },
       },
+      "/v1/numeric-consistency/scan": {
+        post: {
+          operationId: "scanNumericConsistency",
+          tags: ["Numeric consistency"],
+          summary: "Check text or structured parameters for conflicting numeric metrics and recomputed upside mismatches",
+          responses: {
+            "200": { description: "Numeric consistency findings." },
+            ...ERROR_RESPONSE_REFS,
+          },
+        },
+      },
       "/v1/quorum/propose": {
         post: {
           operationId: "proposeQuorum",

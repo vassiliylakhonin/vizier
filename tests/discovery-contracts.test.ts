@@ -125,6 +125,7 @@ describe("machine-readable discovery contracts", () => {
       "/v1/dlp/scan",
       "/v1/insights",
       "/v1/models",
+      "/v1/numeric-consistency/scan",
       "/v1/outcomes",
       "/v1/quorum/approve",
       "/v1/quorum/proposals/{proposal_id}",

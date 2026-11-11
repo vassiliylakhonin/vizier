@@ -81,6 +81,22 @@ export type {
   DlpOptions,
 } from "./dlp";
 export {
+  analyzeNumericConsistency,
+  evaluateNumericConsistency,
+  parseNumericToken,
+  scanNumericConsistencyParameters,
+  statedTolerance,
+} from "./numeric-consistency";
+export type {
+  NumericConsistencyEvaluationResult,
+  NumericConsistencyFinding,
+  NumericConsistencyFindingKind,
+  NumericConsistencyOptions,
+  NumericConsistencyResult,
+  NumericMention,
+  NumericUnit,
+} from "./numeric-consistency";
+export {
   clearMemoryProposalStore,
   computeActionHash,
   consumeQuorumProposal,
