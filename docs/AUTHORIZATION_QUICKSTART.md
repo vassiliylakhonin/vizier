@@ -67,10 +67,10 @@ The `authorize` helper is available in SDK v0.5.15 and later. It
 requires a configured integration credential and grant, validates the service
 response and request hash, and refuses REVIEW, BLOCK, wrong identities, expired
 grants and caller-asserted provenance. The configured service and its HTTPS
-connection must be trusted: the legacy `/v1/verify` receipt is unsigned and this
-published `0.5.16` helper does not verify it as a JWS. The current source helper
-requests and verifies `receipt_jws` when present, but still tolerates an unsigned
-response. See the [version table](FIRST_BLOCK.md#what-this-proves).
+connection must be trusted: a `/v1/verify` receipt without `receipt_jws` is
+unsigned. The published `0.5.17` helper requests and verifies `receipt_jws` when
+present and tolerates an unsigned response unless you pass `requireReceiptJws`,
+which makes a missing JWS an error. See the [version table](FIRST_BLOCK.md#what-this-proves).
 
 ```ts
 import { readFile } from "node:fs/promises";

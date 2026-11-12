@@ -1,11 +1,12 @@
 # Anonymous path evidence
 
 What a visitor with no account sees. Checked live on 9 November 2026, read-only.
+Registry version re-checked on 12 November 2026.
 
 | Step | Observed |
 | --- | --- |
 | Playground | Reachable without sign-in at `/playground`. |
-| MCP registry listing | Shows Vizier at 0.5.16. |
+| MCP registry listing | Shows Vizier at 0.5.17. |
 | Missing-grant example (anonymous) | `BLOCK` with `GRANT_REQUIRED` (and `AUTHORITY_SOURCE_UNTRUSTED`), exactly as documented. |
 | REST `/v1/verify` without a token | HTTP 401. |
 

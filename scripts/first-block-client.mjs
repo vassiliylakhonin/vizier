@@ -35,3 +35,25 @@ await assert.rejects(
   (err) => err.code === (signed ? "RECEIPT_SIGNATURE_INVALID" : "INVALID_RESPONSE"),
 );
 console.log(`TypeScript: tampered ${signed ? "signed receipt" : "request hash"} rejected; no tool executed`);
+
+if (signed) {
+  // A service that silently drops the signature must not be trusted when the
+  // caller requires one. requireReceiptJws makes a missing JWS an error.
+  const unsigned = new Vizier({
+    baseUrl,
+    apiKey: process.env.VIZIER_API_KEY,
+    fetch: async (url, init) => {
+      const response = await fetch(url, init);
+      if (!String(url).endsWith("/v1/verify")) return response;
+      assert(response.ok, `Unexpected HTTP ${response.status}`);
+      const body = await response.json();
+      delete body.receipt_jws;
+      return globalThis.Response.json(body);
+    },
+  });
+  await assert.rejects(
+    () => unsigned.verify(globalThis.structuredClone(request), { requireReceiptJws: true }),
+    (err) => err.code === "RECEIPT_SIGNATURE_REQUIRED",
+  );
+  console.log("TypeScript: missing signed receipt rejected with requireReceiptJws; no tool executed");
+}

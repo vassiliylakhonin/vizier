@@ -11,7 +11,7 @@ action an agent takes:
 This page states, for each question, what is implemented, what is not, and where
 the evidence is. It is a self-assessment by the maintainer, not an independent
 audit. Vizier has no production users or revenue (see [CLAIMS.md](CLAIMS.md)).
-Status below is for the repository at v0.5.16 plus the changes described in
+Status below is for the repository at v0.5.17 plus the changes described in
 the [CHANGELOG](../CHANGELOG.md) "Unreleased" section.
 
 | Question | Status | One line |

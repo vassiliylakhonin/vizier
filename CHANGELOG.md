@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Release acceptance for published clients: CI's published-package first-BLOCK step now installs npm `0.5.17` and PyPI `vizier-guard[receipts]==0.3.3` and runs the signed-receipt walkthrough (ES256 verification, tampered receipt refused, missing JWS refused via `requireReceiptJws`) plus the hash-only mode, replacing the old `0.5.16` / `0.3.2` hash-only pins. The first-BLOCK demo client now also fault-injects a stripped `receipt_jws`. Docs (README, FIRST_BLOCK, both SDK READMEs, AUTHORIZATION_QUICKSTART, TRUST_QUESTIONS, anonymous path evidence) updated to the published state, including that the Python client has no `require_receipt_jws` and tolerates an absent JWS.
+
 ## 0.5.17 — 2026-11-12
 
 - Cumulative budget ceiling (opt-in, needs D1 migration 0013). New authority constraint `budget { id, ceiling, currency, actions }` in a principal-signed grant: Vizier sums admitted spend per (principal, budget id) in a new `budget_ledger` table, checks it before deciding, and claims the amount atomically after `ALLOW`, so concurrent calls cannot share the last headroom. New `BLOCK` reason codes: `BUDGET_CEILING_EXCEEDED`, `BUDGET_UNPRICED` (unreadable cost is refused, not counted as zero), `BUDGET_REQUIRES_GRANT`, `BUDGET_STATE_UNAVAILABLE` (no D1 or ledger error fails closed), `BUDGET_CURRENCY_CONFLICT`. A new grant with the same budget id and a higher ceiling continues the same total. The ledger records admitted, not settled, spend and does not refund failed executions. See docs/BUDGET_CEILING.md. Idea credit: OpenGeni session usage limits (Apache-2.0); independent implementation.

@@ -53,11 +53,14 @@ jobs:
         run: node scripts/first-block.mjs --signed
         env:
           PYTHONPATH: packages/python-sdk/src
-      - name: First BLOCK with published SDKs (hash checks, no JWS support)
+      - name: First BLOCK with published SDKs (npm 0.5.17, PyPI 0.3.3)
         run: |
-          npm install --prefix "$RUNNER_TEMP/vizier-published" --no-save @agenda-intelligence/vizier-sdk@0.5.16
+          npm install --prefix "$RUNNER_TEMP/vizier-published" --no-save @agenda-intelligence/vizier-sdk@0.5.17
           python -m venv "$RUNNER_TEMP/vizier-published-py"
-          "$RUNNER_TEMP/vizier-published-py/bin/python" -m pip install vizier-guard==0.3.2
+          "$RUNNER_TEMP/vizier-published-py/bin/python" -m pip install 'vizier-guard[receipts]==0.3.3'
+          VIZIER_DEMO_SDK="$RUNNER_TEMP/vizier-published/node_modules/@agenda-intelligence/vizier-sdk/dist/index.js" \
+          VIZIER_DEMO_PYTHON="$RUNNER_TEMP/vizier-published-py/bin/python" \
+          PYTHONPATH= node scripts/first-block.mjs --signed
           VIZIER_DEMO_SDK="$RUNNER_TEMP/vizier-published/node_modules/@agenda-intelligence/vizier-sdk/dist/index.js" \
           VIZIER_DEMO_PYTHON="$RUNNER_TEMP/vizier-published-py/bin/python" \
           PYTHONPATH= node scripts/first-block.mjs
