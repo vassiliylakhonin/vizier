@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { VerificationRequest } from "../src/core/schemas";
 import type { Receipt } from "../src/core/types";
 import {
+  pruneAuditMetadata,
   storeReceipt,
   verifyAuditChain,
 } from "../src/storage/audit";
@@ -37,6 +38,11 @@ function wrapD1(sqlite: DatabaseSync): D1Database {
     all: async () => ({ success: true, results: statement.all(...values) }),
   });
   return {
+    batch: async (statements: Array<{ run: () => Promise<unknown> }>) => {
+      const results: unknown[] = [];
+      for (const statement of statements) results.push(await statement.run());
+      return results;
+    },
     prepare: (query: string) => {
       const statement = sqlite.prepare(query);
       return {
@@ -184,5 +190,72 @@ describe("hash-chained audit receipt log", () => {
       { apiKey: API_KEY },
     );
     expect(unavailable.status).toBe(503);
+  });
+
+  it("keeps the chain verifiable after retention pruning removes its oldest rows", async () => {
+    const sqlite = createMigratedSqlite();
+    const db = wrapD1(sqlite);
+    const request = verificationRequest("rest");
+    await storeReceipt(db, request, receipt("vrf_old1", "2026-09-01T10:00:00.000Z", "ALLOW"));
+    await storeReceipt(db, request, receipt("vrf_old2", "2026-09-01T10:00:01.000Z", "ALLOW"));
+    await storeReceipt(db, request, receipt("vrf_new1", "2026-11-10T10:00:00.000Z", "ALLOW"));
+    await storeReceipt(db, request, receipt("vrf_new2", "2026-11-10T10:00:01.000Z", "BLOCK"));
+
+    const pruned = await pruneAuditMetadata(db, new Date("2026-11-12T00:00:00.000Z"));
+    expect(pruned.deleted.verifications).toBe(2);
+
+    const result = await verifyAuditChain(db);
+    expect(result.ok).toBe(true);
+    expect(result.checked).toBe(2);
+  });
+
+  it("still detects tampering with the retained rows after pruning", async () => {
+    const sqlite = createMigratedSqlite();
+    const db = wrapD1(sqlite);
+    const request = verificationRequest("rest");
+    await storeReceipt(db, request, receipt("vrf_old1", "2026-09-01T10:00:00.000Z", "ALLOW"));
+    await storeReceipt(db, request, receipt("vrf_new1", "2026-11-10T10:00:00.000Z", "ALLOW"));
+    await storeReceipt(db, request, receipt("vrf_new2", "2026-11-10T10:00:01.000Z", "BLOCK"));
+    await pruneAuditMetadata(db, new Date("2026-11-12T00:00:00.000Z"));
+    sqlite.prepare("UPDATE audit_receipts SET decision = 'ALLOW' WHERE id = 'vrf_new2'").run();
+
+    await expect(verifyAuditChain(db)).resolves.toMatchObject({
+      ok: false,
+      first_broken_id: "vrf_new2",
+      reason: "HASH_MISMATCH",
+    });
+  });
+
+  it("does not fork the chain when receipts are stored concurrently", async () => {
+    const sqlite = createMigratedSqlite();
+    const db = wrapD1(sqlite);
+    const request = verificationRequest("rest");
+    await storeReceipt(db, request, receipt("vrf_seed", "2026-11-10T09:00:00.000Z", "ALLOW"));
+
+    await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        storeReceipt(
+          db,
+          request,
+          receipt(`vrf_c${index}`, `2026-11-10T10:00:0${index}.000Z`, "ALLOW"),
+        ),
+      ),
+    );
+
+    const rows = sqlite
+      .prepare("SELECT prev_receipt_hash FROM audit_receipts WHERE receipt_hash != ''")
+      .all() as Array<{ prev_receipt_hash: string }>;
+    expect(new Set(rows.map((row) => row.prev_receipt_hash)).size).toBe(rows.length);
+    await expect(verifyAuditChain(db)).resolves.toMatchObject({ ok: true, checked: 9 });
+  });
+
+  it("verifies a chain whose newest created_at was inserted before an older one", async () => {
+    const sqlite = createMigratedSqlite();
+    const db = wrapD1(sqlite);
+    const request = verificationRequest("rest");
+    await storeReceipt(db, request, receipt("vrf_a", "2026-11-10T10:00:05.000Z", "ALLOW"));
+    // Clock skew between isolates: this receipt is inserted later but stamped earlier.
+    await storeReceipt(db, request, receipt("vrf_b", "2026-11-10T10:00:01.000Z", "ALLOW"));
+    await expect(verifyAuditChain(db)).resolves.toMatchObject({ ok: true, checked: 2 });
   });
 });

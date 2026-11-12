@@ -107,10 +107,13 @@ In required-grant mode, a request without a valid owner-signed delegation is
 Use `VizierClient.verify()` or `check(..., grant=...)` with the exact signed
 authority after [operator setup](../../docs/DELEGATION_GRANTS.md).
 
-The decorator and framework examples below illustrate policy wiring, not a
-complete required-grant integration. The current `vizier_guard` decorator does
-not accept or forward a delegation grant. It therefore cannot produce an ALLOW
-against the required-grant hosted service. Do not work around this by disabling
+The decorator and framework examples below illustrate policy wiring. From
+`0.3.4` (source; the published `0.3.3` does not have it) `vizier_guard`,
+`VizierLangChainToolGuard` and `VizierCrewAIToolGuard` take `grant=` (a signed
+grant string, or a callable that receives the call arguments) and forward it to
+the service. The grant comes from your configuration, never from the tool's own
+parameters. With `0.3.3`, or without `grant=`, these wrappers cannot produce an
+ALLOW against a required-grant service. Do not work around this by disabling
 grant requirements, and never treat a local HITL callback as an owner-signed grant.
 
 ---

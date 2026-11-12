@@ -41,11 +41,16 @@ def vizier_guard(
     quorum_require_distinct_owners: Optional[bool] = None,
     quorum_proposal_id: Optional[Union[str, Callable[..., str]]] = None,
     quorum_approvals: Optional[Union[List[Any], Callable[..., List[Any]]]] = None,
+    grant: Optional[Union[str, Callable[..., Optional[str]]]] = None,
 ):
     """
     Decorator to protect any Python function / agent tool with Vizier deterministic authorization,
     Pre-Action Sanctions Screening, PII & Secret Leak Firewall (DLP), Circuit Breaker loop prevention,
     and Human-in-the-Loop review.
+    ``grant`` is the owner-signed delegation grant forwarded to the service, as a
+    string or a callable receiving the decorated function's arguments. It is never
+    read from the tool's own parameters. Required-grant services refuse requests
+    without it.
     Supports BOTH synchronous (def) and asynchronous (async def) functions seamlessly.
     """
     breaker: Optional[CircuitBreaker]
@@ -60,7 +65,7 @@ def vizier_guard(
         act_type = action_type or fn.__name__
         is_async = inspect.iscoroutinefunction(fn)
 
-        def _prepare_args(args: Any, kwargs: Any) -> tuple[Dict[str, Any], str, Optional[float], Optional[str], str]:
+        def _prepare_args(args: Any, kwargs: Any) -> tuple[Any, ...]:
             sig = inspect.signature(fn)
             bound = sig.bind(*args, **kwargs)
             bound.apply_defaults()
@@ -109,7 +114,12 @@ def vizier_guard(
                 if quorum_require_distinct_owners is not None:
                     resolved_quorum["require_distinct_owners"] = quorum_require_distinct_owners
 
-            return params, str(resolved_target), resolved_max_amount, curr, str(resolved_session_id), resolved_proposal_id, resolved_approvals, resolved_quorum
+            if callable(grant):
+                resolved_grant = grant(*args, **kwargs)
+            else:
+                resolved_grant = grant
+
+            return params, str(resolved_target), resolved_max_amount, curr, str(resolved_session_id), resolved_proposal_id, resolved_approvals, resolved_quorum, resolved_grant
 
         if is_async:
             if isinstance(client, AsyncVizierClient):
@@ -123,7 +133,7 @@ def vizier_guard(
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-                params, resolved_target, resolved_max_amount, curr, resolved_session_id, resolved_proposal_id, resolved_approvals, resolved_quorum = _prepare_args(args, kwargs)
+                params, resolved_target, resolved_max_amount, curr, resolved_session_id, resolved_proposal_id, resolved_approvals, resolved_quorum, resolved_grant = _prepare_args(args, kwargs)
 
                 # 1. Circuit Breaker check
                 if breaker:
@@ -164,6 +174,7 @@ def vizier_guard(
                     proposal_id=resolved_proposal_id,
                     approvals=resolved_approvals,
                     quorum=resolved_quorum,
+                    grant=resolved_grant,
                 )
 
                 if verification.decision == "REVIEW" and hitl_handler:
@@ -194,7 +205,7 @@ def vizier_guard(
 
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-                params, resolved_target, resolved_max_amount, curr, resolved_session_id, resolved_proposal_id, resolved_approvals, resolved_quorum = _prepare_args(args, kwargs)
+                params, resolved_target, resolved_max_amount, curr, resolved_session_id, resolved_proposal_id, resolved_approvals, resolved_quorum, resolved_grant = _prepare_args(args, kwargs)
 
                 # 1. Circuit Breaker check
                 if breaker:
@@ -235,6 +246,7 @@ def vizier_guard(
                     proposal_id=resolved_proposal_id,
                     approvals=resolved_approvals,
                     quorum=resolved_quorum,
+                    grant=resolved_grant,
                 )
 
                 if verification.decision == "REVIEW" and hitl_handler:

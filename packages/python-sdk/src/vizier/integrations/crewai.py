@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ..client import VizierClient
 from ..models import VerificationResponse
@@ -17,6 +17,7 @@ class VizierCrewAIToolGuard:
         allowed_targets: Optional[List[str]] = None,
         agent_id: str = "crewai_agent",
         principal_id: str = "principal",
+        grant: Optional[Union[str, Callable[[Any], Optional[str]]]] = None,
     ):
         self.tool = tool
         self.client = client or VizierClient()
@@ -24,6 +25,8 @@ class VizierCrewAIToolGuard:
         self.allowed_targets = allowed_targets
         self.agent_id = agent_id
         self.principal_id = principal_id
+        # Owner-signed delegation grant (string, or callable taking the params).
+        self.grant = grant
 
         self.name = getattr(tool, "name", "guarded_tool")
         self.description = getattr(tool, "description", "")
@@ -41,6 +44,7 @@ class VizierCrewAIToolGuard:
             allowed_targets=self.allowed_targets,
             agent_id=self.agent_id,
             principal_id=self.principal_id,
+            grant=self.grant(params) if callable(self.grant) else self.grant,
         )
 
         if not res.is_allowed:

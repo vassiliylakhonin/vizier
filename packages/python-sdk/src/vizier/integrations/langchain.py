@@ -26,6 +26,7 @@ class VizierLangChainToolGuard:
         agent_id: str = "langchain_agent",
         principal_id: str = "principal",
         hitl_handler: Optional[BaseHITLHandler] = None,
+        grant: Optional[Union[str, Callable[[Any], Optional[str]]]] = None,
     ):
         self.tool = tool
         if isinstance(client, AsyncVizierClient):
@@ -46,6 +47,9 @@ class VizierLangChainToolGuard:
         self.agent_id = agent_id
         self.principal_id = principal_id
         self.hitl_handler = hitl_handler
+        # Owner-signed delegation grant (string, or callable taking the tool input).
+        # Never read from the tool input itself.
+        self.grant = grant
 
         # Preserve LangChain tool metadata
         self.name = getattr(tool, "name", "guarded_tool")
@@ -64,6 +68,9 @@ class VizierLangChainToolGuard:
         target = str(params.get("target") or params.get("destination") or self.name)
         return params, target
 
+    def _resolve_grant(self, tool_input: Any) -> Optional[str]:
+        return self.grant(tool_input) if callable(self.grant) else self.grant
+
     def _verify(self, tool_input: Any) -> tuple[VerificationResponse, Dict[str, Any], str]:
         params, target = self._prepare_params(tool_input)
         res = self.client.check(
@@ -77,6 +84,7 @@ class VizierLangChainToolGuard:
             blocked_targets=self.blocked_targets,
             agent_id=self.agent_id,
             principal_id=self.principal_id,
+            grant=self._resolve_grant(tool_input),
         )
         return res, params, target
 
@@ -93,6 +101,7 @@ class VizierLangChainToolGuard:
             blocked_targets=self.blocked_targets,
             agent_id=self.agent_id,
             principal_id=self.principal_id,
+            grant=self._resolve_grant(tool_input),
         )
         return res, params, target
 

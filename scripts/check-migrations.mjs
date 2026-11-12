@@ -78,6 +78,12 @@ assert.deepEqual(columns("outcome_receipts"), [
   "finished_at",
   "outcome_hash",
 ]);
+assert.deepEqual(columns("audit_chain_anchor"), [
+  "id",
+  "pruned_through_id",
+  "pruned_through_hash",
+  "anchored_at",
+]);
 assert.equal(
   db.prepare("SELECT COUNT(*) AS count FROM audit_receipts").get().count,
   1,

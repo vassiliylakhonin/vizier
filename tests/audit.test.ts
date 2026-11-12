@@ -126,12 +126,14 @@ describe("metadata-only D1 audit", () => {
     const statements: Array<{ query: string; cutoff: unknown }> = [];
     const db = Object.assign(Object.create(null), {
       prepare: (query: string) => ({
-        bind: (cutoff: unknown) => {
+        bind: (...args: unknown[]) => {
+          const cutoff = args[0];
           statements.push({ query, cutoff });
           return { query };
         },
       }),
       batch: async () => [
+        { meta: { changes: 1 } },
         { meta: { changes: 4 } },
         { meta: { changes: 3 } },
         { meta: { changes: 2 } },
@@ -156,6 +158,7 @@ describe("metadata-only D1 audit", () => {
       },
     });
     expect(statements.map((statement) => statement.query)).toEqual([
+      "INSERT OR REPLACE INTO audit_chain_anchor (id, pruned_through_id, pruned_through_hash, anchored_at) SELECT 1, id, receipt_hash, ?2 FROM audit_receipts WHERE receipt_hash != '' AND created_at < ?1 ORDER BY rowid DESC LIMIT 1",
       "DELETE FROM outcome_receipts WHERE finished_at < ?1",
       "DELETE FROM authorization_receipts WHERE issued_at < ?1",
       "DELETE FROM action_covenants WHERE accepted_at < ?1",

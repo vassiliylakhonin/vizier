@@ -88,6 +88,17 @@ export interface AuditChainVerification {
   readonly reason?: AuditChainBreakReason;
 }
 
+const CHAIN_APPEND_ATTEMPTS = 8;
+
+/**
+ * Appends a receipt to the hash chain. The insert is conditional on the chain
+ * head still being the hash this writer linked to, so two concurrent writers
+ * cannot both link to the same predecessor: the loser sees zero changed rows,
+ * re-reads the head and retries. The head is the newest chained row by
+ * insertion order (rowid), not by created_at, so isolates with skewed clocks
+ * still extend one linear chain. If every attempt loses, the receipt is not
+ * stored and an error is thrown rather than forking the chain.
+ */
 export async function storeReceipt(
   db: D1Database,
   request: VerificationRequest,
@@ -97,65 +108,76 @@ export async function storeReceipt(
   const policyRuleIds = JSON.stringify(receipt.policy_rule_ids);
   const actionType = request.action.type;
   const source = request.context.source;
-  const latest = await db
-    .prepare(
-      "SELECT receipt_hash FROM audit_receipts WHERE receipt_hash != '' ORDER BY created_at DESC, rowid DESC LIMIT 1",
-    )
-    .first<{ receipt_hash: string }>();
-  const row: ChainedReceiptRow = {
-    id: receipt.id,
-    created_at: receipt.created_at,
-    request_hash: receipt.request_hash,
-    decision: receipt.decision,
-    risk_score: receipt.risk_score,
-    reason_codes: reasonCodes,
-    policy_rule_ids: policyRuleIds,
-    action_type: actionType,
-    source,
-    prev_receipt_hash: latest?.receipt_hash ?? "",
-  };
-  const receiptHash = await auditReceiptHash(row);
-  await db
-    .prepare(
-      "INSERT INTO audit_receipts (id, created_at, request_hash, decision, risk_score, reason_codes, policy_rule_ids, action_type, source, receipt_hash, prev_receipt_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-    )
-    .bind(
-      row.id,
-      row.created_at,
-      row.request_hash,
-      row.decision,
-      row.risk_score,
-      row.reason_codes,
-      row.policy_rule_ids,
-      row.action_type,
-      row.source,
-      receiptHash,
-      row.prev_receipt_hash,
-    )
-    .run();
+  for (let attempt = 0; attempt < CHAIN_APPEND_ATTEMPTS; attempt += 1) {
+    const latest = await db
+      .prepare(
+        "SELECT receipt_hash FROM audit_receipts WHERE receipt_hash != '' ORDER BY rowid DESC LIMIT 1",
+      )
+      .first<{ receipt_hash: string }>();
+    const row: ChainedReceiptRow = {
+      id: receipt.id,
+      created_at: receipt.created_at,
+      request_hash: receipt.request_hash,
+      decision: receipt.decision,
+      risk_score: receipt.risk_score,
+      reason_codes: reasonCodes,
+      policy_rule_ids: policyRuleIds,
+      action_type: actionType,
+      source,
+      prev_receipt_hash: latest?.receipt_hash ?? "",
+    };
+    const receiptHash = await auditReceiptHash(row);
+    const result = await db
+      .prepare(
+        "INSERT INTO audit_receipts (id, created_at, request_hash, decision, risk_score, reason_codes, policy_rule_ids, action_type, source, receipt_hash, prev_receipt_hash) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11 WHERE COALESCE((SELECT receipt_hash FROM audit_receipts WHERE receipt_hash != '' ORDER BY rowid DESC LIMIT 1), '') = ?11",
+      )
+      .bind(
+        row.id,
+        row.created_at,
+        row.request_hash,
+        row.decision,
+        row.risk_score,
+        row.reason_codes,
+        row.policy_rule_ids,
+        row.action_type,
+        row.source,
+        receiptHash,
+        row.prev_receipt_hash,
+      )
+      .run();
+    if ((result?.meta?.changes ?? 1) > 0) return;
+  }
+  throw new Error("Audit chain head kept changing; receipt not stored.");
 }
 
 /**
- * Recomputes the audit receipt chain over every stored row, oldest first.
- * Detects modification, insertion, reordering, and deletion of any chained
- * row that still has a chained successor; a silent deletion of the newest
- * rows is not detectable without an external anchor, and rows written before
- * migration 0012 carry no hash and are skipped as legacy. Writers are
- * best-effort: two concurrent writes can fork the chain by linking to the
- * same predecessor, and verification reports the fork at the second link
- * rather than hiding it.
+ * Recomputes the audit receipt chain over every stored row in insertion
+ * order. Detects modification, insertion, reordering, and deletion of any
+ * chained row that still has a chained successor; a silent deletion of the
+ * newest rows is not detectable without an external anchor, and rows written
+ * before migration 0012 carry no hash and are skipped as legacy. Writers
+ * append with a compare-and-set on the chain head, so concurrent writes retry
+ * instead of forking. Retention pruning records the hash it cut the chain at
+ * (migration 0014) and verification starts from it; that anchor row is itself
+ * editable by anyone with D1 write access.
  */
 export async function verifyAuditChain(
   db: D1Database,
 ): Promise<AuditChainVerification> {
   const result = await db
     .prepare(
-      "SELECT id, created_at, request_hash, decision, risk_score, reason_codes, policy_rule_ids, action_type, source, receipt_hash, prev_receipt_hash FROM audit_receipts ORDER BY created_at, rowid",
+      "SELECT id, created_at, request_hash, decision, risk_score, reason_codes, policy_rule_ids, action_type, source, receipt_hash, prev_receipt_hash FROM audit_receipts ORDER BY rowid",
     )
     .all<ChainedReceiptRow & { readonly receipt_hash: string }>();
   let checked = 0;
   let legacy = 0;
-  let expectedPrev = "";
+  // Retention pruning records the hash it cut the chain at; before migration
+  // 0014 exists (or before any prune) the chain starts from the empty genesis.
+  let expectedPrev = await db
+    .prepare("SELECT pruned_through_hash FROM audit_chain_anchor WHERE id = 1")
+    .first<{ pruned_through_hash: string }>()
+    .then((anchor) => anchor?.pruned_through_hash ?? "")
+    .catch(() => "");
   for (const row of result.results) {
     if (row.receipt_hash === "") {
       legacy += 1;
@@ -390,6 +412,11 @@ export async function pruneAuditMetadata(
     now.getTime() - retentionDays * 24 * 60 * 60 * 1_000,
   ).toISOString();
   const results = await db.batch([
+    db
+      .prepare(
+        "INSERT OR REPLACE INTO audit_chain_anchor (id, pruned_through_id, pruned_through_hash, anchored_at) SELECT 1, id, receipt_hash, ?2 FROM audit_receipts WHERE receipt_hash != '' AND created_at < ?1 ORDER BY rowid DESC LIMIT 1",
+      )
+      .bind(cutoff, now.toISOString()),
     db.prepare("DELETE FROM outcome_receipts WHERE finished_at < ?1").bind(cutoff),
     db.prepare("DELETE FROM authorization_receipts WHERE issued_at < ?1").bind(cutoff),
     db.prepare("DELETE FROM action_covenants WHERE accepted_at < ?1").bind(cutoff),
@@ -402,11 +429,11 @@ export async function pruneAuditMetadata(
   return {
     cutoff,
     deleted: {
-      outcomes: resultAt(results, 0).meta.changes,
-      authorizations: resultAt(results, 1).meta.changes,
-      covenants: resultAt(results, 2).meta.changes,
-      verifications: resultAt(results, 3).meta.changes,
-      anonymous_days: resultAt(results, 4).meta.changes,
+      outcomes: resultAt(results, 1).meta.changes,
+      authorizations: resultAt(results, 2).meta.changes,
+      covenants: resultAt(results, 3).meta.changes,
+      verifications: resultAt(results, 4).meta.changes,
+      anonymous_days: resultAt(results, 5).meta.changes,
     },
   };
 }

@@ -125,10 +125,11 @@ or network failure.
 - A delegation grant proves delegation, not intent or possession. It shows the
   principal signed this authority for this agent; it does not show a human
   reviewed this particular action, nor that the signing key is still in the
-  principal's sole control. There is no revocation store: `jti` and `exp` are
-  recorded in the receipt so a downstream system can refuse a known-bad grant,
-  but Vizier will keep accepting a leaked key's grants until it is unregistered
-  or they expire. Short TTLs and rotation are the mechanism.
+  principal's sole control. Revocation is operator-driven, not principal-signed:
+  `POST /v1/grants/revoke` (D1) or the `VIZIER_REVOKED_GRANTS` secret refuse a
+  grant by `jti`, and `jti` and `exp` are recorded in the receipt so a
+  downstream system can refuse a known-bad grant too. Vizier keeps accepting a
+  leaked key's other grants until the key is unregistered or they expire. Short TTLs and rotation are the mechanism.
 - Legacy `/v1/verify` receipts remain unsigned. The SDK tolerates an absent
   `receipt_jws` by default; its opt-in `requireReceiptJws` turns a missing JWS
   into an error. Complete covenant receipts and
