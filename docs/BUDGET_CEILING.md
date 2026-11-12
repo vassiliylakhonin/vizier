@@ -62,6 +62,22 @@ Evaluation-only paths read the ledger but never claim.
 If a single-use grant loses its consumption race after the budget was claimed,
 the claim is released.
 
+## Idempotency and the payment adapter (opt-in)
+
+Set `VIZIER_BUDGET_IDEMPOTENCY=request_id` (needs migration 0015). A budgeted
+request that carries `context.request_id` is then counted once: a repeat with
+the same id and the same agent, action type and parameters is not added again,
+and stays allowed if the first one filled the ceiling. The same id with
+different content is `BLOCK` `BUDGET_REQUEST_ID_CONFLICT`. Without the option
+every call counts, as before. Idempotency covers 30 days of ids. Counting
+happens before the id is recorded, so a crash between the two over-counts a
+retry rather than letting it through uncounted.
+
+The TypeScript `guardPayment` adapter builds the evaluated amount and currency
+from the call that reaches the executor and passes your idempotency key as the
+request id. The server does not verify the price: it trusts what the
+integration reports, and it does not know what was settled.
+
 ## Limits
 
 - The ledger records what was **admitted** at ALLOW, not what the executor

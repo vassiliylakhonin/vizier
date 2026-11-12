@@ -382,6 +382,97 @@ function gatewayCall(url: string, body: unknown, headers: Record<string, string>
   });
 }
 
+describe("deployment proof-pack additions", () => {
+  async function revoke(jti: string) {
+    const response = await handleHttpRequest(new Request("https://vizier.test/v1/grants/revoke", {
+      method: "POST", headers: { Authorization: "Bearer integration", "Content-Type": "application/json" },
+      body: JSON.stringify({ jti }),
+    }), options);
+    expect(response.status).toBe(200);
+  }
+  const grantId = () => JSON.parse(Buffer.from(grant.split(".")[1]!, "base64url").toString("utf8")).jti as string;
+
+  it("stops a revoked grant before approval consumption and any cloud POST", async () => {
+    const approval = await approvalFor();
+    await revoke(grantId());
+    expect(await deployer()({ plan, grant, approval })).toMatchObject({ status: "stopped", execution: "not_performed" });
+    expect(requests.some(path => path.endsWith("/consume"))).toBe(false);
+    expect(cloud).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT status FROM human_reviews WHERE id=?").get(approval.id)!.status).toBe("APPROVED");
+  });
+
+  it("applies grant revocation at the gateway on the next call", async () => {
+    const approval = await gatewayApproval();
+    await withGateway(async url => {
+      await revoke(grantId());
+      expect(await (await gatewayCall(url, { plan, approval })).json()).toMatchObject({ status: "stopped" });
+    });
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("does not revoke an operation the cloud already accepted", async () => {
+    const approval = await gatewayApproval();
+    await withGateway(async url => {
+      expect(await (await gatewayCall(url, { plan, approval })).json()).toMatchObject({ status: "deployment_created" });
+      await revoke(grantId());
+    });
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["different worker", { ...plan, worker_name: "other-worker" }],
+    ["different account", { ...plan, account_id: "ffffffffffffffffffffffffffffffff" }],
+    ["different percentage", { ...plan, percentage: 50 }],
+    ["different operation", { ...plan, operation: "delete_worker" }],
+  ])("sends nothing to the cloud for changed arguments: %s", async (_label, changed) => {
+    const approval = await approvalFor();
+    expect(await deployer()({ plan: changed, grant, approval })).toMatchObject({ status: "stopped" });
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("aborts a hung cloud request and requires reconciliation instead of retrying", async () => {
+    const real = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => real(ms === 15_000 ? 30 : ms));
+    cloud.mockImplementation((_url, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    }));
+    const input = { plan, grant, approval: await approvalFor() };
+    expect(await deployer()(input)).toMatchObject({ status: "reconcile_required", execution: "unknown" });
+    expect(await deployer()(input)).toMatchObject({ status: "stopped" });
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+
+  it("with requireSignedReceipt, refuses a response without receipt_jws before consuming approval", async () => {
+    const approval = await approvalFor();
+    transformVerification = body => { const rest = { ...(body as VerificationResponse & { receipt_jws?: string }) }; delete rest.receipt_jws; return rest; };
+    expect(await deployer({ requireSignedReceipt: true })({ plan, grant, approval })).toMatchObject({ status: "stopped", reason: "AUTHORIZATION_FAILED_RECONCILE_APPROVAL" });
+    expect(requests.some(path => path.endsWith("/consume"))).toBe(false);
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("with requireSignedReceipt, refuses a tampered receipt_jws", async () => {
+    const approval = await approvalFor();
+    transformVerification = body => {
+      const signed = body as VerificationResponse & { receipt_jws?: string };
+      return { ...signed, receipt_jws: signed.receipt_jws === undefined ? undefined : signed.receipt_jws.slice(0, -6) + "AAAAAA" };
+    };
+    expect(await deployer({ requireSignedReceipt: true })({ plan, grant, approval })).toMatchObject({ status: "stopped" });
+    expect(cloud).not.toHaveBeenCalled();
+  });
+
+  it("without requireSignedReceipt the default tolerates an unsigned receipt (documented opt-in gap)", async () => {
+    const approval = await approvalFor();
+    transformVerification = body => { const rest = { ...(body as VerificationResponse & { receipt_jws?: string }) }; delete rest.receipt_jws; return rest; };
+    expect(await deployer()({ plan, grant, approval })).toMatchObject({ status: "deployment_created" });
+  });
+
+  it("with requireSignedReceipt, still deploys the exact approved version when the receipt is signed", async () => {
+    const approval = await approvalFor();
+    expect(await deployer({ requireSignedReceipt: true })({ plan, grant, approval })).toMatchObject({ status: "deployment_created" });
+    expect(cloud).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("operator-owned deployment gateway", () => {
   it("rejects concurrent requests while an execution is in flight", async () => {
     const approval = await gatewayApproval();

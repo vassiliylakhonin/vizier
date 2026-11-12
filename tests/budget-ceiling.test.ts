@@ -28,7 +28,7 @@ function budgetAuthority(ceiling: number, id = "q4-procurement") {
 
 function createD1(): { db: D1Database; mem: DatabaseSync } {
   const mem = new DatabaseSync(":memory:");
-  for (const file of ["0011_grant_lifecycle.sql", "0013_budget_ledger.sql"]) {
+  for (const file of ["0011_grant_lifecycle.sql", "0013_budget_ledger.sql", "0015_budget_admissions.sql"]) {
     mem.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
   }
   const db = {
@@ -316,5 +316,68 @@ describe("budget ceiling", () => {
     expect(amountToMicrosCeil(Number.NaN)).toBeNull();
     expect(amountToMicrosCeil(1e12)).toBeNull();
     expect(ceilingToMicrosFloor(10.0000009)).toBe(10_000_000);
+  });
+
+  describe("request-id idempotency (opt-in)", () => {
+    const withId = (authority: unknown, grant: string | undefined, id: string, amount = 4_000) => {
+      const base = request(authority, grant, { parameters: { amount, currency: "USD" } });
+      return { ...base, context: { ...base.context, request_id: id } };
+    };
+
+    it("counts a repeated request id once", async () => {
+      const authority = budgetAuthority(10_000);
+      const { grant, principalKeySource } = await setup(authority);
+      const { db, mem } = createD1();
+      const opts = { principalKeySource, db, budgetIdempotencySource: "request_id" };
+      expect((await post(withId(authority, grant, "pay-1"), opts)).decision).toBe("ALLOW");
+      expect((await post(withId(authority, grant, "pay-1"), opts)).decision).toBe("ALLOW");
+      expect(spent(mem)).toEqual({ s: 4_000_000_000, a: 1 });
+      expect((await post(withId(authority, grant, "pay-2"), opts)).decision).toBe("ALLOW");
+      expect((await post(withId(authority, grant, "pay-3"), opts)).decision).toBe("BLOCK");
+      expect(spent(mem)).toEqual({ s: 8_000_000_000, a: 2 });
+    });
+
+    it("allows a retry of an admitted request even when it filled the ceiling", async () => {
+      const authority = budgetAuthority(4_000);
+      const { grant, principalKeySource } = await setup(authority);
+      const { db, mem } = createD1();
+      const opts = { principalKeySource, db, budgetIdempotencySource: "request_id" };
+      expect((await post(withId(authority, grant, "pay-1"), opts)).decision).toBe("ALLOW");
+      expect((await post(withId(authority, grant, "pay-1"), opts)).decision).toBe("ALLOW");
+      expect((await post(withId(authority, grant, "pay-2"), opts)).decision).toBe("BLOCK");
+      expect(spent(mem).a).toBe(1);
+    });
+
+    it("blocks the same request id with a different amount", async () => {
+      const authority = budgetAuthority(10_000);
+      const { grant, principalKeySource } = await setup(authority);
+      const { db, mem } = createD1();
+      const opts = { principalKeySource, db, budgetIdempotencySource: "request_id" };
+      await post(withId(authority, grant, "pay-1"), opts);
+      const out = await post(withId(authority, grant, "pay-1", 1), opts);
+      expect(out.decision).toBe("BLOCK");
+      expect(out.reason_codes).toContain("BUDGET_REQUEST_ID_CONFLICT");
+      expect(spent(mem)).toEqual({ s: 4_000_000_000, a: 1 });
+    });
+
+    it("stores no readable request id or action data", async () => {
+      const authority = budgetAuthority(10_000);
+      const { grant, principalKeySource } = await setup(authority);
+      const { db, mem } = createD1();
+      await post(withId(authority, grant, "invoice-secret-77"), { principalKeySource, db, budgetIdempotencySource: "request_id" });
+      const row = JSON.stringify(mem.prepare("SELECT * FROM budget_admissions").get());
+      expect(row).not.toContain("invoice-secret-77");
+      expect(row).not.toContain("procurement-agent-01");
+    });
+
+    it("keeps the old behaviour when the option is off", async () => {
+      const authority = budgetAuthority(10_000);
+      const { grant, principalKeySource } = await setup(authority);
+      const { db, mem } = createD1();
+      const opts = { principalKeySource, db };
+      await post(withId(authority, grant, "pay-1"), opts);
+      await post(withId(authority, grant, "pay-1"), opts);
+      expect(spent(mem).a).toBe(2);
+    });
   });
 });

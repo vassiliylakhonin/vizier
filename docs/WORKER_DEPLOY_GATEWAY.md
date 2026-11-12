@@ -87,8 +87,14 @@ The executor snapshots the fixed scope, loads the operator's grant on each
 request, checks signed delegation, verifies the exact approval and consumes it
 in Vizier before making the cloud request. Rotation uses atomic replacement of
 the operator grant file. Missing or invalid replacement grants stop execution.
-There is no instant grant revocation store. Operators can stop the executor to
-block new requests; an already submitted Cloudflare operation may still finish.
+Each request is authorized through Vizier, so grant revocation applies on the
+next call: revoke the grant's `jti` with `POST /v1/grants/revoke` (needs D1 and
+the integration credential) or list it in `VIZIER_REVOKED_GRANTS`. A revoked
+grant stops the request before approval consumption and before any cloud
+request (tested, with a simulated cloud). Revocation is operator-driven, not
+principal-signed, and cannot recall a Cloudflare operation already submitted.
+Operators can also stop the executor to block new requests. The executor loads
+its grant file on every call, so replacing the file also rotates the grant.
 
 The gateway accepts one in-flight request and returns `409 EXECUTOR_BUSY` for
 another. It limits bodies to 32 KiB, rejects browser-origin requests and never
@@ -116,6 +122,9 @@ Before production, test from the actual agent OS identity:
 The automated gateway tests exercise actual local HTTP ingress, the real
 Vizier transport/SDK with a temporary SQLite review store, and a simulated
 Cloudflare API. They do not establish your host's isolation or deploy a Worker.
+
+`npm run proof:deploy` prints which claim each automated test supports (see
+[the proof pack](DEPLOY_PROOF_PACK.md)).
 
 Run the [disposable Linux sandbox](../sandbox/worker-deploy/README.md) to test
 file, environment, process and API boundaries with a separate unprivileged UID.

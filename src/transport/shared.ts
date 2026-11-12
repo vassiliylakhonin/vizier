@@ -36,6 +36,8 @@ export interface TransportOptions {
   readonly requireSignedAcceptanceSource?: string;
   /** `VIZIER_REVOKED_GRANTS`: JSON array of revoked grant ids (jti). */
   readonly revokedGrantSource?: string;
+  /** `VIZIER_BUDGET_IDEMPOTENCY=request_id`: count a budgeted request id once. */
+  readonly budgetIdempotencySource?: string;
   readonly mcpCorrelationKey?: string;
   readonly upstreamFetch?: typeof fetch;
   readonly upstreamUrl?: string;

@@ -7,7 +7,7 @@ import {
   priceAction,
   type BudgetState,
 } from "../core/budget";
-import { verifyAction, type VerificationOptions } from "../core/index";
+import { canonicalize, sha256, verifyAction, type VerificationOptions } from "../core/index";
 import type { VerificationRequest } from "../core/schemas";
 import type { VerificationResponse } from "../core/types";
 import type { TransportOptions } from "./shared";
@@ -144,6 +144,14 @@ async function claimConsumption(
 export async function pruneGrantLifecycle(db: D1Database, nowSeconds: number): Promise<void> {
   await db.prepare("DELETE FROM revoked_grants WHERE expires_at <= ?").bind(nowSeconds).run();
   await db.prepare("DELETE FROM consumed_grants WHERE expires_at <= ?").bind(nowSeconds).run();
+  try {
+    await db
+      .prepare("DELETE FROM budget_admissions WHERE created_at <= ?")
+      .bind(nowSeconds - 30 * 24 * 60 * 60)
+      .run();
+  } catch {
+    // Table absent before migration 0015 is applied.
+  }
 }
 
 export interface GrantLifecycleOptions {
@@ -156,35 +164,77 @@ interface BudgetClaim {
   readonly currency: string;
   readonly amountMicros: number;
   readonly ceilingMicros: number;
+  /** Set when idempotency is on and the request carries an id. */
+  readonly idempotency?: { readonly requestKey: string; readonly actionHash: string };
 }
 
 /**
  * Work out whether this request spends against a budget. Returns null when it
  * does not, or when its cost cannot be read (the kernel refuses that case).
  */
-async function readBudgetClaim(request: VerificationRequest): Promise<BudgetClaim | null> {
+async function readBudgetClaim(request: VerificationRequest, idempotent: boolean): Promise<BudgetClaim | null> {
   const budget = request.authority.constraints.budget;
   if (budget === undefined || request.principal === null) return null;
   if (!budget.actions.includes(request.action.type)) return null;
   const pricing = priceAction(request, budget.currency);
   if (!pricing.priced) return null;
+  const requestId = request.context.request_id;
   return {
     key: await budgetKey(request.principal.id, budget.id),
     currency: budget.currency,
     amountMicros: pricing.amountMicros,
     ceilingMicros: ceilingToMicrosFloor(budget.ceiling),
+    ...(idempotent && requestId !== null
+      ? {
+          idempotency: {
+            requestKey: await sha256(requestId),
+            actionHash: await sha256(
+              canonicalize({ agent: request.agent.id, type: request.action.type, parameters: request.action.parameters }),
+            ),
+          },
+        }
+      : {}),
   };
 }
 
+function budgetIdempotencyOn(options: TransportOptions): boolean {
+  return options.budgetIdempotencySource?.trim() === "request_id";
+}
+
+type Admission = "none" | "same" | "conflict" | "unknown";
+
+async function readAdmission(db: D1Database, claim: BudgetClaim): Promise<Admission> {
+  if (claim.idempotency === undefined) return "none";
+  try {
+    const row = await db
+      .prepare("SELECT action_hash FROM budget_admissions WHERE budget_key = ? AND request_key = ?")
+      .bind(claim.key, claim.idempotency.requestKey)
+      .first<{ action_hash: string }>();
+    if (row === null || row === undefined) return "none";
+    return row.action_hash === claim.idempotency.actionHash ? "same" : "conflict";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function readBudgetState(db: D1Database, claim: BudgetClaim): Promise<BudgetState> {
+  const admission = await readAdmission(db, claim);
+  if (admission === "unknown") return { available: false };
   try {
     const row = await db
       .prepare("SELECT spent_micros, currency FROM budget_ledger WHERE budget_key = ?")
       .bind(claim.key)
       .first<{ spent_micros: number; currency: string }>();
-    return row === null || row === undefined
-      ? { available: true, spentMicros: 0, storedCurrency: null }
-      : { available: true, spentMicros: Number(row.spent_micros), storedCurrency: row.currency };
+    if (row === null || row === undefined) return { available: true, spentMicros: 0, storedCurrency: null };
+    const spent = Number(row.spent_micros);
+    // A repeat of an admitted request is already inside `spent`; do not count it twice.
+    const base = admission === "same" ? Math.max(0, spent - claim.amountMicros) : spent;
+    return {
+      available: true,
+      spentMicros: base,
+      storedCurrency: row.currency,
+      ...(admission === "conflict" ? { requestIdConflict: true } : {}),
+    };
   } catch {
     // A missing table or a D1 error is "unknown", never "nothing spent".
     return { available: false };
@@ -198,6 +248,8 @@ async function readBudgetState(db: D1Database, claim: BudgetClaim): Promise<Budg
 async function claimBudget(db: D1Database, claim: BudgetClaim): Promise<boolean> {
   const now = Math.floor(Date.now() / 1000);
   try {
+    if ((await readAdmission(db, claim)) === "same") return true; // already counted
+    if ((await readAdmission(db, claim)) !== "none" && claim.idempotency !== undefined) return false;
     await db
       .prepare(
         "INSERT OR IGNORE INTO budget_ledger (budget_key, currency, spent_micros, admissions, updated_at) " +
@@ -212,7 +264,24 @@ async function claimBudget(db: D1Database, claim: BudgetClaim): Promise<boolean>
       )
       .bind(claim.amountMicros, now, claim.key, claim.currency, claim.amountMicros, claim.ceilingMicros)
       .run();
-    return Number(outcome.meta?.changes ?? 0) === 1;
+    if (Number(outcome.meta?.changes ?? 0) !== 1) return false;
+    if (claim.idempotency !== undefined) {
+      // Count first, record second: a crash in between over-counts a retry
+      // (fails closed) and never lets it through uncounted.
+      const recorded = await db
+        .prepare(
+          "INSERT OR IGNORE INTO budget_admissions (budget_key, request_key, action_hash, amount_micros, created_at) " +
+            "VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(claim.key, claim.idempotency.requestKey, claim.idempotency.actionHash, claim.amountMicros, now)
+        .run();
+      if (Number(recorded.meta?.changes ?? 0) !== 1) {
+        // A concurrent call with the same request id was admitted first.
+        await releaseBudget(db, claim);
+        return (await readAdmission(db, claim)) === "same";
+      }
+    }
+    return true;
   } catch {
     return false;
   }
@@ -254,7 +323,7 @@ export async function verifyWithGrantLifecycle(
   const now = Math.floor(Date.now() / 1000);
   const revoked = new Set(parseStaticRevocations(options.revokedGrantSource));
   const used = new Set<string>();
-  const budgetClaim = await readBudgetClaim(request);
+  const budgetClaim = await readBudgetClaim(request, budgetIdempotencyOn(options));
   const [isRevoked, isUsed, budgetState] = await Promise.all([
     options.db === undefined
       ? Promise.resolve(memHas(memoryRevoked, hints.jti, now))

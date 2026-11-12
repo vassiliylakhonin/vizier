@@ -60,6 +60,7 @@ async function main(): Promise<void> {
     const journal = new SqliteExecutionJournal(values.journal);
     const server = createWorkerDeploymentGateway({
       journal,
+      requireSignedReceipt: process.env.VIZIER_REQUIRE_SIGNED_RECEIPT === "1",
       scope, vizier: new Vizier({ baseUrl: baseUrl.origin, apiKey }), cloudflareApiToken, clientToken,
       loadGrant: async () => {
         const info = await stat(grantPath);

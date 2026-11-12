@@ -242,6 +242,9 @@ function evaluateBudget(
       ledger_currency: state.storedCurrency,
     });
   }
+  if (state.requestIdConflict === true) {
+    return result(rule, "FAIL", "BUDGET_REQUEST_ID_CONFLICT");
+  }
   const ceilingMicros = ceilingToMicrosFloor(budget.ceiling);
   const details = {
     budget_currency: budget.currency,

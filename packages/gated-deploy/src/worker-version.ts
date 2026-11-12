@@ -74,6 +74,12 @@ export interface WorkerVersionDeploymentOptions {
   readonly vizier: Vizier;
   readonly cloudflareApiToken: string;
   readonly journal?: ExecutionJournal;
+  /**
+   * Opt-in: refuse an authorization response that carries no verifiable
+   * `receipt_jws` (SDK `requireReceiptJws`). Needs a Vizier service with a
+   * receipt signing key; off by default so existing operator setups keep working.
+   */
+  readonly requireSignedReceipt?: boolean;
   readonly cloudflareFetch?: typeof globalThis.fetch;
 }
 
@@ -157,7 +163,7 @@ export function createWorkerVersionDeployer(options: WorkerVersionDeploymentOpti
         authority: workerDeploymentAuthority(scope),
         context: { request_id: approval.id, timestamp: null, source: "internal" },
         grant,
-      }, { signal: AbortSignal.timeout(10_000) });
+      }, { signal: AbortSignal.timeout(10_000), ...(options.requireSignedReceipt === true ? { requireReceiptJws: true } : {}) });
       if (response.decision !== "ALLOW") return stop(`POLICY_${response.decision}`);
       receipt = response.receipt;
       if (receipt.authority_provenance !== "principal_signed" ||

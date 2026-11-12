@@ -109,4 +109,9 @@ assert.equal(schemaSql.includes("agent_id"), false);
 db.exec("INSERT INTO budget_ledger VALUES ('k', 'USD', 5, 1, 0)");
 assert.throws(() => db.exec("UPDATE budget_ledger SET spent_micros = -1"), /CHECK/);
 
+// Budget admissions (0015): one row per (budget, request); no readable ids.
+db.exec("INSERT INTO budget_admissions VALUES ('k', 'r', 'h', 5, 0)");
+assert.throws(() => db.exec("INSERT INTO budget_admissions VALUES ('k', 'r', 'h2', 5, 0)"), /UNIQUE|PRIMARY/);
+assert.throws(() => db.exec("INSERT INTO budget_admissions VALUES ('k', 'r2', 'h', -1, 0)"), /CHECK/);
+
 console.log(`checked ${migrations.length} D1 migrations in order`);

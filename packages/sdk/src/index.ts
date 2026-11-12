@@ -1247,3 +1247,10 @@ export type {
   BanAccountGuardOptions,
   BanExecutor,
 } from "./ban-account-guard.js";
+
+export { guardPayment } from "./payment-guard.js";
+export type {
+  PaymentCall,
+  PaymentExecutor,
+  PaymentGuardOptions,
+} from "./payment-guard.js";

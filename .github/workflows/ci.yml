@@ -37,6 +37,8 @@ jobs:
       - name: Synthetic mass-ban guard regression (clean checkout)
         run: npm run demo:mass-ban
       - run: npm run check
+      - name: Deployment boundary proof pack (simulated cloud)
+        run: node scripts/deploy-proof-pack.mjs
       - name: Verify installable release archives
         run: |
           mkdir -p release-archives

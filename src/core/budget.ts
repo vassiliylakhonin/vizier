@@ -61,5 +61,11 @@ export async function budgetKey(principalId: string, budgetId: string): Promise<
 
 /** What the transport read from the ledger before the kernel runs. */
 export type BudgetState =
-  | { readonly available: true; readonly spentMicros: number; readonly storedCurrency: string | null }
+  | {
+      readonly available: true;
+      readonly spentMicros: number;
+      readonly storedCurrency: string | null;
+      /** The same request id was already admitted for a different action. */
+      readonly requestIdConflict?: boolean;
+    }
   | { readonly available: false };
