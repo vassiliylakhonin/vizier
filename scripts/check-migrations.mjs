@@ -114,4 +114,9 @@ db.exec("INSERT INTO budget_admissions VALUES ('k', 'r', 'h', 5, 0)");
 assert.throws(() => db.exec("INSERT INTO budget_admissions VALUES ('k', 'r', 'h2', 5, 0)"), /UNIQUE|PRIMARY/);
 assert.throws(() => db.exec("INSERT INTO budget_admissions VALUES ('k', 'r2', 'h', -1, 0)"), /CHECK/);
 
+// Integration activity (0016): counters never negative; no readable identity columns.
+db.exec("INSERT INTO integration_activity VALUES ('h', '2026-11-01', 1, 0, 0)");
+assert.throws(() => db.exec("UPDATE integration_activity SET allow_count = -1"), /CHECK/);
+assert.throws(() => db.exec("INSERT INTO integration_activity VALUES ('h', '2026-11-01', 1, 0, 0)"), /UNIQUE|PRIMARY/);
+
 console.log(`checked ${migrations.length} D1 migrations in order`);

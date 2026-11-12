@@ -10,6 +10,7 @@ import {
 import { canonicalize, sha256, verifyAction, type VerificationOptions } from "../core/index";
 import type { VerificationRequest } from "../core/schemas";
 import type { VerificationResponse } from "../core/types";
+import { pruneActivity, recordActivity } from "./activity";
 import type { TransportOptions } from "./shared";
 
 /**
@@ -151,6 +152,11 @@ export async function pruneGrantLifecycle(db: D1Database, nowSeconds: number): P
       .run();
   } catch {
     // Table absent before migration 0015 is applied.
+  }
+  try {
+    await pruneActivity(db, nowSeconds * 1000);
+  } catch {
+    // Table absent before migration 0016 is applied.
   }
 }
 
@@ -311,6 +317,17 @@ async function releaseBudget(db: D1Database, claim: BudgetClaim): Promise<void> 
  * BUDGET_CEILING_EXCEEDED rather than a second ALLOW.
  */
 export async function verifyWithGrantLifecycle(
+  request: VerificationRequest,
+  verifyOptions: VerificationOptions,
+  options: TransportOptions,
+  lifecycle: GrantLifecycleOptions,
+): Promise<VerificationResponse> {
+  const result = await decideWithGrantLifecycle(request, verifyOptions, options, lifecycle);
+  if (lifecycle.enforce) await recordActivity(options, result);
+  return result;
+}
+
+async function decideWithGrantLifecycle(
   request: VerificationRequest,
   verifyOptions: VerificationOptions,
   options: TransportOptions,

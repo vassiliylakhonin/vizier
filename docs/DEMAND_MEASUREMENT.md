@@ -1,6 +1,6 @@
 # Demand measurement without contacting users
 
-Status: **proposal.** No instrumentation described under "Proposed" exists yet.
+Status: **implemented, off by default** (migration 0016, `VIZIER_ACTIVITY_KEY`). The owner approved this design on 2026-11-12. It has collected no data yet.
 
 ## Decision rule
 
@@ -22,9 +22,9 @@ has been met or tested.
 So today the only honest statement is an aggregate upper bound. The
 `/v1/insights` window is 30 days and includes internal use.
 
-## Proposed minimal instrumentation (needs approval before building)
+## Instrumentation as built
 
-Only signed-grant calls get an identity, because the grant's verified issuer
+Only signed-grant calls get an identity (enforced `/v1/verify`, MCP and A2A decisions, not evaluation endpoints), because the grant's verified issuer
 (principal id) is the one caller identifier the service already validates.
 
 1. New D1 table `integration_activity`, one row per (pseudonym, UTC day):
@@ -52,3 +52,10 @@ Trade-offs to decide:
 
 Install-to-first-guard attribution is not possible without a user-supplied
 identifier and is left out on purpose.
+
+## Operating it
+
+- Set `VIZIER_ACTIVITY_KEY` (16+ characters, server-only) to turn it on; unset means no rows are written. Set `VIZIER_ACTIVITY_EXCLUDE` to a JSON array of your own and CI principal ids. Excluded rows are reported separately.
+- Read `GET /v1/insights/funnel` with the integration credential. It returns counts only, never hashes: integrations with a first `ALLOW` in the last 30 UTC days, those with `ALLOW` on two or more days, the excluded count, and whether the 3 / 2 thresholds are met. Install counts are not measured here.
+- Rotating the key resets identity (old hashes no longer match). Rows are pruned after 35 days.
+- Known blind spots: anonymous and unsigned traffic, principals created for each call (a fresh principal per call looks like many integrations), and the maintainer's own traffic under an id that is not on the exclude list. A passing count is a signal to check by hand, not proof of independent adoption.

@@ -75,6 +75,7 @@ import {
 } from "./catalog";
 import { handleMcpRequest } from "./mcp";
 import { authorizeEnforcement } from "./auth";
+import { activityEnabled, getDemandFunnel } from "./activity";
 import { revokeGrant, verifyWithGrantLifecycle } from "./grant-lifecycle";
 import { generateApiKey, listApiKeys, revokeApiKey } from "../auth/keys";
 import { createJwks, maybeSignAgentCard } from "./jws";
@@ -1122,6 +1123,21 @@ async function handleInsights(
   return jsonResponse(await getInsights(options.db));
 }
 
+async function handleDemandFunnel(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  await requireAuthenticatedIntegration(request, options, "Demand funnel");
+  if (options.db === undefined || !activityEnabled(options)) {
+    throw new TransportRequestError(
+      503,
+      "ACTIVITY_UNAVAILABLE",
+      "The demand funnel needs a configured database and VIZIER_ACTIVITY_KEY.",
+    );
+  }
+  return jsonResponse(await getDemandFunnel(options.db, Date.now()));
+}
+
 async function handleAuditChain(
   request: Request,
   options: TransportOptions,
@@ -1738,6 +1754,9 @@ async function handleHttpRequestInner(
     }
     if (request.method === "GET" && url.pathname === "/v1/insights") {
       return await handleInsights(request, options);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/insights/funnel") {
+      return await handleDemandFunnel(request, options);
     }
     if (request.method === "GET" && url.pathname === "/v1/audit/chain") {
       return await handleAuditChain(request, options);

@@ -38,6 +38,10 @@ export interface TransportOptions {
   readonly revokedGrantSource?: string;
   /** `VIZIER_BUDGET_IDEMPOTENCY=request_id`: count a budgeted request id once. */
   readonly budgetIdempotencySource?: string;
+  /** `VIZIER_ACTIVITY_KEY`: HMAC key for pseudonymous daily activity; unset disables it. */
+  readonly activityKey?: string;
+  /** `VIZIER_ACTIVITY_EXCLUDE`: JSON array of principal ids reported as excluded. */
+  readonly activityExcludeSource?: string;
   readonly mcpCorrelationKey?: string;
   readonly upstreamFetch?: typeof fetch;
   readonly upstreamUrl?: string;
