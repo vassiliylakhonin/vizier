@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.17 — 2026-11-12
+
 - Cumulative budget ceiling (opt-in, needs D1 migration 0013). New authority constraint `budget { id, ceiling, currency, actions }` in a principal-signed grant: Vizier sums admitted spend per (principal, budget id) in a new `budget_ledger` table, checks it before deciding, and claims the amount atomically after `ALLOW`, so concurrent calls cannot share the last headroom. New `BLOCK` reason codes: `BUDGET_CEILING_EXCEEDED`, `BUDGET_UNPRICED` (unreadable cost is refused, not counted as zero), `BUDGET_REQUIRES_GRANT`, `BUDGET_STATE_UNAVAILABLE` (no D1 or ledger error fails closed), `BUDGET_CURRENCY_CONFLICT`. A new grant with the same budget id and a higher ceiling continues the same total. The ledger records admitted, not settled, spend and does not refund failed executions. See docs/BUDGET_CEILING.md. Idea credit: OpenGeni session usage limits (Apache-2.0); independent implementation.
 
 - SDK source: add typed TypeScript `scanNumericConsistency`, Python sync/async `scan_numeric_consistency`, and opt-in `numeric_consistency` authority constraints (including Python `check`). Scan receipts remain opaque; this does not change signed verification receipts or publish a package release.

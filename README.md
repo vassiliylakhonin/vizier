@@ -56,7 +56,7 @@ To prepare a deployment review locally with **Node.js 24+**:
 ```sh
 mkdir vizier-demo
 cd vizier-demo
-npm install @agenda-intelligence/vizier-sdk@0.5.16 @agenda-intelligence/vizier-gated-deploy@0.5.16
+npm install @agenda-intelligence/vizier-sdk@0.5.17 @agenda-intelligence/vizier-gated-deploy@0.5.17
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
   --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
@@ -106,7 +106,7 @@ A verification response does not execute the action or automatically open a revi
 Install the TypeScript client (Node.js 24+):
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.16
+npm install @agenda-intelligence/vizier-sdk@0.5.17
 ```
 
 Supply `VIZIER_API_KEY` and `VIZIER_GRANT_FILE` to the trusted guard. For this example, the grant must bind `platform-owner` to `release-agent` and contain **exactly the `authority` object below**. Keep the private signer separate.
@@ -220,7 +220,7 @@ See the [threat model](docs/THREAT_MODEL.md) and [security review](docs/SECURITY
 
 ## Status and evidence
 
-**Experimental.** The npm examples above pin version `0.5.16`. Evaluate the integration in your own sandbox before using it for consequential actions.
+**Experimental.** The npm examples above pin version `0.5.17`. Evaluate the integration in your own sandbox before using it for consequential actions.
 
 The [maintainer's Worker deployment demo](docs/WORKER_DEPLOY_DEMO.md) records eight scenarios, including changed versions, out-of-scope targets, expired grants, missing approval, and replay. The report includes a [sanitized trace](docs/worker-deploy-live-demo-2026-10-13.json) and explains its limitations. It is owner-run testing, not independent customer adoption.
 
