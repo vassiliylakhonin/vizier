@@ -1271,6 +1271,21 @@ function docsDocument(options: TransportOptions): Response {
       record_outcome: "POST /v1/outcomes",
       audit_insights: "GET /v1/insights",
       audit_chain: "GET /v1/audit/chain",
+      demand_funnel: "GET /v1/insights/funnel",
+    },
+    demand_measurement_privacy: {
+      enabled: options.db !== undefined && activityEnabled(options),
+      purpose: "Measure first and repeat use of signed-grant enforcement.",
+      scope: "Decisions made with a verified signed grant.",
+      stored_fields: [
+        "A stable pseudonym derived from the grant issuer ID using a server-only HMAC key",
+        "UTC date",
+        "Daily ALLOW and other-decision counts",
+        "Internal-traffic exclusion flag",
+      ],
+      retention: "Scheduled pruning removes dates earlier than the 35-day cutoff.",
+      access: "The authenticated demand report returns aggregate counts only.",
+      details: "https://github.com/vassiliylakhonin/vizier/blob/main/docs/DEMAND_MEASUREMENT.md",
     },
     content_type: "application/json",
     request_schema: {

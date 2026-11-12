@@ -1,6 +1,12 @@
 # Demand measurement without contacting users
 
-Status: **implemented, off by default** (migration 0016, `VIZIER_ACTIVITY_KEY`). The owner approved this design on 2026-11-12. It has collected no data yet.
+Demand measurement is off by default. The public [API documentation](https://vizier.agendamcp.dpdns.org/docs) reports whether the hosted service has enabled it.
+
+## Privacy notice
+
+Vizier uses activity from verified signed grants to measure first and repeat use. For each verified issuer and UTC date, the measurement stores a stable pseudonym derived from the issuer ID with a server-only HMAC key, counts of `ALLOW` and other decisions, and an internal-traffic exclusion flag. The pseudonym links the issuer's activity across dates. The list of stored fields applies to this measurement table. The separate security audit is described in the [threat model](THREAT_MODEL.md).
+
+Scheduled pruning removes dates earlier than the 35-day cutoff. The authenticated report exposes aggregate counts. Anonymous calls, unsigned calls and package downloads are outside the scope of the report. For privacy questions, contact the service operator at `vassiliy.lakhonin@gmail.com`.
 
 ## Decision rule
 
@@ -29,16 +35,15 @@ Only signed-grant calls get an identity (enforced `/v1/verify`, MCP and A2A deci
 
 1. New D1 table `integration_activity`, one row per (pseudonym, UTC day):
    `integration_hash` (HMAC-SHA-256 of the verified principal id with a
-   server-only secret), `day`, `allow_count`, `block_count`. No request body,
-   agent id, action, target, amount or raw principal id. Rows older than 35
-   days are pruned.
+   server-only secret), `day`, `allow_count`, `other_count`, `is_excluded`.
+   Scheduled pruning removes dates earlier than the 35-day cutoff.
 2. Written only after a signed-grant decision, from the existing audit write
    path. A failed write does not affect the decision.
-3. A reviewer-authenticated report `GET /v1/insights/funnel`: counts of
+3. An integration-authenticated report `GET /v1/insights/funnel`: counts of
    hashes with a first `ALLOW`, and with `ALLOW` on at least two distinct days
    in 30. Counts only; the hashes are never returned.
-4. Exclusions are a server-side deny list of hashes (maintainer principals, CI
-   principals), set by the operator in a secret. Everything else counts, and
+4. Exclusions are a server-side list of principal IDs (maintainer and CI),
+   set by the operator in a secret. Everything else counts, and
    the report shows the excluded count separately.
 
 Trade-offs to decide:

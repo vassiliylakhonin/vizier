@@ -252,6 +252,7 @@ Statuses describe this repository's code and tests; live deployment state must b
 | Human approval by email | [Vizier + OAE worked example](docs/WORKED_EXAMPLE_VIZIER_OAE.md) |
 | Anonymous path | [Public evidence](docs/ANONYMOUS_PATH_EVIDENCE.md) |
 | REST and A2A | [API reference](https://vizier.agendamcp.dpdns.org/docs) · [OpenAPI](https://vizier.agendamcp.dpdns.org/openapi.json) · [Agent card](https://vizier.agendamcp.dpdns.org/.well-known/agent-card.json) |
+| Usage measurement and privacy | [Data collected, retention, and report access](docs/DEMAND_MEASUREMENT.md#privacy-notice) |
 | Architecture and scope | [Architecture](docs/ARCHITECTURE.md) · [Claim ledger](docs/CLAIMS.md) · [Pilot scope](docs/PILOT.md) |
 
 ## Development and contributions
