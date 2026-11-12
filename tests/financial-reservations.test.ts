@@ -330,7 +330,25 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT state,reason FROM wallet_history_monitor WHERE id=1").get())
       .toMatchObject({ state: "FAILED", reason: "MONITOR_HISTORY_UNAVAILABLE:RPC_ENVELOPE_eth_getLogs_CODE_-32000" });
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(6);
-    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 2000)).toHaveLength(2);
+    expect(vi.mocked(setTimeout).mock.calls.map(([, delay]) => delay)).toEqual([2000, 8000]);
+  });
+  it("recovers from a transient 429 inside one scan with escalating backoff", async () => {
+    await policy({ enabled: false });
+    const fixtureFetch = fetch;
+    let logCalls = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => {
+      const { method } = JSON.parse(init.body as string) as { method: string };
+      if (method === "eth_getLogs") {
+        logCalls += 1;
+        if (logCalls <= 2) return Promise.resolve(new Response(null, { status: 429 }));
+      }
+      return fixtureFetch(url, init);
+    }));
+    expect(await runWalletHistoryMonitor(options.db!, wallet)).toMatchObject({ outgoing: 0, startBlock: 5000, endBlock: 50000 });
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(11);
+    expect(vi.mocked(setTimeout).mock.calls.filter(([, delay]) => delay === 8000)).toHaveLength(1);
+    expect(mem.prepare("SELECT state,reason FROM wallet_history_monitor WHERE id=1").get())
+      .toMatchObject({ state: "OK", reason: null });
   });
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();

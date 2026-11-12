@@ -5,7 +5,8 @@ import { runWalletHistoryMonitor, retryWalletHistoryMonitor } from './reviews/wa
 
 export function handleScheduled(controller: Pick<ScheduledController, 'cron' | 'scheduledTime'>,
   env: { DB: D1Database; VIZIER_MONITORED_WALLET?: string }, ctx: Pick<ExecutionContext, 'waitUntil'>): void {
-  const retry = ['47 3 * * *', '7 4 * * *'].includes(controller.cron);
+  // Backoff after the 03:17 primary scan: +30, +60 and +120 minutes.
+  const retry = ['47 3 * * *', '47 4 * * *', '47 6 * * *'].includes(controller.cron);
   if (controller.cron !== '17 3 * * *' && !retry) return;
   // Extra observations must not repeat pruning or any other scheduled mutation.
   if (!retry) {

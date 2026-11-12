@@ -79,7 +79,8 @@ export async function retryWalletHistoryMonitor(db: D1Database, wallet: string, 
   const now = Math.floor(Date.now() / 1000);
   if (row?.state === 'OK' && row.enabled === 0 && row.reason === null
     && Number.isSafeInteger(row.checked_at) && row.checked_at >= primaryTime
-    && row.checked_at <= now + 60 && now - row.checked_at <= 3 * 3600
+    // Covers the last retry cron at 06:47 UTC, 3.5 h after the 03:17 primary.
+    && row.checked_at <= now + 60 && now - row.checked_at <= 4 * 3600
     && Number.isSafeInteger(row.observed_outgoing) && row.observed_outgoing >= 0 && row.observed_outgoing <= 1000000000000
     && Number.isSafeInteger(row.start_block) && row.start_block >= 0 && Number.isSafeInteger(row.end_block)
     && row.end_block > row.start_block

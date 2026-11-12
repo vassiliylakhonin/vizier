@@ -23,7 +23,7 @@ beforeEach(() => {
   mocks.pruneGrants.mockResolvedValue(undefined);
 });
 describe('bounded wallet observation schedule', () => {
-  it.each(['47 3 * * *', '7 4 * * *'])('retry %s invokes only the read-only monitor', async cron => {
+  it.each(['47 3 * * *', '47 4 * * *', '47 6 * * *'])('retry %s invokes only the read-only monitor', async cron => {
     const { prepare, pending } = schedule(cron); await Promise.all(pending);
     expect(mocks.retry).toHaveBeenCalledOnce(); expect(mocks.run).not.toHaveBeenCalled();
     expect(mocks.prune).not.toHaveBeenCalled(); expect(prepare).not.toHaveBeenCalled();
@@ -38,8 +38,8 @@ describe('bounded wallet observation schedule', () => {
     expect(mocks.run).not.toHaveBeenCalled(); expect(mocks.retry).not.toHaveBeenCalled();
     expect(mocks.prune).not.toHaveBeenCalled(); expect(prepare).not.toHaveBeenCalled();
   });
-  it('config declares exactly the primary scan and two pre-check retries', () => {
+  it('config declares exactly the primary scan and three backoff retries', () => {
     const config = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
-    expect(config).toMatch(/"crons": \["17 3 \* \* \*", "47 3 \* \* \*", "7 4 \* \* \*"\]/);
+    expect(config).toMatch(/"crons": \["17 3 \* \* \*", "47 3 \* \* \*", "47 4 \* \* \*", "47 6 \* \* \*"\]/);
   });
 });

@@ -176,21 +176,25 @@ Every read in one scan uses the same provider; no partial scans are combined
 across providers.
 Responses reaching the conservative 1,000-log ceiling are refused as incomplete.
 Scheduled log reads use single-request batches separated by 2 s pauses;
-transient retries also pause before consuming one of the two spare requests.
+transient retries back off 2 s then 8 s before consuming one of the two spare
+requests.
 The full finalized day and fail-closed behavior are unchanged. Public-provider
 availability is not guaranteed; persistent rate limits still fail the check.
 Interactive review/history requests retain their existing concurrency and latency;
 the pacing option is selected internally by the monitor, not by request input.
 
-The primary scan runs at 03:17 UTC. Two bounded retry crons at 03:47 and 04:07
-UTC run only the observation, before the GitHub check at 04:17. They do not
-repeat pruning or touch financial policies/reservations. A complete observation
-from today's primary window, no older than three hours, skips the retry after
-checking that the policy remains disabled. Stale, failed or incomplete rows do
-not suppress a fresh scan. Each attempted scan retains the same full window,
-50-subrequest ceiling and two in-scan retry slots. A primary success incurs no
-extra RPC calls; at most three scans run per day. Persistent provider failures
-still leave the check failed. Public RPC availability is not guaranteed.
+The primary scan runs at 03:17 UTC. Three bounded retry crons back off after
+it at +30, +60 and +120 minutes (03:47, 04:47 and 06:47 UTC) and run only the
+observation, so a provider throttle that outlasts one window still clears the
+same day; the GitHub check at 04:17 tolerates an observation up to 18 hours
+old. Retries do not repeat pruning or touch financial policies/reservations. A
+complete observation from today's primary window, no older than four hours,
+skips the retry after checking that the policy remains disabled. Stale, failed
+or incomplete rows do not suppress a fresh scan. Each attempted scan retains
+the same full window, 50-subrequest ceiling and two in-scan retry slots. A
+primary success incurs no extra RPC calls; at most four scans run per day.
+Persistent provider failures still leave the check failed. Public RPC
+availability is not guaranteed.
 
 ## Retention and safe operation
 

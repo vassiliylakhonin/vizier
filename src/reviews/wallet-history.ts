@@ -35,7 +35,12 @@ export function monitorLookbackBlocks(end: bigint): bigint {
 // -32000 rate limits. Pace single-request batches without spending more subrequests.
 const LOG_FETCH_CONCURRENCY = 6;
 const RPC_PAUSE_MS = 2000;
-function pause(): Promise<void> { return new Promise(resolve => setTimeout(resolve, RPC_PAUSE_MS)); }
+// HTTP 429/5xx throttling usually clears within seconds. In-scan retries wait
+// 2 s then 8 s; a throttle that outlasts both is left to the scheduled
+// monitor's cron backoff (+30/60/120 minutes). Subrequest budget still caps
+// in-scan retries at two, so longer waits cannot buy extra attempts.
+const RETRY_BACKOFF_MS = [RPC_PAUSE_MS, 8000];
+function pause(ms = RPC_PAUSE_MS): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 export interface WalletHistory {
   outgoing: number;
@@ -61,7 +66,7 @@ export async function collectWalletHistory(wallet: string, options: { paceRpc?: 
         const message = error instanceof Error ? error.message : "";
         if (spareCalls === 0 || !/^(Invalid Base RPC envelope|Base RPC HTTP (429|5\d\d))$/.test(message)) throw error;
         spareCalls--;
-        if (options.paceRpc) await pause();
+        if (options.paceRpc) await pause(RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1 - spareCalls] ?? RPC_PAUSE_MS);
       }
     }
   }
