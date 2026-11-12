@@ -47,7 +47,7 @@ class VizierClient:
     def _get_headers(self) -> Dict[str, str]:
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "vizier-guard-python/0.3.3",
+            "User-Agent": "vizier-guard-python/0.3.4",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -106,6 +106,7 @@ class VizierClient:
         request: Union[VerificationRequest, Dict[str, Any]],
         verify_receipt_hash: bool = True,
         request_receipt_jws: bool = False,
+        require_receipt_jws: bool = False,
     ) -> VerificationResponse:
         """
         Submit a proposed agent action to Vizier for deterministic authorization.
@@ -119,7 +120,14 @@ class VizierClient:
         ``X-Vizier-Receipt: jws``). Verification needs ``cryptography``
         (``pip install vizier-guard[receipts]``); without it a signed response
         fails closed with code RECEIPT_VERIFICATION_UNAVAILABLE.
+
+        Set ``require_receipt_jws=True`` to refuse a response that carries no
+        ``receipt_jws``: VizierError(code="RECEIPT_SIGNATURE_REQUIRED") is
+        raised instead of trusting an unsigned receipt. It implies
+        ``request_receipt_jws=True``. The default is unchanged.
         """
+        if require_receipt_jws:
+            request_receipt_jws = True
         payload: Dict[str, Any]
         if isinstance(request, VerificationRequest):
             payload = request.to_dict()
@@ -142,6 +150,12 @@ class VizierClient:
         resp = VerificationResponse.from_dict(raw_response)
 
         receipt_jws = raw_response.get("receipt_jws")
+        if require_receipt_jws and not receipt_jws:
+            raise VizierError(
+                message="The response carries no receipt_jws and require_receipt_jws is set.",
+                status=200,
+                code="RECEIPT_SIGNATURE_REQUIRED",
+            )
         if receipt_jws is not None:
             try:
                 ok = verify_receipt_jws(receipt_jws, raw_response.get("receipt"), self._fetch_jwks())

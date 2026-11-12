@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Python SDK `vizier-guard` 0.3.4: opt-in `require_receipt_jws=True` on `verify()` (and `AsyncVizierClient.verify()`), matching the TypeScript `requireReceiptJws`. A response without `receipt_jws` raises `VizierError(code="RECEIPT_SIGNATURE_REQUIRED")` instead of being trusted unsigned; the option implies `request_receipt_jws=True`. A present JWS is still verified as before (`RECEIPT_SIGNATURE_INVALID` on tamper). Default behavior is unchanged. Python-only release: the npm packages and the Worker stay at 0.5.17. `check()` / `authorize`-style helpers do not take the option yet.
+
 - Release acceptance for published clients: CI's published-package first-BLOCK step now installs npm `0.5.17` and PyPI `vizier-guard[receipts]==0.3.3` and runs the signed-receipt walkthrough (ES256 verification, tampered receipt refused, missing JWS refused via `requireReceiptJws`) plus the hash-only mode, replacing the old `0.5.16` / `0.3.2` hash-only pins. The first-BLOCK demo client now also fault-injects a stripped `receipt_jws`. Docs (README, FIRST_BLOCK, both SDK READMEs, AUTHORIZATION_QUICKSTART, TRUST_QUESTIONS, anonymous path evidence) updated to the published state, including that the Python client has no `require_receipt_jws` and tolerates an absent JWS.
 
 ## 0.5.17 — 2026-11-12

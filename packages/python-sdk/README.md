@@ -178,6 +178,8 @@ else:
 
 If the service signs its receipt, `verify()` checks the ES256 signature against the published keys (`/.well-known/jwks.json`) and confirms it covers the exact receipt returned. Failure raises `VizierError` with code `RECEIPT_SIGNATURE_INVALID`. A response without `receipt_jws` is accepted as before. Pass `request_receipt_jws=True` to ask the service to sign (`X-Vizier-Receipt: jws`).
 
+Source (0.3.4+): pass `require_receipt_jws=True` to `verify()` to refuse a response that has no `receipt_jws` (`VizierError` with code `RECEIPT_SIGNATURE_REQUIRED`). It implies `request_receipt_jws=True`; the default is unchanged. The helper `check()` does not take this option.
+
 This needs `cryptography` (`pip install "vizier-guard[receipts]"`). Without it, a signed response fails closed with `RECEIPT_VERIFICATION_UNAVAILABLE` rather than being trusted unchecked. The base package stays dependency-free.
 
 ---

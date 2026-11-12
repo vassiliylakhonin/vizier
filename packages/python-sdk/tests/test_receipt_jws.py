@@ -50,7 +50,7 @@ def service_body(req, jws_for=None):
     return body, receipt
 
 
-def run(body, jwks, headers_seen=None):
+def run(body, jwks, headers_seen=None, **verify_kwargs):
     client = VizierClient(base_url="https://example.test")
 
     def fake_request(path, data, extra=None):
@@ -60,7 +60,7 @@ def run(body, jwks, headers_seen=None):
 
     with patch.object(client, "_request", side_effect=fake_request), \
          patch.object(client, "_fetch_jwks", return_value=jwks):
-        return client.verify(json.loads(json.dumps(REQ)), request_receipt_jws=True)
+        return client.verify(json.loads(json.dumps(REQ)), **({"request_receipt_jws": True} | verify_kwargs))
 
 
 def test_valid_receipt_jws_verifies_and_header_requested():
@@ -110,3 +110,50 @@ def test_unknown_kid_and_garbage_rejected():
     assert not verify_receipt_jws(sign(priv, receipt, kid="nope"), receipt, jwks)
     assert not verify_receipt_jws("a.b", receipt, jwks)
     assert not verify_receipt_jws(None, receipt, jwks)
+
+
+def test_require_receipt_jws_refuses_missing_signature():
+    _, jwks = make_key()
+    seen = []
+    with pytest.raises(VizierError) as e:
+        run(lambda d: service_body(REQ)[0], jwks, seen,
+            request_receipt_jws=False, require_receipt_jws=True)
+    assert e.value.code == "RECEIPT_SIGNATURE_REQUIRED"
+    # require implies asking the service to sign
+    assert seen == [{"X-Vizier-Receipt": "jws"}]
+
+
+def test_require_receipt_jws_accepts_valid_signature():
+    priv, jwks = make_key()
+
+    def body(data):
+        b, receipt = service_body(REQ)
+        b["receipt_jws"] = sign(priv, receipt)
+        return b
+
+    resp = run(body, jwks, request_receipt_jws=False, require_receipt_jws=True)
+    assert resp.is_allowed and resp.receipt_jws
+
+
+def test_require_receipt_jws_still_rejects_tampered_signature():
+    priv, jwks = make_key()
+
+    def body(data):
+        b, receipt = service_body(REQ)
+        b["receipt_jws"] = sign(priv, receipt)
+        b["receipt"]["id"] = "vrf_tampered"
+        return b
+
+    with pytest.raises(VizierError) as e:
+        run(body, jwks, request_receipt_jws=False, require_receipt_jws=True)
+    assert e.value.code == "RECEIPT_SIGNATURE_INVALID"
+
+
+def test_async_client_forwards_require_receipt_jws():
+    import asyncio
+    from vizier.async_client import AsyncVizierClient
+
+    client = AsyncVizierClient(base_url="https://example.test")
+    with patch.object(client._sync_client, "verify", return_value="ok") as m:
+        asyncio.run(client.verify(REQ, require_receipt_jws=True))
+    assert m.call_args.args[-1] is True

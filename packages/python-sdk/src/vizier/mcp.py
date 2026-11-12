@@ -40,7 +40,7 @@ from .models import (
 MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 DEFAULT_PROTOCOL_VERSION = "2025-11-25"
 SERVER_NAME = "vizier-guard"
-SERVER_VERSION = "0.3.3"
+SERVER_VERSION = "0.3.4"
 
 # DLP pattern detectors (Standard library regex)
 DLP_PATTERNS = {
