@@ -12,13 +12,24 @@ on:
         type: boolean
         default: true
 
+      publish_npm:
+        description: "Explicitly publish npm packages (requires NPM_TOKEN)"
+        required: true
+        type: boolean
+        default: false
+      publish_pypi:
+        description: "Explicitly publish Python SDK (requires a valid PyPI token)"
+        required: true
+        type: boolean
+        default: false
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   npm:
-    name: Build & Publish npm Packages
+    name: Build Node archives (optional npm publish)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -64,17 +75,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release view "$RELEASE_TAG" || gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Installable SDK, MCP proxy and Worker deployment adapter/CLI archives; see SHA256SUMS. Registry publication is reported separately."
+          gh release view "$RELEASE_TAG" || gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes "Installable SDK, MCP proxy and Worker deployment adapter/CLI archives; see SHA256SUMS. Not published to npm or PyPI. Session guard is an operator-owned, memory-only proxy session over labelled tools, not an OS sandbox or complete prompt-injection protection. See CHANGELOG.md and docs/SESSION_GUARD.md for scope and limits."
           gh release upload "$RELEASE_TAG" release-archives/* --clobber
 
       - name: Report archive-only distribution
-        if: env.HAS_NPM_TOKEN != 'true'
+        if: github.event_name == 'push' || !inputs.publish_npm || env.HAS_NPM_TOKEN != 'true'
         run: |
-          echo "::warning::NPM_TOKEN is not configured. SDK archives are built; no npm registry publication occurred."
-          echo "npm registry: NOT PUBLISHED (missing NPM_TOKEN). Use GitHub Release archives." >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Archive-only distribution: no npm registry publication occurred (not requested or NPM_TOKEN unavailable)."
+          echo "npm registry: NOT PUBLISHED. Use GitHub Release archives." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish to npm
-        if: ${{ env.HAS_NPM_TOKEN == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) }}
+        if: ${{ env.HAS_NPM_TOKEN == 'true' && github.event_name == 'workflow_dispatch' && inputs.publish_npm && !inputs.dry_run }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -88,7 +99,7 @@ jobs:
           fi
 
       - name: Verify published npm packages install cleanly
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && env.HAS_NPM_TOKEN == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_npm && !inputs.dry_run && env.HAS_NPM_TOKEN == 'true' }}
         run: |
           TARGET_VERSION=$(node -p "require('./package.json').version")
           echo "Verifying npm packages can be installed from npmjs.org at exact version ${TARGET_VERSION}..."
@@ -106,6 +117,8 @@ jobs:
           exit 1
 
   pypi:
+    # Tags release Node archives only. Python publication requires explicit opt-in.
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_pypi
     name: Build & Publish Python SDK
     runs-on: ubuntu-latest
     permissions:

@@ -1,6 +1,6 @@
 # Session guard and policy probes
 
-Source-checkout feature. No new npm/PyPI release is implied by this commit.
+Included in the v0.5.18 GitHub Release archives. Not published to npm or PyPI.
 
 The Node MCP enforcement proxy now blocks the third consecutive identical tool
 call within 30 seconds by default. The identity is the tool name plus canonical
