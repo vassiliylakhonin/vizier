@@ -12,9 +12,9 @@ on:
           - vizier-guard
           - vizier
       version:
-        description: 'Version to publish (e.g. 0.3.3)'
+        description: 'Version to publish (e.g. 0.3.4)'
         required: true
-        default: '0.3.3'
+        default: '0.3.4'
         type: string
 
 jobs:

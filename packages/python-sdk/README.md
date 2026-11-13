@@ -13,14 +13,14 @@ Vizier is a deterministic policy kernel that evaluates proposed AI agent actions
 ## Installation
 
 ```bash
-pip install vizier-guard==0.3.3
+pip install vizier-guard==0.3.4
 ```
 
 Zero external dependencies required out of the box (uses Python standard library).
 
-**Receipt verification:** PyPI has `0.3.3`, which matches this checkout.
+**Receipt verification:** PyPI has `0.3.4`, which matches this checkout.
 Receipt-JWS verification needs the optional `receipts` extra described below:
-`pip install 'vizier-guard[receipts]==0.3.3'` (`cryptography`). Without the extra
+`pip install 'vizier-guard[receipts]==0.3.4'` (`cryptography`). Without the extra
 a signed response fails closed (`RECEIPT_VERIFICATION_UNAVAILABLE`); unsigned
 responses work without it.
 
@@ -97,7 +97,7 @@ Start with the [local TypeScript + Python walkthrough](../../docs/FIRST_BLOCK.md
 It needs no production credential, runs a real local Worker, and checks that an
 unsigned request hash or a signed receipt cannot be tampered with undetected.
 It never calls a protected tool. The published-client path runs signed-receipt
-verification against PyPI `0.3.3`, the same as the source path.
+verification against PyPI `0.3.4`, the same as the source path.
 
 ### Before connecting a real tool
 
@@ -107,8 +107,8 @@ In required-grant mode, a request without a valid owner-signed delegation is
 Use `VizierClient.verify()` or `check(..., grant=...)` with the exact signed
 authority after [operator setup](../../docs/DELEGATION_GRANTS.md).
 
-The decorator and framework examples below illustrate policy wiring. From
-`0.3.4` (source; the published `0.3.3` does not have it) `vizier_guard`,
+The decorator and framework examples below illustrate policy wiring. In
+published version `0.3.4`, `vizier_guard`,
 `VizierLangChainToolGuard` and `VizierCrewAIToolGuard` take `grant=` (a signed
 grant string, or a callable that receives the call arguments) and forward it to
 the service. The grant comes from your configuration, never from the tool's own
@@ -181,7 +181,7 @@ else:
 
 If the service signs its receipt, `verify()` checks the ES256 signature against the published keys (`/.well-known/jwks.json`) and confirms it covers the exact receipt returned. Failure raises `VizierError` with code `RECEIPT_SIGNATURE_INVALID`. A response without `receipt_jws` is accepted as before. Pass `request_receipt_jws=True` to ask the service to sign (`X-Vizier-Receipt: jws`).
 
-Source (0.3.4+): pass `require_receipt_jws=True` to `verify()` to refuse a response that has no `receipt_jws` (`VizierError` with code `RECEIPT_SIGNATURE_REQUIRED`). It implies `request_receipt_jws=True`; the default is unchanged. The helper `check()` does not take this option.
+Published in 0.3.4+: pass `require_receipt_jws=True` to `verify()` to refuse a response that has no `receipt_jws` (`VizierError` with code `RECEIPT_SIGNATURE_REQUIRED`). It implies `request_receipt_jws=True`; the default is unchanged. The helper `check()` does not take this option.
 
 This needs `cryptography` (`pip install "vizier-guard[receipts]"`). Without it, a signed response fails closed with `RECEIPT_VERIFICATION_UNAVAILABLE` rather than being trusted unchecked. The base package stays dependency-free.
 

@@ -47,7 +47,7 @@ Expected: `BLOCK (GRANT_REQUIRED)` in both languages, verified request hashes an
 ES256 signatures, followed by rejection of tampered receipts. This checks current
 source. The [published-package path](docs/FIRST_BLOCK.md#published-clients) runs
 the same signed checks against the released clients, npm `0.5.17` and PyPI
-`vizier-guard 0.3.3`.
+`vizier-guard 0.3.4`.
 
 ### Optional: prepare a deployment review
 
@@ -155,7 +155,7 @@ console.log("Authorized request:", result.receipt.id);
 
 Run `node authorize.mjs` after configuring those prerequisites. A valid authorization prints a receipt ID; a refusal throws. This example performs only the authorization request. Use the [deployment adapter](packages/gated-deploy/README.md) for the separate, version-specific execution workflow.
 
-`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the unsigned `receipt` object is not itself a signature. When the Worker has a receipt signing key and the request sends `X-Vizier-Receipt: jws`, enforcement responses also carry `receipt_jws` (ES256, verifiable against `/.well-known/jwks.json`). The published clients, npm `0.5.17` and PyPI `vizier-guard 0.3.3`, verify it against the JWKS when present; absence is tolerated by default, and the TypeScript SDK's opt-in `requireReceiptJws` makes a missing JWS an error. See the [versioned walkthrough](docs/FIRST_BLOCK.md). Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
+`authorize()` validates the response contract, recomputes the request hash, and rejects `BLOCK`, `REVIEW`, expired grants, and mismatched delegation. It relies on the configured trusted service and HTTPS: the unsigned `receipt` object is not itself a signature. When the Worker has a receipt signing key and the request sends `X-Vizier-Receipt: jws`, enforcement responses also carry `receipt_jws` (ES256, verifiable against `/.well-known/jwks.json`). The published clients, npm `0.5.17` and PyPI `vizier-guard 0.3.4`, verify it against the JWKS when present; absence is tolerated by default, and opt-in `requireReceiptJws` (TypeScript) or `require_receipt_jws=True` (Python) makes a missing JWS an error. See the [versioned walkthrough](docs/FIRST_BLOCK.md). Execution, request immutability, idempotency, and replay controls remain the integration's responsibility.
 
 ## Connect through MCP
 
