@@ -286,7 +286,7 @@ describe("MCP enforcement proxy", () => {
   });
 
   it("blocks a tool outside the local allowlist before verification", async () => {
-    const verify = vi.fn(async () => decision("ALLOW"));
+    const verify = vi.fn<(request: VerificationRequest) => Promise<VerificationResponse>>(async () => decision("ALLOW"));
     const upstreamFetch = vi.fn<typeof globalThis.fetch>();
     const proxy = createMcpEnforcementProxy(
       proxyOptions({ verify, fetch: upstreamFetch }),
@@ -312,7 +312,7 @@ describe("MCP enforcement proxy", () => {
   });
 
   it("rejects an unauthenticated tool call before verification", async () => {
-    const verify = vi.fn(async () => decision("ALLOW"));
+    const verify = vi.fn<(request: VerificationRequest) => Promise<VerificationResponse>>(async () => decision("ALLOW"));
     const upstreamFetch = vi.fn<typeof globalThis.fetch>();
     const proxy = createMcpEnforcementProxy(
       proxyOptions({ verify, fetch: upstreamFetch }),
@@ -532,6 +532,7 @@ describe("MCP enforcement proxy", () => {
           code: "CIRCUIT_TRIPPED",
           decision: "BLOCK",
           reason_codes: ["CIRCUIT_TRIPPED:LOOP_DETECTED"],
+          recovery: "Stop retrying unchanged. Inspect the previous result and change the plan or ask the owner.",
         },
       },
     });
@@ -711,4 +712,43 @@ it.each(["request", "identity", "expiry", "mutation"])("strict proxy rejects %s 
   const result = await proxy.handle(mcpRequest(mcpBody("tools/call", "strict", { name: "write_file", arguments: { path: "intended.txt" } })));
   expect(await result.text()).toContain("SIGNED_GRANT_RECEIPT_REQUIRED");
   expect(upstream).not.toHaveBeenCalled();
+});
+
+describe("session guard enforcement", () => {
+  const upstream = () => vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    return Response.json({jsonrpc:"2.0", id:body.id, result:{content:[{type:"text",text:"ok"}]}});
+  });
+  const call = (proxy: ReturnType<typeof createMcpEnforcementProxy>, id: string, name: string, args = {}) => proxy.handle(mcpRequest(mcpBody("tools/call",id,{name, arguments:args})));
+  it("enables third-call blocking by default; only consecutive calls count and key order is stable", async () => {
+    const fetch = upstream(); const proxy = createMcpEnforcementProxy(proxyOptions({fetch}));
+    await call(proxy,"1","write_file",{a:1,b:2}); await call(proxy,"2","write_file",{b:2,a:1});
+    expect(await (await call(proxy,"3","write_file",{a:1,b:2})).json()).toMatchObject({error:{data:{reason_codes:["CIRCUIT_TRIPPED:LOOP_DETECTED"]}}});
+    expect(fetch).toHaveBeenCalledTimes(2);
+    await call(proxy,"4","write_file",{a:3}); await call(proxy,"5","write_file",{a:1,b:2});
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+  it("blocks private-to-external even when calls arrive concurrently, without forwarding a sink", async () => {
+    const fetch = upstream(); const verify = vi.fn<(request: VerificationRequest) => Promise<VerificationResponse>>(async () => decision("ALLOW"));
+    const proxy = createMcpEnforcementProxy({...proxyOptions({fetch,verify}), allowedTools:["read","send"], guardPolicy:{tools:{read:{label:"source:private"},send:{label:"sink:external"}}}});
+    const [read,send] = await Promise.all([call(proxy,"1","read"),call(proxy,"2","send",{session_id:"attacker-reset"})]);
+    expect(await read.json()).toHaveProperty("result");
+    expect(await send.json()).toMatchObject({error:{data:{code:"TAINT_PRIVATE_TO_EXTERNAL",decision:"BLOCK"}}});
+    expect(fetch).toHaveBeenCalledTimes(1); expect(verify).toHaveBeenCalledTimes(1);
+  });
+  it("does not taint denied sources; failed upstream sources remain conservatively tainted", async () => {
+    const fetch = upstream(); let deny = true;
+    const proxy = createMcpEnforcementProxy({...proxyOptions({fetch, verify: async () => decision(deny ? "BLOCK" : "ALLOW")}),allowedTools:["read","send"],guardPolicy:{tools:{read:{label:"source:private"},send:{label:"sink:external"}}}});
+    await call(proxy,"1","read"); deny = false; expect(await (await call(proxy,"2","send")).json()).toHaveProperty("result");
+    fetch.mockRejectedValueOnce(new Error("lost response")); await call(proxy,"3","read");
+    expect(await (await call(proxy,"4","send")).json()).toMatchObject({error:{data:{code:"TAINT_PRIVATE_TO_EXTERNAL"}}});
+  });
+  it("checks configured URL arguments before verifier and preserves original bytes when allowed", async () => {
+    const fetch = upstream(); const verify = vi.fn<(request: VerificationRequest) => Promise<VerificationResponse>>(async () => decision("ALLOW"));
+    const proxy = createMcpEnforcementProxy({...proxyOptions({fetch,verify}),guardPolicy:{tools:{write_file:{arguments:[{kind:"url",argument:"url",origins:["https://example.com"]}]}}}});
+    await call(proxy,"1","write_file",{url:"https://evil.invalid"}); expect(verify).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    const args = {url:"https://EXAMPLE.com:443/safe"}; await call(proxy,"2","write_file",args);
+    expect(verify.mock.calls[0]?.[0].action.parameters).toEqual({tool_name:"write_file",arguments:args});
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body)).params.arguments).toEqual(args);
+  });
 });

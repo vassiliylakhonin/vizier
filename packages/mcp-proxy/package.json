@@ -24,7 +24,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "vizier-mcp-proxy": "dist/cli.js"
+    "vizier-mcp-proxy": "dist/cli.js",
+    "vizier": "dist/policy-cli.js"
   },
   "files": [
     "dist"

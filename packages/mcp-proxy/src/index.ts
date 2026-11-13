@@ -1,3 +1,6 @@
+import { SessionGuard, type GuardPolicy } from "./session-guard.js";
+export { SessionGuard, evaluateArguments, guardPolicySchema } from "./session-guard.js";
+export type { GuardPolicy } from "./session-guard.js";
 import { z } from "zod";
 
 import {
@@ -86,6 +89,7 @@ export interface McpProxyEvent {
 }
 
 export interface McpEnforcementProxyOptions {
+  readonly guardPolicy?: GuardPolicy;
   readonly integrationId: string;
   readonly clientBearerToken: string;
   readonly upstreamId: string;
@@ -109,6 +113,7 @@ export interface McpEnforcementProxyOptions {
 }
 
 interface NormalizedOptions {
+  readonly sessionGuard: SessionGuard;
   readonly integrationId: string;
   readonly clientBearerToken: string;
   readonly upstreamId: string;
@@ -153,15 +158,12 @@ function boundedCircuitBreaker(circuitBreaker?: {
   readonly maxRepeats?: number;
   readonly windowMs?: number;
 }): { readonly maxRepeats: number; readonly windowMs: number } | undefined {
-  if (circuitBreaker === undefined) {
-    return undefined;
-  }
   const maxRepeats = z
     .number()
     .int()
     .min(1)
     .max(1_000)
-    .safeParse(circuitBreaker.maxRepeats ?? 4);
+    .safeParse(circuitBreaker?.maxRepeats ?? 2);
   if (!maxRepeats.success) {
     throw new TypeError(
       "circuitBreaker.maxRepeats must be an integer between 1 and 1000.",
@@ -172,7 +174,7 @@ function boundedCircuitBreaker(circuitBreaker?: {
     .int()
     .min(100)
     .max(300_000)
-    .safeParse(circuitBreaker.windowMs ?? 30_000);
+    .safeParse(circuitBreaker?.windowMs ?? 30_000);
   if (!windowMs.success) {
     throw new TypeError(
       "circuitBreaker.windowMs must be an integer between 100 and 300000.",
@@ -207,6 +209,7 @@ function normalizeOptions(options: McpEnforcementProxyOptions): NormalizedOption
   }
   return {
     integrationId,
+    sessionGuard: new SessionGuard(options.guardPolicy),
     clientBearerToken: z.string().min(16).max(4_096).parse(options.clientBearerToken),
     upstreamId,
     upstreamUrl: upstream.toString(),
@@ -596,8 +599,18 @@ async function handleToolCall(
         code: "TOOL_NOT_ALLOWED",
         decision: "BLOCK",
         reason_codes: ["TARGET_NOT_ALLOWED"],
+        recovery: "Choose an operator-allowed tool or ask the owner to review the scope. Do not widen the allowlist yourself.",
       },
     );
+  }
+  const guardFailure = await options.sessionGuard.check(toolName.data, argumentsValue.data);
+  if (guardFailure) {
+    options.log({ event: "vizier.mcp_proxy.completed", integration_id: options.integrationId,
+      request_id: requestId, tool_name: toolName.data, outcome: "denied", decision: "BLOCK",
+      reason_codes: [guardFailure.code], duration_ms: Math.round(performance.now() - startedAt) });
+    return mcpError(body.id, -32028, "Tool call blocked by session policy.", 200, {
+      decision: "BLOCK", code: guardFailure.code, reason_codes: [guardFailure.code], recovery: guardFailure.recovery,
+    });
   }
   if (options.circuitBreaker !== undefined) {
     const signature = `${toolName.data}:${await hashCanonicalJson(argumentsValue.data)}`;
@@ -606,9 +619,11 @@ async function handleToolCall(
     options.callHistory.entries = options.callHistory.entries.filter(
       (entry) => entry.timestamp >= cutoff,
     );
-    const repeats = options.callHistory.entries.filter(
-      (entry) => entry.signature === signature,
-    ).length;
+    let repeats = 0;
+    for (const entry of [...options.callHistory.entries].reverse()) {
+      if (entry.signature !== signature) break;
+      repeats++;
+    }
 
     if (repeats >= options.circuitBreaker.maxRepeats) {
       options.log({
@@ -630,10 +645,12 @@ async function handleToolCall(
           code: "CIRCUIT_TRIPPED",
           decision: "BLOCK",
           reason_codes: ["CIRCUIT_TRIPPED:LOOP_DETECTED"],
+          recovery: "Stop retrying unchanged. Inspect the previous result and change the plan or ask the owner.",
         },
       );
     }
     options.callHistory.entries.push({ timestamp: nowMs, signature });
+    options.callHistory.entries = options.callHistory.entries.slice(-options.circuitBreaker.maxRepeats);
   }
   let decision: VerificationResponse;
   let hashes: string[] = [];
@@ -706,10 +723,12 @@ async function handleToolCall(
         decision: decision.decision,
         reason_codes: decision.reason_codes,
         receipt_id: decision.receipt.id,
+        recovery: "Do not retry unchanged. Inspect reason_codes and request owner review for any new authority; never widen a grant yourself.",
       },
     );
   }
   try {
+    options.sessionGuard.beforeForward(toolName.data);
     const upstreamResponse = await forward(request, body, serialized, options);
     options.log({
       event: "vizier.mcp_proxy.completed",
@@ -749,6 +768,7 @@ export function createMcpEnforcementProxy(
   inputOptions: McpEnforcementProxyOptions,
 ): { readonly handle: (request: Request) => Promise<Response> } {
   const options = normalizeOptions(inputOptions);
+  let queue: Promise<unknown> = Promise.resolve();
   return {
     async handle(request: Request): Promise<Response> {
       const origin = request.headers.get("Origin");
@@ -793,12 +813,11 @@ export function createMcpEnforcementProxy(
         return protocolError;
       }
       if (parsed.body.method === "tools/call") {
-        return handleToolCall(
-          request,
-          parsed.body,
-          parsed.serialized,
-          options,
-        );
+        // Serialize state check through forwarding so a concurrent sink cannot
+        // race a private source. Scope is this operator-owned proxy instance.
+        const pending = queue.then(() => handleToolCall(request, parsed.body, parsed.serialized, options));
+        queue = pending.catch(() => undefined);
+        return pending;
       }
       if (
         parsed.body.method !== "server/discover" &&

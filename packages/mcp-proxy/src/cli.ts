@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { open } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
@@ -31,6 +31,7 @@ Options:
   --upstream-token <token>  Optional upstream Bearer token if upstream requires auth
   --agent-id <id>           Agent identifier (default: agent)
   --principal-id <id>       Principal identifier (default: principal)
+  --guard-policy <file>    Operator-owned argument rules and source/sink labels
   -h, --help                Show this help message
 
 Environment Variables:
@@ -57,6 +58,7 @@ const configSchema = z.strictObject({
     .pipe(z.array(z.string().min(1).max(256)).min(1).max(100)),
   agentId: z.string().trim().min(1).max(256).default("agent"),
   agentOwner: z.string().trim().min(1).max(256).nullable().default(null),
+  guardPolicyFile: z.string().min(1).optional(),
   grantFile: z.string().min(1).optional(),
   grantMode: z.enum(["optional", "required"]).default("optional"),
   principalId: z.string().trim().min(1).max(256).default("principal"),
@@ -77,6 +79,7 @@ function loadConfig(): z.infer<typeof configSchema> {
       "agent-id": { type: "string" },
       "principal-id": { type: "string" },
       "grant-file": { type: "string" },
+      "guard-policy": { type: "string" },
       "grant-mode": { type: "string" },
     },
     strict: false,
@@ -102,6 +105,7 @@ function loadConfig(): z.infer<typeof configSchema> {
     allowedTools: values.tools ?? process.env.VIZIER_PROXY_ALLOWED_TOOLS,
     agentId: values["agent-id"] ?? process.env.VIZIER_PROXY_AGENT_ID ?? "agent",
     agentOwner: process.env.VIZIER_PROXY_AGENT_OWNER ?? null,
+    guardPolicyFile: values["guard-policy"],
     grantFile: values["grant-file"] ?? process.env.VIZIER_PROXY_GRANT_FILE,
     grantMode: values["grant-mode"] ?? process.env.VIZIER_PROXY_GRANT_MODE ?? "optional",
     principalId: values["principal-id"] ?? process.env.VIZIER_PROXY_PRINCIPAL_ID ?? "principal",
@@ -147,6 +151,7 @@ async function main(): Promise<void> {
     fetch: (input, init) => fetch(input, { ...init, redirect: "error" }),
   });
   const proxy = createMcpEnforcementProxy({
+    ...(config.guardPolicyFile === undefined ? {} : { guardPolicy: JSON.parse(await readFile(config.guardPolicyFile, "utf8")) }),
     integrationId: config.integrationId,
     clientBearerToken: config.clientBearerToken,
     upstreamId: config.upstreamId,

@@ -274,3 +274,10 @@ describe("receipts and decision aggregation", () => {
     ).toBe("BLOCK");
   });
 });
+
+it("keeps strict response shape and puts safe recovery in BLOCK policy details", async () => {
+  const response = await verifyAction(fixture({allowedActions: []}));
+  expect(response.decision).toBe("BLOCK");
+  expect(response.policy_results.find(row => row.rule_id === "integration.authority.trusted")?.details.recovery).toMatchObject({ retry_unchanged: false });
+  expect(Object.keys(response).sort()).toEqual(["decision", "risk_score", "reason_codes", "explanation", "policy_results", "receipt"].sort());
+});

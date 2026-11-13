@@ -273,3 +273,13 @@ For bugs or integration questions, [open an issue](https://github.com/vassiliyla
 ## License
 
 [MIT License](LICENSE).
+
+## Session guards and policy probes (source checkout)
+
+The Node MCP proxy has a default third-consecutive-call loop block, optional
+operator-owned path/URL argument rules, and a labelled private-source to
+external-sink session guard. `vizier test-policy` reports synthetic bypasses
+and controls using that same argument evaluator. See
+[SESSION_GUARD.md](docs/SESSION_GUARD.md) for setup, source-checkout commands,
+and limits, especially remote filesystems, symlink races, restarts and unlabelled
+tools. This is not complete prompt-injection protection.

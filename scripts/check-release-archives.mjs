@@ -25,6 +25,10 @@ try {
   }
   const help = execFileSync(process.execPath, ["--import", denyNetwork, cli, "--help"], { encoding: "utf8", cwd: installation });
   if (!help.includes("prepare|submit|execute")) throw new Error("Installed CLI help unavailable");
+  const policyFile = join(installation, "guard-policy.json");
+  await writeFile(policyFile, JSON.stringify({tools:{write_file:{arguments:[{kind:"path",argument:"path",root:installation}]}}}));
+  const policyReport = JSON.parse(execFileSync(process.execPath, ["--import", denyNetwork, join(installation, "node_modules/.bin/vizier"), "test-policy", policyFile], { encoding: "utf8", cwd: installation }));
+  if (policyReport.cases !== 7 || policyReport.bypassed !== 0 || !policyReport.results.some(row => row.outcome === "passed_control")) throw new Error("Installed test-policy CLI failed");
   console.log("Release archives: clean installation, SDK/proxy/adapter imports, packaged CLI/fixtures and network-free preparation passed.");
 } finally {
   await rm(installation, { recursive: true, force: true });

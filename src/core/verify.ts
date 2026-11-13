@@ -117,6 +117,13 @@ export async function verifyAction(
           ...item,
           details: Object.freeze({
             ...item.details,
+            ...(decision === "BLOCK" ? { recovery: {
+              retry_unchanged: false,
+              next_action: "inspect_policy_results_then_request_owner_review",
+              message: reasonCodes.some(code => code.includes("LOOP_DETECTED"))
+                ? "Stop repeating this call. Inspect the last result and change the plan or ask the owner."
+                : "Inspect failing policy checks. Use existing authorized scope or ask the owner for new authority; never widen your own grant.",
+            } } : {}),
             action_contract: {
               next_action: decision.toLowerCase(),
               decision_kind: "authorization",

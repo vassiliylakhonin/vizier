@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased - session guard and policy probes
+
+- Reuse the MCP proxy circuit breaker with a default third consecutive identical
+  call block; explicit settings keep their admitted-repeat meaning.
+- Add operator-configured path/URL argument checks without rewriting receipt-bound
+  arguments; Node-host realpath checks are not a remote filesystem sandbox.
+- Add coarse labelled source:private to sink:external session taint, serialized
+  with forwarding; conservative on failed sources, memory-only per proxy.
+- Add `vizier test-policy` with per-rule attacks, controls and honest bypass /
+  false-alarm / unverifiable reporting. No SDK release or PyPI publication.
+- Add BLOCK recovery guidance without changing strict Worker response shape.
+
 ## Unreleased
 
 - Deployment proof pack: `npm run proof:deploy` (also in CI) maps 11 boundary claims to named tests (changed arguments, revoked/expired/missing grant, missing or tampered receipt JWS, hung or lost cloud response, restart and replay) and states that Cloudflare is simulated. New opt-in `requireSignedReceipt` for the Worker-version deployer (`VIZIER_REQUIRE_SIGNED_RECEIPT=1` for `serve`); the default still tolerates an unsigned receipt. Hung cloud requests are tested as aborted without retry. Docs: DEPLOY_PROOF_PACK.md, PRODUCTION_PROFILE.md; WORKER_DEPLOY_GATEWAY.md no longer says there is no revocation store (revocation by jti applies at executor and gateway; operator-driven; cannot recall a submitted operation). Production host isolation remains unverified.
