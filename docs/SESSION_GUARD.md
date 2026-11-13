@@ -96,3 +96,19 @@ concurrent source/sink ordering, source failures and denied-source behavior
 are covered by regression tests. The CLI does not claim to evaluate these
 stateful scenarios, real executor behavior, symlink races, or unconfigured
 arguments. All-green synthetic probes are not a security certification.
+
+## Explaining a block
+
+```sh
+vizier explain response.json          # a saved Vizier verify response or receipt
+curl ... | vizier explain -           # or from stdin
+vizier explain --code GRANT_EXPIRED,TARGET_NOT_ALLOWED
+vizier explain response.json --json
+```
+
+For each failing or review reason code it prints why, who can fix it (owner,
+operator or agent) and what to change. It is a static lookup over codes Vizier
+already emits. It does not re-run the decision, does not call a model or the
+network, and cannot promise that a change will produce ALLOW. Only the owner or
+operator should change a grant or policy; an agent must not widen its own
+authority. Codes not in the catalog are listed and the command exits 1.

@@ -1,6 +1,8 @@
 import { SessionGuard, type GuardPolicy } from "./session-guard.js";
 export { SessionGuard, evaluateArguments, guardPolicySchema } from "./session-guard.js";
 export type { GuardPolicy } from "./session-guard.js";
+export { explainDecision, formatExplanation, listExplainableCodes } from "./explain.js";
+export type { ExplainFinding, ExplainReport } from "./explain.js";
 import { z } from "zod";
 
 import {

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add `vizier explain <response.json | -> | --code CODE[,CODE] [--json]`: a
+  deterministic lookup that turns the reason codes in a Vizier response into a
+  plain explanation, who can fix it (owner, operator or agent) and which grant
+  or policy setting to change. No model, no network, no re-evaluation; it cannot
+  promise that a change leads to ALLOW. Unknown codes are listed, not guessed.
+  Not published to npm or PyPI.
+
 ## 0.5.18 - 2026-11-13
 
 GitHub Release archives only. Not published to npm or PyPI. Tags do not publish

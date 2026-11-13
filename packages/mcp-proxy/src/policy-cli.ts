@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { readFile } from "node:fs/promises";
 import { evaluateArguments, guardPolicySchema } from "./session-guard.js";
+import { explainDecision, formatExplanation } from "./explain.js";
 
 export async function testPolicy(input: unknown) {
   const policy = guardPolicySchema.parse(input);
@@ -35,9 +36,35 @@ export async function testPolicy(input: unknown) {
     not_assessed: ["unconfigured tools/arguments", "live executor behavior", "symlink resolution (requires local fixtures, covered in tests)", "symlink races", "SQL/shell semantics", "loop/taint integration (covered by tests, not this static suite)"],
     warning: "Synthetic local probes, not a security certification. An unavailable root can block every probe without proving containment." };
 }
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function runExplain(args: string[]): Promise<void> {
+  const json = args.includes("--json");
+  const rest = args.filter(arg => arg !== "--json");
+  const codeFlag = rest.indexOf("--code");
+  let input: unknown;
+  try {
+    if (codeFlag >= 0) input = (rest[codeFlag + 1] ?? "").split(",").map(code => code.trim()).filter(Boolean);
+    else if (rest[0] === "-") input = JSON.parse(await readStdin());
+    else if (rest[0]) input = JSON.parse(await readFile(rest[0], "utf8"));
+    else throw new Error("usage");
+  } catch {
+    console.error("Usage: vizier explain <response.json | -> [--json]\n       vizier explain --code CODE[,CODE] [--json]"); process.exitCode = 2; return;
+  }
+  const report = explainDecision(input);
+  console.log(json ? JSON.stringify(report, null, 2) : formatExplanation(report));
+  if (report.unknown_codes.length > 0) process.exitCode = 1;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  if (process.argv[2] !== "test-policy" || !process.argv[3]) {
-    console.error("Usage: vizier test-policy <operator-policy.json>"); process.exitCode = 2;
+  if (process.argv[2] === "explain") {
+    await runExplain(process.argv.slice(3));
+  } else if (process.argv[2] !== "test-policy" || !process.argv[3]) {
+    console.error("Usage: vizier test-policy <operator-policy.json>\n       vizier explain <response.json | -> | --code CODE[,CODE]"); process.exitCode = 2;
   } else {
     try {
       const report = await testPolicy(JSON.parse(await readFile(process.argv[3], "utf8")));
