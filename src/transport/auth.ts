@@ -41,7 +41,7 @@ function supportsTimingSafeEqual(
   return "timingSafeEqual" in subtle;
 }
 
-async function secretsEqual(left: string, right: string): Promise<boolean> {
+export async function secretsEqual(left: string, right: string): Promise<boolean> {
   const [leftDigest, rightDigest] = await Promise.all([digest(left), digest(right)]);
   if (supportsTimingSafeEqual(crypto.subtle)) {
     return crypto.subtle.timingSafeEqual(leftDigest, rightDigest);

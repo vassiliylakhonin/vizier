@@ -74,7 +74,7 @@ import {
   createVizierSitemap,
 } from "./catalog";
 import { handleMcpRequest } from "./mcp";
-import { authorizeEnforcement } from "./auth";
+import { authorizeEnforcement, secretsEqual } from "./auth";
 import { activityEnabled, getDemandFunnel } from "./activity";
 import { revokeGrant, verifyWithGrantLifecycle } from "./grant-lifecycle";
 import { generateApiKey, listApiKeys, revokeApiKey } from "../auth/keys";
@@ -1168,7 +1168,7 @@ async function requireMasterKey(
   const token =
     request.headers.get("X-Vizier-Key") ||
     (request.headers.get("Authorization")?.replace(/^Bearer\s+/i, ""));
-  if (!token || !options.apiKey || token.trim() !== options.apiKey.trim()) {
+  if (!token || !options.apiKey || !(await secretsEqual(token.trim(), options.apiKey.trim()))) {
     throw new TransportRequestError(
       401,
       "UNAUTHORIZED",
