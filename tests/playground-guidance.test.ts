@@ -3,6 +3,23 @@ import { handleHttpRequest } from "../src/transport/http";
 import vm from "node:vm";
 
 describe("playground guidance in required grant mode", () => {
+  it("publishes canonical SEO metadata and semantic page landmarks", async () => {
+    const html = await (await handleHttpRequest(new Request("https://vizier.example/playground"))).text();
+    expect(html).toContain('<link rel="canonical" href="https://vizier.example/">');
+    expect(html).toContain('<meta property="og:type" content="website">');
+    expect(html).toContain('<meta property="og:title" content="AI Agent Action Authorization | Vizier">');
+    expect(html).toContain('<meta property="og:description" content="Evaluate a proposed AI agent action against delegated authority, target rules and spending limits. Connect Vizier over MCP or use the playground.">');
+    expect(html).toContain('<header class="header">');
+    expect(html).toContain('<nav class="links" aria-label="Primary navigation">');
+    expect(html).toContain('<main>');
+    expect(html).toContain('<footer class="footer">');
+    const jsonLd = html.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)?.[1];
+    expect(jsonLd).toBeDefined();
+    const structured = JSON.parse(jsonLd!);
+    expect(structured["@type"]).toEqual(["SoftwareApplication", "WebAPI"]);
+    expect(structured.url).toBe("https://vizier.example/");
+    expect(structured.name).toBe("Vizier");
+  });
   it("initializes the editable preset and integration snippet without browser errors", async () => {
     const html = await (await handleHttpRequest(new Request("https://vizier.example/playground"))).text();
     const elements = Object.fromEntries(["requestJson", "snippetBox"].map(id => [id, {value:"",innerText:""}]));

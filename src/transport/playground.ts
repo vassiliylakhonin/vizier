@@ -22,14 +22,33 @@ export function createPlaygroundHtml(
     : grantMode === "invalid"
       ? "The deployment's grant policy is misconfigured. Evaluations fail closed; the operator must repair the configuration."
       : "Anonymous caller-supplied authority cannot authorize ALLOW. Other failed checks can produce BLOCK; unresolved authority or risk requires REVIEW.";
+  const pageTitle = "AI Agent Action Authorization | Vizier";
+  const pageDescription = "Evaluate a proposed AI agent action against delegated authority, target rules and spending limits. Connect Vizier over MCP or use the playground.";
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": ["SoftwareApplication", "WebAPI"],
+    name: "Vizier",
+    url: `${publicOrigin}/`,
+    description: "Checks proposed AI agent actions against delegated authority, target rules and spending limits before execution.",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    featureList: "Evaluates proposed actions; does not execute them. The operator integration must enforce the decision.",
+  };
+  const structuredDataJson = JSON.stringify(structuredData).replaceAll("<", "\\u003c");
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Agent Action Authorization | Vizier</title>
-  <meta name="description" content="Evaluate a proposed AI agent action against delegated authority, target rules and spending limits. Connect Vizier over MCP or use the playground.">
+  <title>${pageTitle}</title>
+  <meta name="description" content="${pageDescription}">
   <link rel="canonical" href="${publicOrigin}/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${publicOrigin}/">
+  <meta property="og:title" content="${pageTitle}">
+  <meta property="og:description" content="${pageDescription}">
+  <meta property="og:site_name" content="Vizier">
+  <script type="application/ld+json">${structuredDataJson}</script>
   <style>
     :root {
       --bg: #f4f6fa;
@@ -260,20 +279,21 @@ export function createPlaygroundHtml(
 </head>
 <body>
   <div class="page">
-  <div class="header">
+  <header class="header">
     <div class="logo-group">
       <h1>Vizier Action Firewall</h1>
       <p>Evaluate a proposed action against delegated authority and policy before execution.</p>
     </div>
-    <div class="links">
+    <nav class="links" aria-label="Primary navigation">
       <a href="/docs">Docs (JSON)</a>
       <a href="/openapi.json">OpenAPI 3.1</a>
       <a href="/.well-known/agent-card.json">A2A Card</a>
       <a href="/.well-known/mcp.json">MCP Manifest</a>
       <a href="https://github.com/vassiliylakhonin/vizier" target="_blank">GitHub</a>
-    </div>
-  </div>
+    </nav>
+  </header>
 
+  <main>
   <p class="note"><button type="button" class="preset-btn" onclick="runGrantExample()">Run the missing-grant example</button> · <a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
   <p id="grant-example-result" class="status" role="status">Expected: BLOCK. The fictional purchase is within its limit but lacks a principal-signed grant.</p>
   <section class="card" id="connect-mcp" aria-labelledby="connect-mcp-title">
@@ -354,6 +374,10 @@ export function createPlaygroundHtml(
       <div id="snippetBox" class="snippet"></div>
     </div>
   </div>
+  </main>
+  <footer class="footer">
+    <p>Vizier evaluates proposed agent actions; it does not execute them. See the <a href="/docs">integration documentation</a>, <a href="/.well-known/agent-card.json">A2A card</a>, or <a href="/.well-known/mcp.json">MCP manifest</a>.</p>
+  </footer>
   </div>
 
   <script>
