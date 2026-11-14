@@ -106,6 +106,7 @@ describe("hash-chained audit receipt log", () => {
       ok: true,
       checked: 3,
       legacy: 0,
+      head_hash: rows[2]?.receipt_hash,
     });
   });
 
@@ -119,6 +120,7 @@ describe("hash-chained audit receipt log", () => {
       ok: false,
       checked: 1,
       legacy: 0,
+      head_hash: expect.any(String) as string,
       first_broken_id: "vrf_2",
       reason: "HASH_MISMATCH",
     });
@@ -134,6 +136,7 @@ describe("hash-chained audit receipt log", () => {
       ok: false,
       checked: 0,
       legacy: 0,
+      head_hash: null,
       first_broken_id: "vrf_2",
       reason: "PREV_MISMATCH",
     });
@@ -153,6 +156,7 @@ describe("hash-chained audit receipt log", () => {
       ok: true,
       checked: 1,
       legacy: 1,
+      head_hash: expect.any(String) as string,
     });
   });
 
@@ -169,7 +173,12 @@ describe("hash-chained audit receipt log", () => {
       { apiKey: API_KEY, db },
     );
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, checked: 3, legacy: 0 });
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      checked: 3,
+      legacy: 0,
+      head_hash: expect.any(String) as string,
+    });
   });
 
   it("rejects unauthenticated chain reads and reports a missing database", async () => {
@@ -187,6 +196,48 @@ describe("hash-chained audit receipt log", () => {
       new Request("https://vizier.example/v1/audit/chain", {
         headers: { Authorization: `Bearer ${API_KEY}` },
       }),
+      { apiKey: API_KEY },
+    );
+    expect(unavailable.status).toBe(503);
+  });
+
+  it("serves the chain head publicly and rate limits anonymous reads", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const sqlite = createMigratedSqlite();
+    const db = wrapD1(sqlite);
+    await storeThreeReceipts(db);
+
+    // No credential: the head is public so external anchors can read it.
+    const response = await handleHttpRequest(
+      new Request("https://vizier.example/v1/audit/chain/head"),
+      { apiKey: API_KEY, db },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.head_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.chained_rows).toBe(3);
+    expect(body.legacy_rows).toBe(0);
+    expect(body.retention_anchor).toBeNull();
+    expect(typeof body.computed_at).toBe("string");
+
+    // The head matches what a full chain verification reports.
+    const verification = await verifyAuditChain(db);
+    expect(verification.head_hash).toBe(body.head_hash);
+
+    const throttled = await handleHttpRequest(
+      new Request("https://vizier.example/v1/audit/chain/head"),
+      {
+        apiKey: API_KEY,
+        db,
+        anonymousRateLimiter: {
+          limit: async () => ({ success: false }),
+        } as never,
+      },
+    );
+    expect(throttled.status).toBe(429);
+
+    const unavailable = await handleHttpRequest(
+      new Request("https://vizier.example/v1/audit/chain/head"),
       { apiKey: API_KEY },
     );
     expect(unavailable.status).toBe(503);

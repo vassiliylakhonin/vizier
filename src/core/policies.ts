@@ -1,4 +1,5 @@
 import { ceilingToMicrosFloor, priceAction, type BudgetState } from "./budget";
+import type { UsageState } from "./usage";
 import type { EdgeCircuitBreakerResult } from "./circuit-breaker";
 import type { DlpEvaluationResult } from "./dlp";
 import type { NumericConsistencyEvaluationResult } from "./numeric-consistency";
@@ -41,6 +42,12 @@ export interface PolicyOptions {
    * Absent means no durable ledger is bound: a budgeted request fails closed.
    */
   readonly budget?: BudgetState;
+  /**
+   * Per-window usage ledger state, read by the transport before the call.
+   * Absent means no durable ledger is bound: a usage-bounded request fails
+   * closed.
+   */
+  readonly usage?: UsageState;
 }
 
 function result(
@@ -257,6 +264,73 @@ function evaluateBudget(
     : result(rule, "FAIL", "BUDGET_CEILING_EXCEEDED", details);
 }
 
+function evaluateUsage(
+  request: VerificationRequest,
+  grant: GrantVerification | undefined,
+  state: UsageState | undefined,
+): PolicyResult | null {
+  const usage = request.authority.constraints.usage;
+  if (usage === undefined) return null;
+  const rule = "authority.usage.window";
+  // The ledger key comes from the principal and the usage id. Unsigned
+  // authority could name a fresh id on every call and never reach a bound.
+  if (grant?.ok !== true) {
+    return result(rule, "FAIL", "USAGE_REQUIRES_GRANT");
+  }
+  // Unknown cost is checked before the ledger, so an unpriced call reports
+  // USAGE_UNPRICED rather than a misleading ledger failure.
+  let amountMicros = 0;
+  if (usage.max_amount !== undefined) {
+    // The schema requires currency when max_amount is set.
+    const pricing = priceAction(request, usage.currency ?? "");
+    if (!pricing.priced) {
+      return result(rule, "FAIL", "USAGE_UNPRICED", {
+        unpriced: true,
+        coverage: "partial",
+        reason: pricing.reason,
+        usage_currency: usage.currency,
+      });
+    }
+    amountMicros = pricing.amountMicros;
+  }
+  if (state === undefined || !state.available) {
+    return result(rule, "FAIL", "USAGE_STATE_UNAVAILABLE");
+  }
+  const details: Record<string, unknown> = {
+    window_seconds: usage.window_seconds,
+    calls_in_window: state.calls,
+  };
+  if (usage.max_calls !== undefined && state.calls >= usage.max_calls) {
+    return result(rule, "FAIL", "USAGE_CALL_LIMIT_EXCEEDED", {
+      ...details,
+      max_calls: usage.max_calls,
+    });
+  }
+  if (usage.max_amount !== undefined) {
+    if (state.storedCurrency !== null && state.storedCurrency !== usage.currency) {
+      return result(rule, "FAIL", "USAGE_CURRENCY_CONFLICT", {
+        ...details,
+        usage_currency: usage.currency,
+        ledger_currency: state.storedCurrency,
+      });
+    }
+    const ceilingMicros = ceilingToMicrosFloor(usage.max_amount);
+    if (state.spentMicros + amountMicros > ceilingMicros) {
+      return result(rule, "FAIL", "USAGE_AMOUNT_LIMIT_EXCEEDED", {
+        ...details,
+        usage_currency: usage.currency,
+        window_limit_micros: ceilingMicros,
+        spent_micros: state.spentMicros,
+        requested_micros: amountMicros,
+      });
+    }
+    details.window_limit_micros = ceilingMicros;
+    details.spent_micros = state.spentMicros;
+  }
+  if (usage.max_calls !== undefined) details.max_calls = usage.max_calls;
+  return result(rule, "PASS", null, details);
+}
+
 export function evaluateReversibility(request: VerificationRequest): PolicyResult {
   const requiresReversible = request.authority.constraints.require_review_for_irreversible ?? false;
   if (!requiresReversible) {
@@ -287,6 +361,9 @@ export function evaluatePolicies(
 
   const budgetResult = evaluateBudget(request, grantVerification, options.budget);
   if (budgetResult !== null) results.push(budgetResult);
+
+  const usageResult = evaluateUsage(request, grantVerification, options.usage);
+  if (usageResult !== null) results.push(usageResult);
 
   if (options.signedGrantMode === "invalid") {
     results.push(result("authority.grant.required", "FAIL", "GRANT_POLICY_MISCONFIGURED"));

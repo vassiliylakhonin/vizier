@@ -118,6 +118,7 @@ describe("machine-readable discovery contracts", () => {
       "/v1/admin/keys",
       "/v1/admin/keys/{key_id}",
       "/v1/audit/chain",
+      "/v1/audit/chain/head",
       "/v1/authorizations",
       "/v1/chat/completions",
       "/v1/circuit-breaker/reset",

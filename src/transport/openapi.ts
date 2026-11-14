@@ -28,6 +28,7 @@ import {
 import {
   actionCovenantAuthorizationResponseContractSchema,
   apiErrorContractSchema,
+  auditChainHeadContractSchema,
   auditChainVerificationContractSchema,
   auditInsightsContractSchema,
   verificationResponseContractSchema,
@@ -62,6 +63,7 @@ const schemas: ReadonlyArray<readonly [string, ZodType]> = [
   ["ActionCovenantAuthorizationResponse", actionCovenantAuthorizationResponseContractSchema],
   ["AuditInsights", auditInsightsContractSchema],
   ["AuditChainVerification", auditChainVerificationContractSchema],
+  ["AuditChainHead", auditChainHeadContractSchema],
   ["ExecutionOutcome", executionOutcomeSchema],
   ["OutcomeRecordingRequest", outcomeRecordingRequestSchema],
   ["OutcomeReceiptPayload", outcomeReceiptPayloadSchema],
@@ -347,6 +349,21 @@ export function createOpenApiDocument(
           responses: {
             "200": successResponse("Audit chain verification result.", "AuditChainVerification"),
             "401": { $ref: "#/components/responses/Unauthorized" },
+            "500": { $ref: "#/components/responses/InternalError" },
+            "503": { $ref: "#/components/responses/ServiceUnavailable" },
+          },
+        },
+      },
+      "/v1/audit/chain/head": {
+        get: {
+          operationId: "readAuditChainHead",
+          tags: ["Audit"],
+          summary: "Read the current audit chain head without recomputing the chain",
+          description:
+            "Public endpoint returning the newest chained receipt hash, chained and legacy row counts, the retention anchor recorded by pruning, and the time it was computed. Hashes and counts only; anonymous calls are rate limited. An external anchor (see docs/AUDIT_ANCHORS.md) commits this head on a schedule so that a silent deletion of the newest rows becomes detectable once the next anchor lands.",
+          responses: {
+            "200": successResponse("Audit chain head.", "AuditChainHead"),
+            "429": { description: "Anonymous rate limit exceeded." },
             "500": { $ref: "#/components/responses/InternalError" },
             "503": { $ref: "#/components/responses/ServiceUnavailable" },
           },

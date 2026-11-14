@@ -84,6 +84,30 @@ export const authoritySchema = z.strictObject({
         actions: z.array(actionTypeSchema).min(1).max(64),
       })
       .optional(),
+    /**
+     * Per-principal aggregate bounds over a fixed window: at most this many
+     * calls and/or this much cumulative amount per window. Needs a
+     * principal-signed grant and a durable ledger; see docs/USAGE_LIMITS.md.
+     */
+    usage: z
+      .strictObject({
+        id: identifierSchema,
+        window_seconds: z.number().int().min(60).max(31_622_400),
+        max_calls: z.number().int().min(1).max(1_000_000).optional(),
+        max_amount: z.number().finite().positive().max(1_000_000_000).optional(),
+        currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+      })
+      .refine(
+        (value) =>
+          value.max_calls !== undefined || value.max_amount !== undefined,
+        { message: "usage requires max_calls, max_amount, or both" },
+      )
+      .refine(
+        (value) =>
+          value.max_amount === undefined || value.currency !== undefined,
+        { message: "usage.max_amount requires usage.currency" },
+      )
+      .optional(),
     quorum: z
       .strictObject({
         min_approvals: z.number().int().min(1).max(10),

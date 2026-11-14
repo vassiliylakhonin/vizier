@@ -84,8 +84,63 @@ export interface AuditChainVerification {
   readonly checked: number;
   /** Rows written before migration 0012; they carry no hash and are skipped. */
   readonly legacy: number;
+  /**
+   * Hash of the newest chained row that verified, so a caller can compare
+   * the chain it recomputed against an externally anchored head. Null when
+   * no chained row verified.
+   */
+  readonly head_hash: string | null;
   readonly first_broken_id?: string;
   readonly reason?: AuditChainBreakReason;
+}
+
+export interface AuditChainHead {
+  /** Hash of the newest chained receipt, or null when none exists. */
+  readonly head_hash: string | null;
+  readonly chained_rows: number;
+  /** Rows written before migration 0012; they carry no hash. */
+  readonly legacy_rows: number;
+  /** The retention anchor pruning last recorded (migration 0014), if any. */
+  readonly retention_anchor: {
+    readonly pruned_through_hash: string;
+    readonly anchored_at: string;
+  } | null;
+  readonly computed_at: string;
+}
+
+/**
+ * The current chain head without recomputing the chain: the newest chained
+ * row's hash, row counts and the retention anchor. Served publicly so an
+ * external anchor (see docs/AUDIT_ANCHORS.md) and anyone re-verifying can
+ * read it without a credential; it exposes hashes and counts only.
+ */
+export async function readAuditChainHead(
+  db: D1Database,
+): Promise<AuditChainHead> {
+  const latest = await db
+    .prepare(
+      "SELECT receipt_hash FROM audit_receipts WHERE receipt_hash != '' ORDER BY rowid DESC LIMIT 1",
+    )
+    .first<{ receipt_hash: string }>();
+  const chained = await db
+    .prepare("SELECT COUNT(*) AS count FROM audit_receipts WHERE receipt_hash != ''")
+    .first<{ count: number }>();
+  const legacy = await db
+    .prepare("SELECT COUNT(*) AS count FROM audit_receipts WHERE receipt_hash = ''")
+    .first<{ count: number }>();
+  const anchor = await db
+    .prepare(
+      "SELECT pruned_through_hash, anchored_at FROM audit_chain_anchor WHERE id = 1",
+    )
+    .first<{ pruned_through_hash: string; anchored_at: string }>()
+    .catch(() => null);
+  return {
+    head_hash: latest?.receipt_hash ?? null,
+    chained_rows: Number(chained?.count ?? 0),
+    legacy_rows: Number(legacy?.count ?? 0),
+    retention_anchor: anchor ?? null,
+    computed_at: new Date().toISOString(),
+  };
 }
 
 const CHAIN_APPEND_ATTEMPTS = 8;
@@ -188,6 +243,7 @@ export async function verifyAuditChain(
         ok: false,
         checked,
         legacy,
+        head_hash: checked > 0 ? expectedPrev : null,
         first_broken_id: row.id,
         reason: "PREV_MISMATCH",
       };
@@ -198,6 +254,7 @@ export async function verifyAuditChain(
         ok: false,
         checked,
         legacy,
+        head_hash: checked > 0 ? expectedPrev : null,
         first_broken_id: row.id,
         reason: "HASH_MISMATCH",
       };
@@ -205,7 +262,7 @@ export async function verifyAuditChain(
     expectedPrev = row.receipt_hash;
     checked += 1;
   }
-  return { ok: true, checked, legacy };
+  return { ok: true, checked, legacy, head_hash: checked > 0 ? expectedPrev : null };
 }
 
 export async function storeCovenant(

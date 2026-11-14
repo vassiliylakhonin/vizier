@@ -41,6 +41,12 @@ export const RISK_WEIGHTS = Object.freeze({
   BUDGET_STATE_UNAVAILABLE: 0.5,
   BUDGET_CURRENCY_CONFLICT: 0.5,
   BUDGET_REQUEST_ID_CONFLICT: 0.5,
+  USAGE_REQUIRES_GRANT: 0.5,
+  USAGE_STATE_UNAVAILABLE: 0.5,
+  USAGE_CALL_LIMIT_EXCEEDED: 0.5,
+  USAGE_AMOUNT_LIMIT_EXCEEDED: 0.5,
+  USAGE_UNPRICED: 0.5,
+  USAGE_CURRENCY_CONFLICT: 0.5,
 } as const);
 
 // The score is diagnostic context for the decision, which comes from the

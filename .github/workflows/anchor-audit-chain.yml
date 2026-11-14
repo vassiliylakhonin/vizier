@@ -1,0 +1,57 @@
+# External anchor for the D1 audit receipt chain (authorization requirement
+# R7). The audit log lives in Cloudflare D1; anyone with D1 write access can
+# edit it, including recomputing the chain after silently deleting its newest
+# rows. This workflow reads the public chain-head endpoint on a schedule and
+# commits what it saw to the public `audit-anchors` branch, outside the
+# audited system. Rewriting that history means force-pushing a public GitHub
+# branch, which is visible in the repository's event feed. What this does not
+# cover, and how to verify the chain against an anchor: docs/AUDIT_ANCHORS.md.
+
+name: Anchor audit chain
+
+on:
+  schedule:
+    # Every 6 hours, offset from the top of the hour.
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audit-anchor
+  cancel-in-progress: false
+
+jobs:
+  anchor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch the audit chain head
+        run: |
+          curl -fsS --max-time 30 https://vizier.agendamcp.dpdns.org/v1/audit/chain/head -o anchor.json
+          cat anchor.json
+
+      - name: Commit the anchor to the audit-anchors branch
+        run: |
+          set -euo pipefail
+          git config user.name "vizier-audit-anchor"
+          git config user.email "vizier-audit-anchor@users.noreply.github.com"
+          if git fetch origin audit-anchors; then
+            git checkout audit-anchors
+          else
+            git checkout --orphan audit-anchors
+            git rm -rf . > /dev/null 2>&1 || true
+          fi
+          ts=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          mkdir -p anchors
+          cp anchor.json "anchors/${ts}.json"
+          cp anchor.json latest.json
+          git add "anchors/${ts}.json" latest.json
+          head=$(python3 -c "import json; print(json.load(open('anchor.json'))['head_hash'])")
+          # Commit even when the head is unchanged: each commit attests that
+          # the head still matched at that time. computed_at changes every
+          # run, so there is always a diff.
+          git commit -m "anchor: ${head} at ${ts}"
+          git push origin audit-anchors

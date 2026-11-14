@@ -91,6 +91,7 @@ import {
   storeOutcome,
   storeReceipt,
   verifyAuditChain,
+  readAuditChainHead,
   recordAnonymousCall,
   type AnonymousSurface,
 } from "../storage/audit";
@@ -1153,6 +1154,34 @@ async function handleAuditChain(
   return jsonResponse(await verifyAuditChain(options.db));
 }
 
+/**
+ * The chain head without a credential: hashes and counts only, so an external
+ * anchor and anyone re-verifying can read it. Anonymous calls are bounded by
+ * the same rate limiter as the public MCP and A2A surfaces.
+ */
+async function handleAuditChainHead(
+  request: Request,
+  options: TransportOptions,
+): Promise<Response> {
+  const limiter = options.anonymousRateLimiter;
+  if (
+    limiter !== undefined &&
+    !(await limiter.limit({
+      key: request.headers.get("CF-Connecting-IP") ?? "unattributed",
+    })).success
+  ) {
+    return rateLimitedResponse();
+  }
+  if (options.db === undefined) {
+    throw new TransportRequestError(
+      503,
+      "AUDIT_CHAIN_UNAVAILABLE",
+      "Audit chain head requires a configured database.",
+    );
+  }
+  return jsonResponse(await readAuditChainHead(options.db));
+}
+
 const createApiKeyRequestSchema = z.strictObject({
   org_id: z.string().trim().min(1).max(128),
   name: z.string().trim().min(1).max(128),
@@ -1271,6 +1300,7 @@ function docsDocument(options: TransportOptions): Response {
       record_outcome: "POST /v1/outcomes",
       audit_insights: "GET /v1/insights",
       audit_chain: "GET /v1/audit/chain",
+      audit_chain_head: "GET /v1/audit/chain/head (public; hashes and counts only)",
       demand_funnel: "GET /v1/insights/funnel",
     },
     demand_measurement_privacy: {
@@ -1773,6 +1803,9 @@ async function handleHttpRequestInner(
     if (request.method === "GET" && url.pathname === "/v1/insights/funnel") {
       return await handleDemandFunnel(request, options);
     }
+    if (request.method === "GET" && url.pathname === "/v1/audit/chain/head") {
+      return await handleAuditChainHead(request, options);
+    }
     if (request.method === "GET" && url.pathname === "/v1/audit/chain") {
       return await handleAuditChain(request, options);
     }
@@ -1876,7 +1909,7 @@ async function handleHttpRequestInner(
         { Allow: "GET" },
       );
     }
-    if (url.pathname === "/v1/audit/chain") {
+    if (url.pathname === "/v1/audit/chain" || url.pathname === "/v1/audit/chain/head") {
       return jsonResponse(
         {
           error: {
@@ -1917,6 +1950,7 @@ async function handleHttpRequestInner(
               "POST /v1/authorizations": "authorize an exact covenant action",
               "POST /v1/outcomes": "bind an execution outcome to an authorization",
               "GET /v1/audit/chain": "recompute and verify the hash-chained audit receipt log",
+              "GET /v1/audit/chain/head": "public chain head: newest receipt hash and row counts, for external anchoring",
               "GET /v1/insights": "authenticated metadata-only audit counts",
             },
             contact: "vassiliy.lakhonin@gmail.com",

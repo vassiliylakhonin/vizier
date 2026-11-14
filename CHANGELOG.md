@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- Per-principal aggregate usage bounds over fixed windows (authorization
+  requirement R4, first step; opt-in, needs D1 migration 0017 `usage_ledger`,
+  applied by the Deploy workflow). New authority constraint
+  `usage { id, window_seconds, max_calls?, max_amount?, currency? }` in a
+  principal-signed grant: Vizier counts admitted calls and spend per
+  (principal, usage id, window) and checks the bounds in the same
+  deterministic evaluation as every other constraint; the claim after `ALLOW`
+  is one atomic conditional UPDATE, so concurrent calls cannot share the last
+  headroom, and the losing race re-decides against the fresh ledger. New
+  `BLOCK` reason codes: `USAGE_CALL_LIMIT_EXCEEDED`,
+  `USAGE_AMOUNT_LIMIT_EXCEEDED`, `USAGE_UNPRICED` (unreadable cost is refused,
+  not counted as zero), `USAGE_REQUIRES_GRANT`, `USAGE_STATE_UNAVAILABLE` (no
+  D1 or ledger error fails closed), `USAGE_CURRENCY_CONFLICT`. Windows are
+  fixed tumbling windows aligned to the Unix epoch, not sliding. This bounds
+  the number and admitted price of calls; it is not information-flow tracking.
+  See docs/USAGE_LIMITS.md.
+- External anchor for the audit receipt chain (requirement R7): new public
+  endpoint `GET /v1/audit/chain/head` (hashes and counts only, rate limited),
+  and a scheduled GitHub Actions workflow that commits it every 6 hours to
+  the public `audit-anchors` branch, so a silent deletion of the chain's
+  newest rows becomes detectable once the next anchor lands.
+  `GET /v1/audit/chain` now also returns the verified `head_hash` for
+  comparison against an anchor. `node scripts/check-audit-anchor.mjs`
+  re-verifies the live head against the latest anchor. Anchors are periodic
+  (rows newer than the last anchor are uncovered) and the branch lives in
+  this repository (a repo admin could rewrite it, visibly); see
+  docs/AUDIT_ANCHORS.md for the honest limits.
+
 - Add `vizier explain <response.json | -> | --code CODE[,CODE] [--json]`: a
   deterministic lookup that turns the reason codes in a Vizier response into a
   plain explanation, who can fix it (owner, operator or agent) and which grant

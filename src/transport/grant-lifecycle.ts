@@ -7,6 +7,11 @@ import {
   priceAction,
   type BudgetState,
 } from "../core/budget";
+import {
+  usageKey,
+  usageWindowStart,
+  type UsageState,
+} from "../core/usage";
 import { canonicalize, sha256, verifyAction, type VerificationOptions } from "../core/index";
 import type { VerificationRequest } from "../core/schemas";
 import type { VerificationResponse } from "../core/types";
@@ -158,6 +163,14 @@ export async function pruneGrantLifecycle(db: D1Database, nowSeconds: number): P
   } catch {
     // Table absent before migration 0016 is applied.
   }
+  try {
+    await db
+      .prepare("DELETE FROM usage_ledger WHERE window_start + window_seconds + 86400 <= ?")
+      .bind(nowSeconds)
+      .run();
+  } catch {
+    // Table absent before migration 0017 is applied.
+  }
 }
 
 export interface GrantLifecycleOptions {
@@ -205,6 +218,132 @@ async function readBudgetClaim(request: VerificationRequest, idempotent: boolean
 
 function budgetIdempotencyOn(options: TransportOptions): boolean {
   return options.budgetIdempotencySource?.trim() === "request_id";
+}
+
+interface UsageClaim {
+  readonly key: string;
+  readonly windowStart: number;
+  readonly windowSeconds: number;
+  /** Inclusive call bound for the window; null when only an amount is bound. */
+  readonly maxCalls: number | null;
+  readonly amountMicros: number;
+  /** Inclusive spend bound for the window; null when only calls are bound. */
+  readonly ceilingMicros: number | null;
+  readonly currency: string | null;
+}
+
+/** No-bound sentinel: SQLite integers are 64-bit, so this always passes. */
+const USAGE_NO_BOUND = Number.MAX_SAFE_INTEGER;
+
+/**
+ * Work out whether this request counts against a usage window. Returns null
+ * when it does not, or when its cost cannot be read (the kernel refuses that
+ * case with USAGE_UNPRICED before any ledger lookup).
+ */
+async function readUsageClaim(
+  request: VerificationRequest,
+  nowSeconds: number,
+): Promise<UsageClaim | null> {
+  const usage = request.authority.constraints.usage;
+  if (usage === undefined || request.principal === null) return null;
+  let amountMicros = 0;
+  if (usage.max_amount !== undefined) {
+    const pricing = priceAction(request, usage.currency ?? "");
+    if (!pricing.priced) return null;
+    amountMicros = pricing.amountMicros;
+  }
+  return {
+    key: await usageKey(request.principal.id, usage.id),
+    windowStart: usageWindowStart(nowSeconds, usage.window_seconds),
+    windowSeconds: usage.window_seconds,
+    maxCalls: usage.max_calls ?? null,
+    amountMicros,
+    ceilingMicros:
+      usage.max_amount === undefined
+        ? null
+        : ceilingToMicrosFloor(usage.max_amount),
+    currency: usage.currency ?? null,
+  };
+}
+
+async function readUsageState(
+  db: D1Database,
+  claim: UsageClaim,
+): Promise<UsageState> {
+  try {
+    const row = await db
+      .prepare(
+        "SELECT calls, spent_micros, currency FROM usage_ledger WHERE usage_key = ? AND window_start = ?",
+      )
+      .bind(claim.key, claim.windowStart)
+      .first<{ calls: number; spent_micros: number; currency: string | null }>();
+    if (row === null || row === undefined) {
+      return { available: true, calls: 0, spentMicros: 0, storedCurrency: null };
+    }
+    return {
+      available: true,
+      calls: Number(row.calls),
+      spentMicros: Number(row.spent_micros),
+      storedCurrency: row.currency,
+    };
+  } catch {
+    // A missing table or a D1 error is "unknown", never "nothing used".
+    return { available: false };
+  }
+}
+
+/**
+ * Count the call atomically. The bound checks and the increment are one
+ * UPDATE, so two concurrent calls cannot both fit under the same headroom.
+ */
+async function claimUsage(db: D1Database, claim: UsageClaim): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO usage_ledger (usage_key, window_start, window_seconds, calls, spent_micros, currency, updated_at) " +
+          "VALUES (?, ?, ?, 0, 0, ?, ?)",
+      )
+      .bind(claim.key, claim.windowStart, claim.windowSeconds, claim.currency, now)
+      .run();
+    // A calls-only claim carries no currency; a NULL comparison would
+    // silently reject every update, so the guard applies only when set.
+    const currencyGuard =
+      claim.currency === null ? "" : " AND (currency IS NULL OR currency = ?)";
+    const bindings: unknown[] = [
+      claim.amountMicros,
+      now,
+      claim.key,
+      claim.windowStart,
+      claim.maxCalls ?? USAGE_NO_BOUND,
+      claim.amountMicros,
+      claim.ceilingMicros ?? USAGE_NO_BOUND,
+      ...(claim.currency === null ? [] : [claim.currency]),
+    ];
+    const outcome = await db
+      .prepare(
+        "UPDATE usage_ledger SET calls = calls + 1, spent_micros = spent_micros + ?, updated_at = ? " +
+          "WHERE usage_key = ? AND window_start = ? AND calls + 1 <= ? AND spent_micros + ? <= ?" +
+          currencyGuard,
+      )
+      .bind(...(bindings as never[]))
+      .run();
+    return Number(outcome.meta?.changes ?? 0) === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** Undo a claim when a later step (single-use) refuses the same call. */
+async function releaseUsage(db: D1Database, claim: UsageClaim): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await db
+    .prepare(
+      "UPDATE usage_ledger SET calls = calls - 1, spent_micros = spent_micros - ?, updated_at = ? " +
+        "WHERE usage_key = ? AND window_start = ? AND calls >= 1 AND spent_micros >= ?",
+    )
+    .bind(claim.amountMicros, now, claim.key, claim.windowStart, claim.amountMicros)
+    .run();
 }
 
 type Admission = "none" | "same" | "conflict" | "unknown";
@@ -341,7 +480,8 @@ async function decideWithGrantLifecycle(
   const revoked = new Set(parseStaticRevocations(options.revokedGrantSource));
   const used = new Set<string>();
   const budgetClaim = await readBudgetClaim(request, budgetIdempotencyOn(options));
-  const [isRevoked, isUsed, budgetState] = await Promise.all([
+  const usageClaim = await readUsageClaim(request, now);
+  const [isRevoked, isUsed, budgetState, usageState] = await Promise.all([
     options.db === undefined
       ? Promise.resolve(memHas(memoryRevoked, hints.jti, now))
       : dbHas(options.db, "revoked_grants", hints.jti, now),
@@ -351,6 +491,9 @@ async function decideWithGrantLifecycle(
     budgetClaim !== null && options.db !== undefined
       ? readBudgetState(options.db, budgetClaim)
       : Promise.resolve<BudgetState | undefined>(undefined),
+    usageClaim !== null && options.db !== undefined
+      ? readUsageState(options.db, usageClaim)
+      : Promise.resolve<UsageState | undefined>(undefined),
   ]);
   if (isRevoked) revoked.add(hints.jti);
   if (isUsed) used.add(hints.jti);
@@ -358,16 +501,18 @@ async function decideWithGrantLifecycle(
   const withState = (
     usedIds: ReadonlySet<string>,
     budget: BudgetState | undefined,
+    usage: UsageState | undefined,
   ): VerificationOptions => ({
     ...verifyOptions,
     revokedGrantIds: revoked,
     usedGrantIds: usedIds,
     ...(budget === undefined ? {} : { budget }),
+    ...(usage === undefined ? {} : { usage }),
     // Enforcement without a durable store fails single-use grants closed.
     // Evaluation-only paths do not consume, so they keep their old semantics.
     ...(lifecycle.enforce ? { singleUseStateDurable: options.db !== undefined } : {}),
   });
-  const result = await verifyAction(request, withState(used, budgetState));
+  const result = await verifyAction(request, withState(used, budgetState, usageState));
 
   const signedAllow =
     lifecycle.enforce &&
@@ -394,7 +539,38 @@ async function decideWithGrantLifecycle(
             ),
           }
         : fresh;
-      return verifyAction(request, withState(used, forced));
+      return verifyAction(request, withState(used, forced, usageState));
+    }
+  }
+
+  let claimedUsage = false;
+  if (usageClaim !== null && db !== undefined) {
+    if (await claimUsage(db, usageClaim)) {
+      claimedUsage = true;
+    } else {
+      // Lost a race (or the ledger failed). Re-read and decide again; if the
+      // ledger still says the call fits, force a refusal rather than an ALLOW.
+      const fresh = await readUsageState(db, usageClaim);
+      const forced: UsageState = fresh.available
+        ? {
+            ...fresh,
+            calls:
+              usageClaim.maxCalls === null
+                ? fresh.calls
+                : Math.max(fresh.calls, usageClaim.maxCalls),
+            spentMicros:
+              usageClaim.ceilingMicros === null
+                ? fresh.spentMicros
+                : Math.max(
+                    fresh.spentMicros,
+                    usageClaim.ceilingMicros - usageClaim.amountMicros + 1,
+                  ),
+          }
+        : fresh;
+      if (claimedBudget && budgetClaim !== null) {
+        await releaseBudget(db, budgetClaim);
+      }
+      return verifyAction(request, withState(used, budgetState, forced));
     }
   }
 
@@ -405,7 +581,13 @@ async function decideWithGrantLifecycle(
   if (claimedBudget && db !== undefined && budgetClaim !== null) {
     await releaseBudget(db, budgetClaim);
   }
-  return verifyAction(request, withState(new Set([...used, hints.jti]), budgetState));
+  if (claimedUsage && db !== undefined && usageClaim !== null) {
+    await releaseUsage(db, usageClaim);
+  }
+  return verifyAction(
+    request,
+    withState(new Set([...used, hints.jti]), budgetState, usageState),
+  );
 }
 
 /** Test hook: clear per-isolate fallback state. */
