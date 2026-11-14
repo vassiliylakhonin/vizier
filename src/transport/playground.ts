@@ -32,184 +32,234 @@ export function createPlaygroundHtml(
   <link rel="canonical" href="${publicOrigin}/">
   <style>
     :root {
-      --bg: #090d16;
-      --card: #111827;
-      --border: #1f293d;
-      --text: #f3f4f6;
-      --muted: #9ca3af;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --allow: #10b981;
-      --review: #f59e0b;
-      --block: #ef4444;
-      --code-bg: #030712;
+      --bg: #f4f6fa;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #5c6675;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --accent-soft: #eef3fe;
+      --allow: #047857;
+      --review: #b45309;
+      --block: #b91c1c;
+      --code-bg: #f8fafc;
+      --code-text: #24334d;
+      --radius: 12px;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 14px rgba(15, 23, 42, 0.05);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.5;
-      padding: 24px;
+      line-height: 1.55;
+      padding: 32px 24px 56px;
+      -webkit-font-smoothing: antialiased;
     }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 0.85em;
+    }
+    button { font-family: inherit; }
+    button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .page { max-width: 1180px; margin: 0 auto; }
     .header {
-      max-width: 1200px;
-      margin: 0 auto 24px auto;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 16px;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 16px;
+      padding-bottom: 20px;
+      margin-bottom: 20px;
     }
-    .logo-group h1 { font-size: 1.5rem; font-weight: 700; color: #fff; }
-    .logo-group p { font-size: 0.875rem; color: var(--muted); }
-    .links a {
-      color: var(--muted);
-      text-decoration: none;
-      font-size: 0.875rem;
-      margin-left: 16px;
-      transition: color 0.2s;
-    }
-    .links a:hover { color: var(--accent); }
+    .logo-group h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+    .logo-group p { font-size: 0.9rem; color: var(--muted); margin-top: 2px; }
+    .links { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+    .links a { color: var(--muted); font-size: 0.875rem; font-weight: 500; transition: color 0.15s; }
+    .links a:hover { color: var(--accent); text-decoration: none; }
+    .note { color: var(--muted); font-size: 0.9rem; margin-bottom: 12px; }
+    .status { font-size: 0.9rem; color: var(--text); margin-bottom: 16px; }
     .container {
-      max-width: 1200px;
-      margin: 0 auto;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 24px;
+      gap: 20px;
+      align-items: start;
     }
     @media (max-width: 900px) { .container { grid-template-columns: minmax(0, 1fr); } }
     .card {
       min-width: 0;
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 20px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
       display: flex;
       flex-direction: column;
       gap: 16px;
     }
+    section.card { margin-bottom: 20px; }
+    .card > button, .card > .preset-btn { align-self: flex-start; }
     .card-title {
-      font-size: 1rem;
+      font-size: 1.05rem;
       font-weight: 600;
-      color: #fff;
+      letter-spacing: -0.01em;
+      color: var(--text);
       display: flex;
       justify-content: space-between;
       align-items: center;
-    }
-    .presets {
-      display: flex;
-      gap: 8px;
       flex-wrap: wrap;
+      gap: 8px;
     }
+    section.card h2 { font-size: 1.15rem; font-weight: 600; letter-spacing: -0.01em; }
+    section.card h3 { font-size: 0.95rem; font-weight: 600; }
+    section.card label { font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    section.card input[readonly] {
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--code-bg);
+      color: var(--code-text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85rem;
+    }
+    section.card details pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 8px;
+      font-size: 0.8rem;
+      color: var(--code-text);
+    }
+    .presets { display: flex; gap: 8px; flex-wrap: wrap; }
     .preset-btn {
-      background: #1f2937;
+      background: var(--card);
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 0.75rem;
+      padding: 7px 13px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .preset-btn:hover { background: #374151; border-color: var(--muted); }
+    .preset-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-hover); }
     textarea {
       width: 100%;
       height: 380px;
       background: var(--code-bg);
       border: 1px solid var(--border);
-      color: #38bdf8;
+      color: var(--code-text);
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 0.85rem;
-      padding: 12px;
-      border-radius: 6px;
+      line-height: 1.5;
+      padding: 14px;
+      border-radius: 8px;
       resize: vertical;
     }
     button.primary {
+      align-self: flex-start;
       background: var(--accent);
       color: #fff;
       border: none;
-      padding: 10px 18px;
+      padding: 11px 22px;
       font-weight: 600;
-      font-size: 0.875rem;
-      border-radius: 6px;
+      font-size: 0.9rem;
+      border-radius: 8px;
       cursor: pointer;
-      transition: background 0.2s;
+      box-shadow: 0 1px 2px rgba(37, 99, 235, 0.35);
+      transition: background 0.15s, transform 0.05s;
     }
     button.primary:hover { background: var(--accent-hover); }
+    button.primary:active { transform: translateY(1px); }
+    button.primary:disabled { opacity: 0.6; cursor: default; }
     .decision-badge {
       display: inline-block;
-      padding: 8px 16px;
-      border-radius: 6px;
+      padding: 8px 18px;
+      border-radius: 8px;
       font-weight: 700;
       font-size: 1.25rem;
       letter-spacing: 0.05em;
       text-align: center;
     }
-    .badge-ALLOW { background: rgba(16, 185, 129, 0.15); color: var(--allow); border: 1px solid var(--allow); }
-    .badge-REVIEW { background: rgba(245, 158, 11, 0.15); color: var(--review); border: 1px solid var(--review); }
-    .badge-BLOCK { background: rgba(239, 68, 68, 0.15); color: var(--block); border: 1px solid var(--block); }
-    .badge-IDLE { background: #1f2937; color: var(--muted); border: 1px solid var(--border); }
+    .badge-ALLOW { background: #ecfdf5; color: var(--allow); border: 1px solid #6ee7b7; }
+    .badge-REVIEW { background: #fffbeb; color: var(--review); border: 1px solid #fcd34d; }
+    .badge-BLOCK { background: #fef2f2; color: var(--block); border: 1px solid #fca5a5; }
+    .badge-IDLE { background: #f1f5f9; color: var(--muted); border: 1px solid var(--border); }
     .output-box {
       background: var(--code-bg);
       border: 1px solid var(--border);
-      padding: 12px;
-      border-radius: 6px;
+      padding: 14px;
+      border-radius: 8px;
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 0.8rem;
-      color: #e5e7eb;
+      line-height: 1.5;
+      color: var(--code-text);
       overflow-x: auto;
-      max-height: 250px;
+      max-height: 260px;
     }
     .meta-row {
       display: flex;
       justify-content: space-between;
-      font-size: 0.8rem;
+      gap: 8px;
+      font-size: 0.85rem;
       color: var(--muted);
     }
-    .meta-val { min-width: 0; overflow-wrap: anywhere; color: #fff; font-weight: 500; }
-    .meta-row { gap: 8px; }
-    .card-title { flex-wrap: wrap; gap: 8px; }
+    .meta-val { min-width: 0; overflow-wrap: anywhere; color: var(--text); font-weight: 500; text-align: right; }
     @media (max-width: 900px) {
-      body { padding: 16px; }
-      .header { align-items: flex-start; flex-direction: column; gap: 16px; }
-      .links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-      .links a { margin-left: 0; }
+      body { padding: 20px 16px 40px; }
+      .header { align-items: flex-start; flex-direction: column; }
     }
     .code-section {
       min-width: 0;
       grid-column: span 2;
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 20px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
     }
     @media (max-width: 900px) { .code-section { grid-column: span 1; } }
-    .tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 14px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px; }
     .tab {
       background: none;
-      border: none;
+      border: 1px solid transparent;
       color: var(--muted);
       cursor: pointer;
-      font-size: 0.875rem;
-      padding: 4px 8px;
-      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 6px 10px;
+      border-radius: 8px;
+      transition: color 0.15s, background 0.15s;
     }
-    .tab.active { color: #fff; background: #1f2937; font-weight: 600; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent-hover); background: var(--accent-soft); border-color: var(--border); font-weight: 600; }
     .snippet {
       background: var(--code-bg);
       border: 1px solid var(--border);
-      padding: 14px;
-      border-radius: 6px;
+      padding: 16px;
+      border-radius: 8px;
       font-family: ui-monospace, Menlo, monospace;
       font-size: 0.85rem;
-      color: #93c5fd;
+      line-height: 1.55;
+      color: var(--code-text);
       white-space: pre;
       overflow-x: auto;
     }
   </style>
 </head>
 <body>
+  <div class="page">
   <div class="header">
     <div class="logo-group">
       <h1>Vizier Action Firewall</h1>
@@ -224,8 +274,8 @@ export function createPlaygroundHtml(
     </div>
   </div>
 
-  <p><button type="button" class="preset-btn" onclick="runGrantExample()">Run the missing-grant example</button> · <a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
-  <p id="grant-example-result" role="status">Expected: BLOCK. The fictional purchase is within its limit but lacks a principal-signed grant.</p>
+  <p class="note"><button type="button" class="preset-btn" onclick="runGrantExample()">Run the missing-grant example</button> · <a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
+  <p id="grant-example-result" class="status" role="status">Expected: BLOCK. The fictional purchase is within its limit but lacks a principal-signed grant.</p>
   <section class="card" id="connect-mcp" aria-labelledby="connect-mcp-title">
     <h2 id="connect-mcp-title">Connect Vizier over MCP</h2>
     <p>Add this HTTPS address to your MCP client using Streamable HTTP.</p>
@@ -242,8 +292,8 @@ export function createPlaygroundHtml(
       <pre style="overflow:auto">${escapeExample(JSON.stringify(firstCheck.body.params.arguments, null, 2))}</pre>
     </details>
   </section>
-  <p>Evaluation playground: caller-supplied authority is unverified. ${grantNotice} No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
-  <p>The examples compare proposed purchases with declared spending limits and allowed targets.</p>
+  <p class="note">Evaluation playground: caller-supplied authority is unverified. ${grantNotice} No external action is executed. Trusted enforcement requires an authenticated integration and server-side policy.</p>
+  <p class="note">The examples compare proposed purchases with declared spending limits and allowed targets.</p>
   <div class="container" id="action-example">
     <!-- Left: Request Simulator -->
     <div class="card">
@@ -256,8 +306,8 @@ export function createPlaygroundHtml(
         <button class="preset-btn" onclick="loadPreset('block_target')">🔴 Block: Target Denied</button>
         <button class="preset-btn" onclick="loadPreset('review_sensitive')">🟡 Evaluate: Deploy Worker</button>
       </div>
-      <div style="display: flex; gap: 8px; align-items: center; background: #111827; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
-        <input id="apiKeyInput" type="password" placeholder="Optional vz_live_... or master key (in-memory only; evaluates freely if empty)" style="flex: 1; background: transparent; border: none; color: #38bdf8; font-size: 0.75rem; font-family: monospace; outline: none;" autocomplete="off" />
+      <div style="display: flex; gap: 8px; align-items: center; background: var(--code-bg); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);">
+        <input id="apiKeyInput" type="password" placeholder="Optional vz_live_... or master key (in-memory only; evaluates freely if empty)" style="flex: 1; background: transparent; border: none; color: var(--code-text); font-size: 0.75rem; font-family: monospace; outline: none;" autocomplete="off" />
       </div>
       <textarea id="requestJson" spellcheck="false"></textarea>
       <button class="primary" id="verifyBtn" onclick="runVerification()">⚡ Verify Action via Kernel</button>
@@ -289,7 +339,7 @@ export function createPlaygroundHtml(
         <span>Receipt Hash (SHA-256):</span>
         <span id="receiptHash" class="meta-val" style="font-family: monospace; font-size: 0.75rem;">--</span>
       </div>
-      <div style="font-size: 0.8rem; font-weight: 600; color: #fff; margin-top: 6px;">Evaluated Policies & Raw Response:</div>
+      <div style="font-size: 0.8rem; font-weight: 600; color: var(--text); margin-top: 6px;">Evaluated Policies & Raw Response:</div>
       <pre id="rawResponse" class="output-box">// Response will render here</pre>
     </div>
 
@@ -303,6 +353,7 @@ export function createPlaygroundHtml(
       </div>
       <div id="snippetBox" class="snippet"></div>
     </div>
+  </div>
   </div>
 
   <script>
