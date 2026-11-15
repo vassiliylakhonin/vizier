@@ -4,9 +4,16 @@ import { pruneGrantLifecycle } from './transport/grant-lifecycle';
 import { runWalletHistoryMonitor, retryWalletHistoryMonitor } from './reviews/wallet-monitor';
 
 export function handleScheduled(controller: Pick<ScheduledController, 'cron' | 'scheduledTime'>,
-  env: { DB: D1Database; VIZIER_MONITORED_WALLET?: string }, ctx: Pick<ExecutionContext, 'waitUntil'>): void {
-  // Backoff after the 03:17 primary scan: +30, +60 and +120 minutes.
+  env: { DB: D1Database; VIZIER_MONITORED_WALLET?: string; VIZIER_MONITOR_FALLBACK_RPC_URL?: string },
+  ctx: Pick<ExecutionContext, 'waitUntil'>): void {
+  // Backoff after the 03:17 primary scan: +30, +60 and +120 minutes. When the
+  // operator configures VIZIER_MONITOR_FALLBACK_RPC_URL, the first and last
+  // retries scan through that endpoint instead of the throttled primary.
   const retry = ['47 3 * * *', '47 4 * * *', '47 6 * * *'].includes(controller.cron);
+  const fallback = typeof env.VIZIER_MONITOR_FALLBACK_RPC_URL === 'string'
+    && env.VIZIER_MONITOR_FALLBACK_RPC_URL.startsWith('https://')
+    ? env.VIZIER_MONITOR_FALLBACK_RPC_URL : undefined;
+  const retryUrl = ['47 3 * * *', '47 6 * * *'].includes(controller.cron) ? fallback : undefined;
   if (controller.cron !== '17 3 * * *' && !retry) return;
   // Extra observations must not repeat pruning or any other scheduled mutation.
   if (!retry) {
@@ -20,7 +27,7 @@ export function handleScheduled(controller: Pick<ScheduledController, 'cron' | '
   }
   if (env.VIZIER_MONITORED_WALLET) {
     const observation = retry
-      ? retryWalletHistoryMonitor(env.DB, env.VIZIER_MONITORED_WALLET, controller.scheduledTime)
+      ? retryWalletHistoryMonitor(env.DB, env.VIZIER_MONITORED_WALLET, controller.scheduledTime, retryUrl)
       : runWalletHistoryMonitor(env.DB, env.VIZIER_MONITORED_WALLET);
     ctx.waitUntil(observation
       .then(history => console.log(JSON.stringify(history

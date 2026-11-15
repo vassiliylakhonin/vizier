@@ -51,9 +51,11 @@ const BASE_RPC_ENDPOINTS: Record<BaseRpcProvider, string> = {
   publicnode: "https://base-rpc.publicnode.com",
 };
 
-/** Fixed operator-selected Base endpoints; never accept caller RPC URLs or outcomes. */
-export async function rpc(method: string, params: unknown[], provider: BaseRpcProvider = "blockpi"): Promise<unknown> {
-  const response = await fetch(BASE_RPC_ENDPOINTS[provider], { method: "POST", redirect: "manual",
+/** Fixed operator-selected Base endpoints; never accept caller RPC URLs or outcomes.
+ * urlOverride is only the operator-configured monitor fallback endpoint from
+ * the Worker's own environment secret, never request input. */
+export async function rpc(method: string, params: unknown[], provider: BaseRpcProvider = "blockpi", urlOverride?: string): Promise<unknown> {
+  const response = await fetch(urlOverride ?? BASE_RPC_ENDPOINTS[provider], { method: "POST", redirect: "manual",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error(`Base RPC HTTP ${response.status}`);
   if (!response.body) throw new Error("Base RPC empty response");

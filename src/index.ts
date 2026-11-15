@@ -11,6 +11,8 @@ interface ExtendedEnv extends Env {
   readonly VIZIER_REQUIRE_SIGNED_ACCEPTANCE?: string;
   readonly VIZIER_REVIEWER_KEY?: string;
   readonly VIZIER_MONITORED_WALLET?: string;
+  // Optional operator endpoint (https URL) for the wallet monitor's fallback scan.
+  readonly VIZIER_MONITOR_FALLBACK_RPC_URL?: string;
   readonly VIZIER_MCP_CORRELATION_KEY?: string;
 }
 

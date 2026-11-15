@@ -6,12 +6,13 @@ vi.mock('../src/storage/audit', () => ({ pruneAuditMetadata: mocks.prune }));
 vi.mock('../src/transport/grant-lifecycle', () => ({ pruneGrantLifecycle: mocks.pruneGrants }));
 import { handleScheduled } from '../src/scheduled';
 
-function schedule(cron: string) {
+function schedule(cron: string, fallbackUrl?: string) {
   const run = vi.fn().mockResolvedValue({ success: true });
   const prepare = vi.fn(() => ({ bind: vi.fn(() => ({ run })) }));
   const pending: Promise<unknown>[] = [];
   handleScheduled({ cron, scheduledTime: Date.now() },
-    { DB: { prepare }, VIZIER_MONITORED_WALLET: '0x' + '1'.repeat(40) } as unknown as Parameters<typeof handleScheduled>[1],
+    { DB: { prepare }, VIZIER_MONITORED_WALLET: '0x' + '1'.repeat(40),
+      VIZIER_MONITOR_FALLBACK_RPC_URL: fallbackUrl } as unknown as Parameters<typeof handleScheduled>[1],
     { waitUntil: (value: Promise<unknown>) => { pending.push(value); } });
   return { prepare, pending };
 }
@@ -32,6 +33,28 @@ describe('bounded wallet observation schedule', () => {
     const { prepare, pending } = schedule('17 3 * * *'); await Promise.all(pending);
     expect(mocks.run).toHaveBeenCalledOnce(); expect(mocks.retry).not.toHaveBeenCalled();
     expect(mocks.prune).toHaveBeenCalledOnce(); expect(mocks.pruneGrants).toHaveBeenCalledOnce(); expect(prepare).toHaveBeenCalledOnce();
+  });
+  it('first and last retries use the configured fallback endpoint, middle retry stays public', async () => {
+    const url = 'https://lb.drpc.org/ogrpc?network=base&dkey=test-key';
+    schedule('47 3 * * *', url); await Promise.all([]);
+    expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), url);
+    vi.clearAllMocks();
+    schedule('47 4 * * *', url);
+    expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), undefined);
+    vi.clearAllMocks();
+    schedule('47 6 * * *', url);
+    expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), url);
+  });
+  it('no fallback endpoint keeps every retry on the public primary', async () => {
+    for (const cron of ['47 3 * * *', '47 4 * * *', '47 6 * * *']) {
+      vi.clearAllMocks();
+      schedule(cron);
+      expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), undefined);
+    }
+  });
+  it('a non-https fallback endpoint is ignored', async () => {
+    schedule('47 3 * * *', 'http://insecure.example');
+    expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), undefined);
   });
   it('unknown schedules perform no work', async () => {
     const { prepare, pending } = schedule('* * * * *'); await Promise.all(pending);

@@ -51,17 +51,18 @@ export interface WalletHistory {
 }
 
 /** Conservative finalized native-USDC history; never a spending authorization. */
-export async function collectWalletHistory(wallet: string, options: { paceRpc?: boolean; rpcProvider?: BaseRpcProvider } = {}): Promise<WalletHistory> {
+export async function collectWalletHistory(wallet: string, options: { paceRpc?: boolean; rpcProvider?: BaseRpcProvider; rpcUrl?: string } = {}): Promise<WalletHistory> {
   const started = Date.now();
   const concurrency = options.paceRpc ? 1 : LOG_FETCH_CONCURRENCY;
   const provider = options.rpcProvider ?? "blockpi";
-  const monitor = provider === "publicnode";
+  // The operator-configured fallback endpoint runs the same bounded monitor profile.
+  const monitor = provider === "publicnode" || options.rpcUrl !== undefined;
   const logSpan = monitor ? MONITOR_LOG_SPAN : LOG_SPAN;
   const scanTimeoutMs = monitor ? 180000 : 120000;
   let spareCalls = 2;
   async function historyRpc(method: string, params: unknown[]): Promise<unknown> {
     for (;;) {
-      try { return await rpc(method, params, provider); }
+      try { return await rpc(method, params, provider, options.rpcUrl); }
       catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (spareCalls === 0 || !/^(Invalid Base RPC envelope|Base RPC HTTP (429|5\d\d))$/.test(message)) throw error;

@@ -10,6 +10,9 @@
   // Configure only after deploying the compatible private-vault collector.
   // VIZIER_PRINCIPAL_KEYS is deliberately not required: delegation grants are
   // opt-in, and an unset registry simply means no grant can be verified.
+  // VIZIER_MONITOR_FALLBACK_RPC_URL is an optional https endpoint (e.g. a keyed
+  // free-tier Base RPC) used by the 03:47 and 06:47 wallet-monitor retries when
+  // the public primary endpoint is throttled; unset keeps every scan public.
   "secrets": {
     "required": [
       "VIZIER_API_KEY",

@@ -33,8 +33,9 @@ function historyFailureCode(error: unknown): string {
   return Object.hasOwn(known, error.message) ? known[error.message]! : "UNKNOWN";
 }
 
-/** A scheduled observation only; this table is never read by budget admission. */
-export async function runWalletHistoryMonitor(db: D1Database, wallet: string): Promise<WalletHistory> {
+/** A scheduled observation only; this table is never read by budget admission.
+ * rpcUrl is the operator-configured fallback endpoint (secret); unset keeps PublicNode. */
+export async function runWalletHistoryMonitor(db: D1Database, wallet: string, rpcUrl?: string): Promise<WalletHistory> {
   if (!walletAddress.test(wallet) || wallet === "0x" + "0".repeat(40)) throw new Error("INVALID_MONITOR_WALLET");
 
   async function recordFailure(reason: string, diagnostic?: string): Promise<never> {
@@ -52,7 +53,7 @@ export async function runWalletHistoryMonitor(db: D1Database, wallet: string): P
   if (policy.enabled !== 0) return recordFailure("MONITOR_POLICY_ENABLED");
 
   let history: WalletHistory;
-  try { history = await collectWalletHistory(wallet, { paceRpc: true, rpcProvider: "publicnode" }); }
+  try { history = await collectWalletHistory(wallet, { paceRpc: true, rpcProvider: "publicnode", rpcUrl }); }
   catch (error: unknown) { return recordFailure("MONITOR_HISTORY_UNAVAILABLE", historyFailureCode(error)); }
 
   await db.prepare(`INSERT INTO wallet_history_monitor
@@ -66,7 +67,7 @@ export async function runWalletHistoryMonitor(db: D1Database, wallet: string): P
 }
 
 /** Retry only when today's primary scan has not produced a complete observation. */
-export async function retryWalletHistoryMonitor(db: D1Database, wallet: string, scheduledTime: number): Promise<WalletHistory | null> {
+export async function retryWalletHistoryMonitor(db: D1Database, wallet: string, scheduledTime: number, rpcUrl?: string): Promise<WalletHistory | null> {
   if (!walletAddress.test(wallet) || wallet === '0x' + '0'.repeat(40)) throw new Error('INVALID_MONITOR_WALLET');
   if (!Number.isSafeInteger(scheduledTime) || scheduledTime < 0) throw new Error('INVALID_MONITOR_SCHEDULE');
   const row = await db.prepare(`SELECT m.state,m.checked_at,m.observed_outgoing,m.start_block,m.end_block,m.end_block_hash,m.reason,p.enabled
@@ -86,5 +87,5 @@ export async function retryWalletHistoryMonitor(db: D1Database, wallet: string, 
     && row.end_block > row.start_block
     && BigInt(row.end_block - row.start_block) === monitorLookbackBlocks(BigInt(row.end_block))
     && /^0x[0-9a-f]{64}$/.test(row.end_block_hash)) return null;
-  return runWalletHistoryMonitor(db, wallet);
+  return runWalletHistoryMonitor(db, wallet, rpcUrl);
 }
