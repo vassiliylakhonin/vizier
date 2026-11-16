@@ -9,11 +9,16 @@ export function handleScheduled(controller: Pick<ScheduledController, 'cron' | '
   // Backoff after the 03:17 primary scan: +30, +60 and +120 minutes. When the
   // operator configures VIZIER_MONITOR_FALLBACK_RPC_URL, the first and last
   // retries scan through that endpoint instead of the throttled primary.
-  const retry = ['47 3 * * *', '47 4 * * *', '47 6 * * *'].includes(controller.cron);
+  // Match the scheduled UTC hour instead of the invocation time. Accept the
+  // previous expressions while Cloudflare propagates the merged trigger.
+  const retrySlot = new Date(controller.scheduledTime);
+  const hour = retrySlot.getUTCHours();
+  const retry = retrySlot.getUTCMinutes() === 47 && [3, 4, 6].includes(hour) &&
+    (controller.cron === '47 3,4,6 * * *' || controller.cron === `47 ${hour} * * *`);
   const fallback = typeof env.VIZIER_MONITOR_FALLBACK_RPC_URL === 'string'
     && env.VIZIER_MONITOR_FALLBACK_RPC_URL.startsWith('https://')
     ? env.VIZIER_MONITOR_FALLBACK_RPC_URL : undefined;
-  const retryUrl = ['47 3 * * *', '47 6 * * *'].includes(controller.cron) ? fallback : undefined;
+  const retryUrl = hour === 3 || hour === 6 ? fallback : undefined;
   if (controller.cron !== '17 3 * * *' && !retry) return;
   // Extra observations must not repeat pruning or any other scheduled mutation.
   if (!retry) {

@@ -183,9 +183,9 @@ availability is not guaranteed; persistent rate limits still fail the check.
 Interactive review/history requests retain their existing concurrency and latency;
 the pacing option is selected internally by the monitor, not by request input.
 
-The primary scan runs at 03:17 UTC. Three bounded retry crons back off after
-it at +30, +60 and +120 minutes (03:47, 04:47 and 06:47 UTC) and run only the
-observation, so a provider throttle that outlasts one window still clears the
+The primary scan runs at 03:17 UTC. One retry trigger runs at 03:47, 04:47
+and 06:47 UTC, with gaps of 30, 60 and 120 minutes between attempts. Retries
+run only the observation, so a provider throttle that outlasts one window still clears the
 same day; the GitHub check at 04:17 tolerates an observation up to 18 hours
 old. Retries do not repeat pruning or touch financial policies/reservations. A
 complete observation from today's primary window, no older than four hours,
