@@ -5,7 +5,7 @@ Cloudflare Worker** to 100% traffic. The operator pins the account, Worker,
 principal and agent. Every execution requires both a valid owner-signed scope
 grant and a signed human approval of the exact version and identities.
 
-The v0.5.10 npm packages include `@agenda-intelligence/vizier-gated-deploy` and its
+The npm packages include `@agenda-intelligence/vizier-gated-deploy` and its
 `vizier-worker-deploy` CLI, alongside the matching SDK. Earlier GitHub archives
 retain the original `@vizier/*` names. Installing the npm packages adds no hosted
 deployment endpoint and does not switch a production workflow.
@@ -15,7 +15,7 @@ deployment endpoint and does not switch a production workflow.
 Use Node 24+:
 
 ```sh
-npm install @agenda-intelligence/vizier-sdk@0.5.10 @agenda-intelligence/vizier-gated-deploy@0.5.10
+npm install @agenda-intelligence/vizier-sdk@0.5.18 @agenda-intelligence/vizier-gated-deploy@0.5.18
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
   --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
@@ -173,11 +173,23 @@ origin. Human approvals use the separate signed-token protocol. See
 
 ## Acceptance record for one external workflow
 
-Record the evaluator's real operation and existing control, integration time,
-expected allow/refusal results, false refusals, outcome/recovery IDs, repeat-use
-dates and whether the gate remains on day seven. Keep identity private unless
-publication is approved. The maintainer's demos and automated tests do not count
-as independent adoption. Use [the pilot qualification guide](PILOT.md).
+Run these cases on the agreed sandbox with an already uploaded, reviewed version.
+Use a new review for each case that needs an unused approval. Keep the approval
+tokens, keys, logs and real IDs in the operator's approved storage.
+
+| Case | Evidence to retain |
+| --- | --- |
+| The release agent tries the old deploy command or direct API under its real runner identity | The old capability is unavailable or denied, and deployment history stays unchanged. Check inherited secrets, shared files, existing CI triggers and other routes able to deploy the same Worker. |
+| A human approves the exact Worker and uploaded version at 100% traffic | One accepted request and matching Cloudflare deployment version and percentage. Keep the review ID, outcome and deployment ID. |
+| The request uses a different target, version or traffic percentage, or approval is expired or rejected | Refusal reason and unchanged deployment history. |
+| The successful approval is submitted again, including after a gateway restart | Refusal and unchanged deployment history, using the same durable journal. |
+| The upstream outcome is ambiguous | Exercise this with a local response fixture. Keep the unresolved journal state and verify that a second deployment is not sent before reconciliation. |
+
+Record the existing control, integration time, decision time and false refusals.
+On the next release, check whether the team uses the gateway without the
+maintainer and whether it remains in the normal path on day seven. Keep
+identity private unless publication is approved. Use the
+[pilot qualification guide](PILOT.md) to capture scope and follow-up.
 
 The pilot offer is: **control a specific infrastructure action before an agent
 executes it**. General resource quotas, delegation lineage, global budgets,

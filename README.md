@@ -15,13 +15,15 @@ Use the TypeScript or Python client, protect existing tools with the MCP proxy, 
 
 [Try the playground](https://vizier.agendamcp.dpdns.org/playground) · [Quick start](#quick-start) · [SDK example](#start-with-signed-delegation) · [MCP](#connect-through-mcp) · [API reference](https://vizier.agendamcp.dpdns.org/docs) · [Threat model](docs/THREAT_MODEL.md)
 
+**Running a release agent?** Use the [Cloudflare Worker deployment pilot](docs/INTEGRATION_OFFER.md) to bind approval to one uploaded version and test that the agent cannot deploy around the operator's gateway.
+
 ## What can you control?
 
 | Workflow | What the integration can enforce | Start here |
 | --- | --- | --- |
 | Agent tool calls | Permitted actions, exact targets, constraints, and grant expiry | [Signed delegation](#start-with-signed-delegation) |
 | Existing MCP tools | Allowed tools and upstream routes, checked before forwarding | [MCP enforcement proxy](packages/mcp-proxy/README.md) |
-| Cloudflare Worker deployments | One existing Worker and human approval of the exact uploaded version | [Local preparation demo](#quick-start) |
+| Cloudflare Worker deployments | Human approval of one uploaded version, promoted to 100% traffic | [Pilot acceptance cases](docs/WORKER_DEPLOY_PILOT.md#acceptance-record-for-one-external-workflow) |
 | Sensitive operations | An explicit human-review step bound to the proposed action | [Review helpers](packages/sdk/README.md#explicit-human-reviews) |
 
 **An API key identifies the integration. A signed grant carries the owner's permission.** Keep the private signing key and protected tool credentials outside the agent's control.
@@ -56,7 +58,7 @@ To prepare a deployment review locally with **Node.js 24+**:
 ```sh
 mkdir vizier-demo
 cd vizier-demo
-npm install @agenda-intelligence/vizier-sdk@0.5.17 @agenda-intelligence/vizier-gated-deploy@0.5.17
+npm install @agenda-intelligence/vizier-sdk@0.5.18 @agenda-intelligence/vizier-gated-deploy@0.5.18
 npx --no-install vizier-worker-deploy prepare \
   --scope node_modules/@agenda-intelligence/vizier-gated-deploy/examples/scope.json \
   --plan node_modules/@agenda-intelligence/vizier-gated-deploy/examples/plan.json
