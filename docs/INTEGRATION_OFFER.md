@@ -11,11 +11,16 @@ has purchased it. There is no automated checkout or self-service subscription.
 - One pinned account/Worker and an operator-owned execution boundary.
 - Owner key registration and short-lived signed scope; private signer keys stay
   with the owner. Distinct integration and human-review credentials.
-- Human review of the exact uploaded version and traffic percentage.
+- Human review of the exact uploaded version before moving 100% of traffic.
 - A verified allow and expected refusals for changed targets/versions, expired
   permissions, replay, concurrent requests and unavailable authorization.
 - Recorded deployment/review IDs, recovery procedure for uncertain outcomes,
   and a handover explaining credential isolation and remaining bypass routes.
+
+Use the [acceptance cases](WORKER_DEPLOY_PILOT.md#acceptance-record-for-one-external-workflow)
+to agree on the existing release control, expected refusals and the evidence
+the platform owner keeps. The operator sets up separate credentials for the
+sandbox. The agent proposes the version using its bounded gateway credentials.
 
 Start with an existing sandbox, a reviewed uploaded version and a named operator.
 The buyer must be able to isolate credentials and remove the agent's direct

@@ -296,6 +296,7 @@ export function createPlaygroundHtml(
   <main>
   <p class="note"><button type="button" class="preset-btn" onclick="runGrantExample()">Run the missing-grant example</button> · <a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
   <p id="grant-example-result" class="status" role="status">Expected: BLOCK. The fictional purchase is within its limit but lacks a principal-signed grant.</p>
+  <p class="note">Running a release agent? <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/INTEGRATION_OFFER.md">Pilot approval for one Cloudflare Worker deployment</a> and verify that the agent cannot bypass the operator's gateway.</p>
   <section class="card" id="connect-mcp" aria-labelledby="connect-mcp-title">
     <h2 id="connect-mcp-title">Connect Vizier over MCP</h2>
     <p>Add this HTTPS address to your MCP client using Streamable HTTP.</p>
