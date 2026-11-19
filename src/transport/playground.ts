@@ -294,8 +294,13 @@ export function createPlaygroundHtml(
   </header>
 
   <main>
-  <p class="note"><button type="button" class="preset-btn" onclick="runGrantExample()">Run the missing-grant example</button> · <a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a></p>
-  <p id="grant-example-result" class="status" role="status">Expected: BLOCK. The fictional purchase is within its limit but lacks a principal-signed grant.</p>
+  <section class="card" id="missing-grant" aria-labelledby="missing-grant-title">
+    <h2 id="missing-grant-title">Check a proposed action</h2>
+    <p>A fictional purchase is within the spending limit. The principal has supplied no signed grant. Run the free example to inspect the decision and reason.</p>
+    <button type="button" class="primary" onclick="runGrantExample()">Run the missing-grant example</button>
+    <p id="grant-example-result" class="status" role="status">Expected: BLOCK (GRANT_REQUIRED). The example only evaluates the proposal.</p>
+    <p><a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a> · <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/AUTHORIZATION_QUICKSTART.md">Set up signed enforcement</a></p>
+  </section>
   <p class="note">Running a release agent? <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/INTEGRATION_OFFER.md">Pilot approval for one Cloudflare Worker deployment</a> and verify that the agent cannot bypass the operator's gateway.</p>
   <section class="card" id="connect-mcp" aria-labelledby="connect-mcp-title">
     <h2 id="connect-mcp-title">Connect Vizier over MCP</h2>

@@ -159,7 +159,10 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
   return Object.freeze({
     name: "Vizier",
     description:
-      "For teams shipping AI agents that take real actions: check each proposed tool call against the principal's signed, scoped grant before execution, and get an explainable ALLOW, REVIEW or BLOCK decision with a request-bound receipt. Try the free example: it shows why an action without a signed grant is blocked. Anonymous A2A calls are evaluation-only: anonymous calls cannot authorize ALLOW. An authenticated integration is required for enforcement receipts. Not factuality verification or independent execution proof; REVIEW requires a human decision.",
+      "Check a proposed AI agent tool call against the principal's signed, scoped grant. Get ALLOW, REVIEW or BLOCK with reasons and a receipt bound to the request. " +
+      `Open the free browser example at ${origin}/playground#missing-grant\n\n` +
+      "The fictional purchase returns BLOCK because it lacks a signed grant. Anonymous A2A is for evaluation and can return REVIEW or BLOCK. " +
+      "Enforcement requires an authenticated integration. A person decides on REVIEW, and the integration applies the result at the execution boundary.",
     provider: {
       organization: "Vassiliy Lakhonin",
       url: "https://github.com/vassiliylakhonin",
