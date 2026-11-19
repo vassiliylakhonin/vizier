@@ -12,6 +12,7 @@ describe("playground guidance in required grant mode", () => {
     expect(html).toContain('<header class="header">');
     expect(html).toContain('<nav class="links" aria-label="Primary navigation">');
     expect(html).toContain('<main>');
+    expect(html).toContain('id="missing-grant"');
     expect(html).toContain('<footer class="footer">');
     const jsonLd = html.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)?.[1];
     expect(jsonLd).toBeDefined();

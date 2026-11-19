@@ -96,6 +96,7 @@ describe("A2A Agent Card", () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual(card);
+    expect(body.description).toContain("https://vizier.example/playground#missing-grant");
     expect(body).toMatchObject({
       name: "Vizier",
       version: SERVICE_VERSION,
@@ -480,7 +481,7 @@ describe("A2A card intake and authority boundary", () => {
       extensions: Array<{ params: Record<string, string> }>;
     };
     const extension = capabilities.extensions[0]!.params;
-    expect(card.description as string).toContain("anonymous calls cannot authorize ALLOW");
+    expect(card.description as string).toContain("Anonymous A2A is for evaluation and can return REVIEW or BLOCK");
     expect(extension.evaluation_boundary).toContain("never ALLOW");
     const response = await handleA2aRequest(anonymousRpcRequest(extension.a2a_send_message_example));
     const body = (await response.json()) as {
