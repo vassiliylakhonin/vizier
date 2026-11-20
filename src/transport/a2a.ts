@@ -176,7 +176,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
       },
     ],
     version: SERVICE_VERSION,
-    documentationUrl: `${origin}/docs`,
+    documentationUrl: `${origin}/playground#missing-grant`,
     capabilities: {
       streaming: false,
       pushNotifications: false,

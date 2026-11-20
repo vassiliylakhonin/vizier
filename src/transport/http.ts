@@ -1480,7 +1480,7 @@ async function handleHttpRequestInner(
   const url = new URL(request.url);
   if (url.protocol === "http:" && url.hostname === "vizier.agendamcp.dpdns.org") {
     url.protocol = "https:";
-    return Response.redirect(url, 308);
+    return Response.redirect(url.toString(), 308);
   }
   const publicOrigin = url.hostname === "vizier.vassiliy-lakhonin.workers.dev"
     ? "https://vizier.agendamcp.dpdns.org"
