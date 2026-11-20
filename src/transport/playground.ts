@@ -299,9 +299,18 @@ export function createPlaygroundHtml(
     <p>A fictional purchase is within the spending limit. The principal has supplied no signed grant. Run the free example to inspect the decision and reason.</p>
     <button type="button" class="primary" onclick="runGrantExample()">Run the missing-grant example</button>
     <p id="grant-example-result" class="status" role="status">Expected: BLOCK (GRANT_REQUIRED). The example only evaluates the proposal.</p>
-    <p><a href="#action-example">Edit a policy example</a> · <a href="#connect-mcp">Connect MCP</a> · <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/AUTHORIZATION_QUICKSTART.md">Set up signed enforcement</a></p>
+    <p><a href="#guard-one-release">Guard a real deployment</a> · <a href="#connect-mcp">Connect MCP</a> · <a href="#action-example">Edit a policy example</a></p>
   </section>
-  <p class="note">Running a release agent? <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/INTEGRATION_OFFER.md">Pilot approval for one Cloudflare Worker deployment</a> and verify that the agent cannot bypass the operator's gateway.</p>
+  <section class="card" id="guard-one-release" aria-labelledby="guard-release-title">
+    <h2 id="guard-release-title">Guard one Cloudflare Worker release</h2>
+    <p>Start with an existing Worker and a release agent that proposes an exact version. The operator controls the deployment credential and the execution gateway.</p>
+    <ol>
+      <li>The Worker owner signs a short-lived grant scoped to the agent, deployment action and target Worker.</li>
+      <li>The gateway evaluates the proposed version with authenticated Vizier and verifies that the signed receipt binds to that exact request.</li>
+      <li>The gateway holds <code>REVIEW</code> for a human, stops on <code>BLOCK</code>, and applies <code>ALLOW</code> only with the required operator approval for that version.</li>
+    </ol>
+    <p><a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/WORKER_DEPLOY_PILOT.md">Set up the operator-side adapter</a> · <a href="https://github.com/vassiliylakhonin/vizier/blob/main/docs/AUTHORIZATION_QUICKSTART.md">Configure signed authority and verification</a></p>
+  </section>
   <section class="card" id="connect-mcp" aria-labelledby="connect-mcp-title">
     <h2 id="connect-mcp-title">Connect Vizier over MCP</h2>
     <p>Add this HTTPS address to your MCP client using Streamable HTTP.</p>
