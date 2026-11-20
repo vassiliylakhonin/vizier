@@ -13,6 +13,9 @@ describe("playground guidance in required grant mode", () => {
     expect(html).toContain('<nav class="links" aria-label="Primary navigation">');
     expect(html).toContain('<main>');
     expect(html).toContain('id="missing-grant"');
+    expect(html.indexOf('id="guard-one-release"')).toBeGreaterThan(html.indexOf('id="missing-grant"'));
+    expect(html.indexOf('id="connect-mcp"')).toBeGreaterThan(html.indexOf('id="guard-one-release"'));
+    expect(html).toContain("WORKER_DEPLOY_PILOT.md");
     expect(html).toContain('<footer class="footer">');
     const jsonLd = html.match(/<script type="application\/ld\+json">([^<]+)<\/script>/)?.[1];
     expect(jsonLd).toBeDefined();
@@ -20,6 +23,11 @@ describe("playground guidance in required grant mode", () => {
     expect(structured["@type"]).toEqual(["SoftwareApplication", "WebAPI"]);
     expect(structured.url).toBe("https://vizier.example/");
     expect(structured.name).toBe("Vizier");
+  });
+  it("redirects HTTP on the production host before handling an action", async () => {
+    const response = await handleHttpRequest(new Request("http://vizier.agendamcp.dpdns.org/v1/verify?source=test", { method: "POST" }));
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("https://vizier.agendamcp.dpdns.org/v1/verify?source=test");
   });
   it("initializes the editable preset and integration snippet without browser errors", async () => {
     const html = await (await handleHttpRequest(new Request("https://vizier.example/playground"))).text();

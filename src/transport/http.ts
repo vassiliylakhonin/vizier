@@ -1478,6 +1478,10 @@ async function handleHttpRequestInner(
   options: TransportOptions = {},
 ): Promise<Response> {
   const url = new URL(request.url);
+  if (url.protocol === "http:" && url.hostname === "vizier.agendamcp.dpdns.org") {
+    url.protocol = "https:";
+    return Response.redirect(url.toString(), 308);
+  }
   const publicOrigin = url.hostname === "vizier.vassiliy-lakhonin.workers.dev"
     ? "https://vizier.agendamcp.dpdns.org"
     : url.origin;
@@ -1512,10 +1516,12 @@ async function handleHttpRequestInner(
       if (url.pathname === "/playground" || accept.includes("text/html")) {
         return new Response(createPlaygroundHtml(url.origin, resolveSignedGrantMode(options), publicOrigin), {
           status: 200,
-          headers: { "Content-Type": "text/html; charset=utf-8" },
+          headers: { "Content-Type": "text/html; charset=utf-8", Vary: "Accept" },
         });
       }
-      return rootDocument();
+      const response = rootDocument();
+      response.headers.set("Vary", "Accept");
+      return response;
     }
     if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/dashboard")) {
       // One nonce per response: the console's only inline script carries it
