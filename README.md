@@ -2,7 +2,7 @@
 
 # Vizier
 
-**Authorize AI agent actions before tools execute.**
+**Authorize AI agent actions before tools execute. No LLM is involved in the authorization decision.**
 
 [![npm](https://img.shields.io/npm/v/%40agenda-intelligence%2Fvizier-sdk)](https://www.npmjs.com/package/@agenda-intelligence/vizier-sdk)
 [![CI](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml/badge.svg)](https://github.com/vassiliylakhonin/vizier/actions/workflows/ci.yml)
@@ -11,11 +11,17 @@
 
 Vizier checks proposed tool calls against **owner-signed, scoped, expiring permissions** and deterministic policies. It returns `ALLOW`, `BLOCK`, or `REVIEW`, with rule results and a receipt bound to the request. Your trusted guard enforces the result before a deployment, repository write, database change, message, or payment API call.
 
-Use the TypeScript or Python client, protect existing tools with the MCP proxy, or integrate through REST and A2A. **No LLM is involved in the authorization decision.**
+Use the TypeScript or Python client, protect existing tools with the MCP proxy, or integrate through REST and A2A.
 
 [Try the playground](https://vizier.agendamcp.dpdns.org/playground) · [Quick start](#quick-start) · [SDK example](#start-with-signed-delegation) · [MCP](#connect-through-mcp) · [API reference](https://vizier.agendamcp.dpdns.org/docs) · [Threat model](docs/THREAT_MODEL.md)
 
 **Running a release agent?** Use the [Cloudflare Worker deployment pilot](docs/INTEGRATION_OFFER.md) to bind approval to one uploaded version and test that the agent cannot deploy around the operator's gateway.
+
+## See the problem it catches
+
+An agent proposes a fictional purchase within its declared spending limit, but the owner has signed no grant for it. Vizier returns `BLOCK` (`GRANT_REQUIRED`), and the action never runs.
+
+[Try the missing-grant example in the playground](https://vizier.agendamcp.dpdns.org/playground#missing-grant). Evaluation only: the playground never executes the action.
 
 ## What can you control?
 
@@ -100,6 +106,14 @@ flowchart LR
 | `REVIEW` | Stop execution. Submit a separate human review explicitly if the integration supports it. |
 
 A verification response does not execute the action or automatically open a review.
+
+## Where it fits
+
+- **Think:** [Global Think Tank Analyst](https://github.com/vassiliylakhonin/global-think-tank-analyst/blob/main/SKILL.md) guides an AI agent in preparing a strategic-risk memo.
+- **Check:** [Agenda Intelligence MD](https://github.com/vassiliylakhonin/agenda-intelligence-md) checks the claims and evidence supplied with an answer or memo.
+- **Authorize:** Vizier (this repo) evaluates proposed actions against delegation and policy. It does not execute them; enforcement needs an authenticated integration.
+
+AI drafts. Humans decide.
 
 ## Start with signed delegation
 
@@ -286,3 +300,4 @@ and controls using that same argument evaluator. See
 [SESSION_GUARD.md](docs/SESSION_GUARD.md) for setup, source-checkout commands,
 and limits, especially remote filesystems, symlink races, restarts and unlabelled
 tools. This is not complete prompt-injection protection.
+
