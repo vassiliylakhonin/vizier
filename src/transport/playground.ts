@@ -296,9 +296,11 @@ export function createPlaygroundHtml(
   <main>
   <section class="card" id="missing-grant" aria-labelledby="missing-grant-title">
     <h2 id="missing-grant-title">Check a proposed action</h2>
-    <p>A fictional purchase is within the spending limit. The principal has supplied no signed grant. Run the free example to inspect the decision and reason.</p>
+    <p>See how Vizier decides on one proposed agent action. The free example is a fictional purchase inside its spending limit, sent with no signed grant. No API key or install needed. Nothing is executed.</p>
     <button type="button" class="primary" onclick="runGrantExample()">Run the missing-grant example</button>
-    <p id="grant-example-result" class="status" role="status">Expected: BLOCK (GRANT_REQUIRED). The example only evaluates the proposal.</p>
+    <p id="grant-example-result" class="status" role="status">Expected: BLOCK with GRANT_REQUIRED. Without a principal-signed grant, an anonymous check never returns ALLOW, even inside the limit. This BLOCK means the grant is missing, not that the action is bad.</p>
+    <p>Want to try your own case? Edit the request JSON in the example further down (agent, principal, action, authority, context). You get BLOCK or REVIEW, reason codes, the policy checks and a request hash. The decision uses deterministic rules, no LLM.</p>
+    <p>A real ALLOW needs a grant the owner has signed for this agent and action. An API key alone does not replace it.</p>
     <p><a href="#guard-one-release">Guard a real deployment</a> · <a href="#connect-mcp">Connect MCP</a> · <a href="#action-example">Edit a policy example</a></p>
   </section>
   <section class="card" id="guard-one-release" aria-labelledby="guard-release-title">

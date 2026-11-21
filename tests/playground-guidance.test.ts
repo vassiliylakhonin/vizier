@@ -49,6 +49,10 @@ describe("playground guidance in required grant mode", () => {
     const html = await htmlResponse.text();
     expect(html).not.toContain("produces REVIEW");
     expect(html).toContain("GRANT_REQUIRED");
+    expect(html).toContain("an anonymous check never returns ALLOW, even inside the limit");
+    expect(html).toContain("This BLOCK means the grant is missing, not that the action is bad.");
+    expect(html).toContain("The decision uses deterministic rules, no LLM.");
+    expect(html).toContain("A real ALLOW needs a grant the owner has signed for this agent and action.");
     const response = await handleHttpRequest(new Request("https://vizier.example/v1/verify/evaluate", {
       method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({
         agent:{id:"synthetic-agent",owner:"synthetic-owner"},principal:{id:"synthetic-owner"},
