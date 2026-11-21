@@ -159,11 +159,7 @@ export function createAgentCard(origin: string): Readonly<Record<string, unknown
   return Object.freeze({
     name: "Vizier",
     description:
-      "Check a proposed AI agent tool call against the principal's signed, scoped grant. Get ALLOW, REVIEW or BLOCK with reasons and a receipt bound to the request. " +
-      `Open the free browser example at ${origin}/playground#missing-grant\n\n` +
-      "The fictional purchase returns BLOCK because it lacks a signed grant. Anonymous A2A is for evaluation and can return REVIEW or BLOCK. " +
-      "Enforcement requires an authenticated integration. A person decides on REVIEW, and the integration applies the result at the execution boundary. " +
-      `Guard one Cloudflare Worker release: ${origin}/playground#guard-one-release`,
+      "Check a proposed agent tool call against the owner's signed, scoped grant. Get ALLOW, REVIEW or BLOCK with reasons and a request-bound receipt. No LLM decides; your authenticated integration enforces the result.",
     provider: {
       organization: "Vassiliy Lakhonin",
       url: "https://github.com/vassiliylakhonin",
