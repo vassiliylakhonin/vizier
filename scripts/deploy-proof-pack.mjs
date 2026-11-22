@@ -37,6 +37,8 @@ const CLAIMS = [
     ["admits one of two concurrent claimants", "rejects concurrent requests while an execution is in flight"]],
   ["P11", "Verifier or approval store unavailable: fail closed",
     ["fails closed at the HTTP boundary when Vizier is unavailable", "fails closed when approval consumption is unavailable", "fails closed when /v1/verify is unavailable"]],
+  ["P12", "Paired Approve/Reject on identical state: the rejection leaves no cloud effect and is not consumed; the approval completes and its effect is witnessed (dual obligation of human approval, arXiv:2611.19237)",
+    ["pairs Approve and Reject on identical state", "no cloud effect and the approval's completion is witnessed"]],
 ];
 
 const dir = mkdtempSync(join(tmpdir(), "proof-pack-"));

@@ -31,6 +31,14 @@ It fails if a test is missing, renamed or failing.
 | P9 | The gateway serves one route and rejects unauthenticated, browser, alternate-path, oversized and agent-supplied grant/scope/URL/credential requests | gateway ingress tests |
 | P10 | Concurrent claimants: one is admitted; a busy gateway refuses a second call | concurrency tests |
 | P11 | Verifier or approval store unavailable: fail closed | availability tests |
+| P12 | Paired Approve/Reject on identical state: the rejection leaves no cloud effect and is not consumed; the approval completes and its effect is witnessed (exactly one cloud POST with the approved body, review consumed) | `pairs Approve and Reject on identical state…` |
+
+P12 follows the dual-obligation audit contract of
+[arXiv:2611.19237](https://arxiv.org/abs/2611.19237) (refusal safety and
+bounded authorization completeness, paired on the same state and checked with
+native witnesses): human approval controls work only if rejected work stops
+*and* approved work completes. The paper is one preprint, measured on other
+stacks; the paired test here runs against the simulated cloud above.
 
 ## What this does not show
 

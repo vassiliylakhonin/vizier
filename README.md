@@ -240,6 +240,8 @@ See the [threat model](docs/THREAT_MODEL.md) and [security review](docs/SECURITY
 
 The [maintainer's Worker deployment demo](docs/WORKER_DEPLOY_DEMO.md) records eight scenarios, including changed versions, out-of-scope targets, expired grants, missing approval, and replay. The report includes a [sanitized trace](docs/worker-deploy-live-demo-2026-10-13.json) and explains its limitations. It is owner-run testing, not independent customer adoption.
 
+The [deployment proof pack](docs/DEPLOY_PROOF_PACK.md) tests both obligations of human approval on identical state: a rejection leaves no cloud effect, and an approval's completion is witnessed. A 2026 audit found both halves failing in popular stacks, with approved actions dropped and rejected actions executed ([arXiv:2611.19237](https://arxiv.org/abs/2611.19237); one preprint, measured on other stacks, not this one).
+
 ## Authorization requirements coverage
 
 A 2026 review of authorization architectures for tool-using agents ([arXiv:2609.15906](https://arxiv.org/abs/2609.15906), 89 sources) defines seven structural requirements for agent authorization. Where Vizier stands against them, mapped to code:

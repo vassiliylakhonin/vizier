@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Proof pack: new claim P12, a paired Approve/Reject test on identical
+  deployment state (the rejection leaves no cloud effect and is not consumed;
+  the approval completes with its effect witnessed), following the
+  dual-obligation audit of human approval in arXiv:2611.19237. Tests and docs
+  only; no behavior change.
+
 - Per-principal aggregate usage bounds over fixed windows (authorization
   requirement R4, first step; opt-in, needs D1 migration 0017 `usage_ledger`,
   applied by the Deploy workflow). New authority constraint

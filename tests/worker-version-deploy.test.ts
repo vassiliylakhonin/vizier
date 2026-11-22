@@ -471,6 +471,23 @@ describe("deployment proof-pack additions", () => {
     expect(await deployer({ requireSignedReceipt: true })({ plan, grant, approval })).toMatchObject({ status: "deployment_created" });
     expect(cloud).toHaveBeenCalledTimes(1);
   });
+
+  it("pairs Approve and Reject on identical state: the rejection leaves no cloud effect and the approval's completion is witnessed", async () => {
+    // Same plan and same grant; only the human decision changes. Refusal safety
+    // and authorization completeness are separate obligations (arXiv:2611.19237).
+    const rejected = await approvalFor(plan, "REJECTED");
+    expect(await deployer()({ plan, grant, approval: rejected })).toMatchObject({ status: "stopped", execution: "not_performed" });
+    expect(cloud).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT status FROM human_reviews WHERE id=?").get(rejected.id)!.status).toBe("REJECTED");
+
+    const approved = await approvalFor();
+    expect(await deployer()({ plan, grant, approval: approved })).toMatchObject({ status: "deployment_created", execution: "acknowledged", deploymentId });
+    expect(cloud).toHaveBeenCalledTimes(1);
+    const [url, init] = cloud.mock.calls[0]!;
+    expect(url).toBe(`https://api.cloudflare.com/client/v4/accounts/${scope.account_id}/workers/scripts/${scope.worker_name}/deployments`);
+    expect(JSON.parse(init!.body as string)).toEqual({ strategy: "percentage", versions: [{ version_id: plan.version_id, percentage: 100 }] });
+    expect(db.prepare("SELECT status FROM human_reviews WHERE id=?").get(approved.id)!.status).toBe("CONSUMED");
+  });
 });
 
 describe("operator-owned deployment gateway", () => {
