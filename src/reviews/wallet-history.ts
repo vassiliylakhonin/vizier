@@ -65,7 +65,9 @@ export async function collectWalletHistory(wallet: string, options: { paceRpc?: 
       try { return await rpc(method, params, provider, options.rpcUrl); }
       catch (error) {
         const message = error instanceof Error ? error.message : "";
-        if (spareCalls === 0 || !/^(Invalid Base RPC envelope|Base RPC HTTP (429|5\d\d))$/.test(message)) throw error;
+        const monitorTimeout = monitor && error instanceof Error &&
+          (error.name === "TimeoutError" || error.name === "AbortError");
+        if (spareCalls === 0 || (!monitorTimeout && !/^(Invalid Base RPC envelope|Base RPC HTTP (429|5\d\d))$/.test(message))) throw error;
         spareCalls--;
         if (options.paceRpc) await pause(RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1 - spareCalls] ?? RPC_PAUSE_MS);
       }

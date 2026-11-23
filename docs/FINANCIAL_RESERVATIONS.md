@@ -176,8 +176,8 @@ Every read in one scan uses the same provider; no partial scans are combined
 across providers.
 Responses reaching the conservative 1,000-log ceiling are refused as incomplete.
 Scheduled log reads use single-request batches separated by 2 s pauses;
-transient retries back off 2 s then 8 s before consuming one of the two spare
-requests.
+transient retries, including a scheduled RPC timeout, back off 2 s then 8 s.
+All retryable errors share the same two spare requests.
 The full finalized day and fail-closed behavior are unchanged. Public-provider
 availability is not guaranteed; persistent rate limits still fail the check.
 Interactive review/history requests retain their existing concurrency and latency;

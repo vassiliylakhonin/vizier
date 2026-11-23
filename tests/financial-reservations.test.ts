@@ -332,7 +332,7 @@ describe("financial reservations", () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(6);
     expect(vi.mocked(setTimeout).mock.calls.map(([, delay]) => delay)).toEqual([2000, 8000]);
   });
-  it("recovers from a transient 429 inside one scan with escalating backoff", async () => {
+  it.each(["HTTP 429", "timeout"])("recovers from transient %s inside one scan with escalating backoff", async (failure) => {
     await policy({ enabled: false });
     const fixtureFetch = fetch;
     let logCalls = 0;
@@ -340,7 +340,10 @@ describe("financial reservations", () => {
       const { method } = JSON.parse(init.body as string) as { method: string };
       if (method === "eth_getLogs") {
         logCalls += 1;
-        if (logCalls <= 2) return Promise.resolve(new Response(null, { status: 429 }));
+        if (logCalls <= 2) {
+          if (failure === "timeout") return Promise.reject(new DOMException("RPC timed out", "TimeoutError"));
+          return Promise.resolve(new Response(null, { status: 429 }));
+        }
       }
       return fixtureFetch(url, init);
     }));
