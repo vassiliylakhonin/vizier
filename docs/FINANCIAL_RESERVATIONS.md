@@ -187,7 +187,10 @@ The primary scan runs at 03:17 UTC. One retry trigger runs at 03:47, 04:47
 and 06:47 UTC, with gaps of 30, 60 and 120 minutes between attempts. Retries
 run only the observation, so a provider throttle that outlasts one window still clears the
 same day; the GitHub check at 04:17 tolerates an observation up to 18 hours
-old. Retries do not repeat pruning or touch financial policies/reservations. A
+old. When configured, the HTTPS endpoint in `VIZIER_MONITOR_FALLBACK_RPC_URL`
+serves the 03:47 retry. The 04:47 and 06:47 retries use PublicNode after
+giving it time to recover. Retries do not repeat pruning or touch financial
+policies/reservations. A
 complete observation from today's primary window, no older than four hours,
 skips the retry after checking that the policy remains disabled. Stale, failed
 or incomplete rows do not suppress a fresh scan. Each attempted scan retains

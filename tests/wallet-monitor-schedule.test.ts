@@ -38,7 +38,7 @@ describe('bounded wallet observation schedule', () => {
     expect(mocks.run).toHaveBeenCalledOnce(); expect(mocks.retry).not.toHaveBeenCalled();
     expect(mocks.prune).toHaveBeenCalledOnce(); expect(mocks.pruneGrants).toHaveBeenCalledOnce(); expect(prepare).toHaveBeenCalledOnce();
   });
-  it('first and last retries use the configured fallback endpoint, middle retry stays public', async () => {
+  it('only the first retry uses the fallback; later retries return to the public primary', async () => {
     const url = 'https://lb.drpc.org/ogrpc?network=base&dkey=test-key';
     schedule(RETRY_CRON, retrySlot(3), url);
     expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), url);
@@ -47,7 +47,7 @@ describe('bounded wallet observation schedule', () => {
     expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), undefined);
     vi.clearAllMocks();
     schedule(RETRY_CRON, retrySlot(6), url);
-    expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), url);
+    expect(mocks.retry).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), undefined);
   });
   it('no fallback endpoint keeps every retry on the public primary', async () => {
     for (const hour of retryHours) {
