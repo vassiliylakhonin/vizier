@@ -20,6 +20,23 @@ describe("copyable MCP connection example", () => {
       expect(calls.every(call => !call.headers.has("Authorization") && !call.headers.has("X-Client-Id"))).toBe(true);
       expect(calls.every(call => call.redirect === "error")).toBe(true);
     });
+
+    it(`returns an evaluation receipt for one explicit ${profile} sample`, async () => {
+      const calls: Request[] = [];
+      const fetchImpl: typeof fetch = async (input, init) => {
+        const request = new Request(input, init);
+        calls.push(request.clone());
+        return handleHttpRequest(request, { apiKey: "protected-action-key" });
+      };
+      const result = await connectMcp("https://vizier.example", profile, { fetchImpl, verifySample: true });
+      expect(result).toMatchObject({ discoveryOnly: false, authorizationGranted: false,
+        sample: { decision: "BLOCK", receiptId: expect.any(String) } });
+      expect(calls).toHaveLength(profile === "session" ? 5 : 4);
+      const call = calls.at(-1)!;
+      expect(call.headers.get("Mcp-Name")).toBe(profile === "stateless" ? "vizier_verify_action" : null);
+      expect(call.headers.has("Authorization")).toBe(false);
+      expect(await call.json()).toMatchObject({ method: "tools/call", params: { name: "vizier_verify_action" } });
+    });
   }
   it("marks only explicit owner checks", async () => {
     const markers: (string | null)[] = [];

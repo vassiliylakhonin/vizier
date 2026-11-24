@@ -194,6 +194,12 @@ node examples/mcp-connect.ts --profile stateless
 
 These commands perform read-only discovery. A rejected connection includes correction guidance; fix the request and explicitly retry the selected profile.
 
+To get a first evaluation receipt, add `--verify-sample` to either command. The client submits the bundled synthetic purchase request and prints the `BLOCK` decision and receipt ID. No credentials or real purchase data are needed, and the sample performs no purchase.
+
+```sh
+node examples/mcp-connect.ts --profile session --verify-sample
+```
+
 <details>
 <summary>Configuration for a stdio-only MCP client</summary>
 

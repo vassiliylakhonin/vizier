@@ -1,9 +1,10 @@
-/** Node 24, no dependencies: explicit read-only MCP connection, never an action. */
+/** Node 24, no dependencies: MCP discovery and an optional synthetic evaluation. */
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 
 type Profile = "session" | "stateless";
-type Options = { fetchImpl?: typeof fetch; ownerCheck?: boolean };
+type Options = { fetchImpl?: typeof fetch; ownerCheck?: boolean; verifySample?: boolean };
 const VERSIONS = { session: "2025-11-25", stateless: "2026-07-28" } as const;
 
 const SESSION_REVISIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] as const;
@@ -105,9 +106,9 @@ export async function connectMcp(origin: string, profile: Profile, options: Opti
     throw new Error("Selected MCP profile/revision is not advertised. No POST was sent.");
   }
   const headers = { "MCP-Protocol-Version": version };
-  const rpc = async (method: string, params: Record<string, unknown>, id: string | null) => send("/mcp", {
+  const rpc = async (method: string, params: Record<string, unknown>, id: string | null, extra = {}) => send("/mcp", {
     jsonrpc: "2.0", ...(id === null ? {} : { id }), method, params,
-  }, { ...headers, ...(profile === "stateless" ? { "Mcp-Method": method } : {}) });
+  }, { ...headers, ...(profile === "stateless" ? { "Mcp-Method": method } : {}), ...extra });
   let params: Record<string, unknown> = {};
   if (profile === "session") {
     const initialized = await rpc("initialize", { protocolVersion: version, capabilities: {},
@@ -129,8 +130,24 @@ export async function connectMcp(origin: string, profile: Profile, options: Opti
   if (!Array.isArray(tools) || tools.length !== 1 || tools[0]?.name !== "vizier_verify_action") {
     throw new Error("Unexpected tool catalog. Inspect the published schema before constructing an action.");
   }
-  return { profile, protocolVersion: version, tools: tools.map(tool => tool.name),
-    discoveryOnly: true, authorizationGranted: false };
+  const summary = { profile, protocolVersion: version, tools: tools.map(tool => tool.name), authorizationGranted: false };
+  if (!options.verifySample) return { ...summary, discoveryOnly: true };
+
+  const name = "vizier_verify_action";
+  const sample = JSON.parse(readFileSync(new URL("./block.json", import.meta.url), "utf8"));
+  const called = await rpc("tools/call", { ...params, name, arguments: sample }, "verify-sample",
+    profile === "stateless" ? { "Mcp-Name": name } : {});
+  const result = called?.result as {
+    isError?: boolean;
+    _meta?: { evaluation_only?: boolean; allow_impossible?: boolean };
+    structuredContent?: { decision?: string; receipt?: { id?: string } };
+  } | undefined;
+  const verification = result?.structuredContent;
+  if (result?.isError !== false || result._meta?.evaluation_only !== true || result._meta.allow_impossible !== true ||
+      verification?.decision !== "BLOCK" || typeof verification.receipt?.id !== "string" || !verification.receipt.id) {
+    throw new Error("Expected a BLOCK receipt from the evaluation-only sample.");
+  }
+  return { ...summary, discoveryOnly: false, sample: { decision: verification.decision, receiptId: verification.receipt.id } };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -138,12 +155,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const { values } = parseArgs({ options: {
       origin: { type: "string", default: "https://vizier.agendamcp.dpdns.org" },
       profile: { type: "string" }, "owner-check": { type: "boolean", default: false },
+      "verify-sample": { type: "boolean", default: false },
     } });
     if (values.profile !== "session" && values.profile !== "stateless") {
-      throw new Error("Usage: node examples/mcp-connect.ts --profile session|stateless [--origin URL] [--owner-check]");
+      throw new Error("Usage: node examples/mcp-connect.ts --profile session|stateless [--verify-sample] [--origin URL] [--owner-check]");
     }
     console.log(JSON.stringify(await connectMcp(values.origin, values.profile,
-      { ownerCheck: values["owner-check"] }), null, 2));
+      { ownerCheck: values["owner-check"], verifySample: values["verify-sample"] }), null, 2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : "MCP connection failed");
     process.exitCode = 1;
