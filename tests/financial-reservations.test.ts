@@ -353,6 +353,37 @@ describe("financial reservations", () => {
     expect(mem.prepare("SELECT state,reason FROM wallet_history_monitor WHERE id=1").get())
       .toMatchObject({ state: "OK", reason: null });
   });
+  it.each([
+    ["ordinary delay", "15", 15000],
+    ["HTTP date", new Date(Date.UTC(2026, 9, 3, 3, 17, 25)).toUTCString(), 25000],
+    ["out-of-budget delay", "300", null],
+  ])("honors the RPC Retry-After %s while keeping the complete scan requirement", async (_label, header, wait) => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 3, 3, 17));
+    await policy({ enabled: false });
+    mockHistory();
+    const fixtureFetch = fetch;
+    let throttled = false;
+    vi.stubGlobal("fetch", vi.fn((url: string, init: RequestInit) => {
+      const { method } = JSON.parse(init.body as string) as { method: string };
+      if (method === "eth_getLogs" && !throttled) {
+        throttled = true;
+        return Promise.resolve(new Response(null, { status: 429, headers: { "Retry-After": header } }));
+      }
+      return fixtureFetch(url, init);
+    }));
+    const observation = runWalletHistoryMonitor(options.db!, wallet);
+    if (wait === null) {
+      await expect(observation).rejects.toThrow("MONITOR_HISTORY_UNAVAILABLE");
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(4);
+      expect(vi.mocked(setTimeout)).not.toHaveBeenCalled();
+      expect(mem.prepare("SELECT state,reason FROM wallet_history_monitor WHERE id=1").get())
+        .toMatchObject({ state: "FAILED", reason: "MONITOR_HISTORY_UNAVAILABLE:RPC_HTTP_429" });
+    } else {
+      await expect(observation).resolves.toMatchObject({ startBlock: 5000, endBlock: 50000 });
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(10);
+      expect(vi.mocked(setTimeout)).toHaveBeenCalledWith(expect.any(Function), wait);
+    }
+  });
   it("blocks financial requests when official address evidence is absent, stale or an exact match", async () => {
     await policy();
     setSnapshot(null);

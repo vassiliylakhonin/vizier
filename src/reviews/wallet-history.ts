@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { rpc, USDC, type BaseRpcProvider } from "./financial";
+import { BASE_RPC_TIMEOUT_MS, rpc, USDC, type BaseRpcProvider } from "./financial";
 
 const hash = z.string().regex(/^0x[0-9a-f]{64}$/);
 const quantity = z.string().regex(/^0x(?:0|[1-9a-f][0-9a-f]*)$/);
@@ -35,12 +35,19 @@ export function monitorLookbackBlocks(end: bigint): bigint {
 // -32000 rate limits. Pace single-request batches without spending more subrequests.
 const LOG_FETCH_CONCURRENCY = 6;
 const RPC_PAUSE_MS = 2000;
-// HTTP 429/5xx throttling usually clears within seconds. In-scan retries wait
-// 2 s then 8 s; a throttle that outlasts both is left to the scheduled
-// monitor's cron backoff (+30/60/120 minutes). Subrequest budget still caps
-// in-scan retries at two, so longer waits cannot buy extra attempts.
+// In-scan retries wait 2 s then 8 s unless a 429 asks for a longer wait.
+// Longer outages are left to the existing scheduled retry slots.
 const RETRY_BACKOFF_MS = [RPC_PAUSE_MS, 8000];
 function pause(ms = RPC_PAUSE_MS): Promise<void> { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+function retryAfterMs(error: unknown, now: number): number {
+  if (!(error instanceof Error) || error.message !== "Base RPC HTTP 429" || !error.cause ||
+      typeof error.cause !== "object" || !("retryAfter" in error.cause) || typeof error.cause.retryAfter !== "string") return 0;
+  const header = error.cause.retryAfter.trim();
+  if (/^\d+$/.test(header)) return Number(header) * 1000;
+  const date = Date.parse(header);
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
+}
 
 export interface WalletHistory {
   outgoing: number;
@@ -69,14 +76,20 @@ export async function collectWalletHistory(wallet: string, options: { paceRpc?: 
           (error.name === "TimeoutError" || error.name === "AbortError");
         if (spareCalls === 0 || (!monitorTimeout && !/^(Invalid Base RPC envelope|Base RPC HTTP (429|5\d\d))$/.test(message))) throw error;
         spareCalls--;
-        if (options.paceRpc) await pause(RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1 - spareCalls] ?? RPC_PAUSE_MS);
+        if (options.paceRpc) {
+          const now = Date.now();
+          const backoff = RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1 - spareCalls] ?? RPC_PAUSE_MS;
+          const delay = Math.max(backoff, retryAfterMs(error, now));
+          // Leave time for the retried request within the current scan budget.
+          if (now - started + delay + BASE_RPC_TIMEOUT_MS >= scanTimeoutMs) throw error;
+          await pause(delay);
+        }
       }
     }
   }
-  const [chainId, rawAnchor] = await Promise.all([
-    historyRpc("eth_chainId", []),
-    historyRpc("eth_getBlockByNumber", ["finalized", false]),
-  ]);
+  const chain = historyRpc("eth_chainId", []);
+  if (options.paceRpc) await chain;
+  const [chainId, rawAnchor] = await Promise.all([chain, historyRpc("eth_getBlockByNumber", ["finalized", false])]);
   if (chainId !== "0x2105") throw new Error("Wrong Base chain");
   const anchor = block.parse(rawAnchor);
   const end = BigInt(anchor.number);
