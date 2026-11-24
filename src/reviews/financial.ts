@@ -46,6 +46,7 @@ export async function handleFinancialPolicy(request: Request, db: D1Database, re
 }
 
 export type BaseRpcProvider = "blockpi" | "publicnode";
+export const BASE_RPC_TIMEOUT_MS = 10_000;
 const BASE_RPC_ENDPOINTS: Record<BaseRpcProvider, string> = {
   blockpi: "https://base.public.blockpi.network/v1/rpc/public",
   publicnode: "https://base-rpc.publicnode.com",
@@ -56,8 +57,11 @@ const BASE_RPC_ENDPOINTS: Record<BaseRpcProvider, string> = {
  * the Worker's own environment secret, never request input. */
 export async function rpc(method: string, params: unknown[], provider: BaseRpcProvider = "blockpi", urlOverride?: string): Promise<unknown> {
   const response = await fetch(urlOverride ?? BASE_RPC_ENDPOINTS[provider], { method: "POST", redirect: "manual",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error(`Base RPC HTTP ${response.status}`);
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal: AbortSignal.timeout(BASE_RPC_TIMEOUT_MS) });
+  if (!response.ok) {
+    const retryAfter = response.status === 429 ? response.headers.get("Retry-After") : null;
+    throw new Error(`Base RPC HTTP ${response.status}`, retryAfter === null ? undefined : { cause: { retryAfter } });
+  }
   if (!response.body) throw new Error("Base RPC empty response");
   const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
   try {
