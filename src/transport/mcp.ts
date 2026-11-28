@@ -3,7 +3,7 @@ import { mcpCallerCorrelation } from "./mcp-correlation";
 import { logServiceAccess, ACCESS_OPERATIONS } from "./access-telemetry";
 import { z } from "zod";
 
-import { grantReadiness, grantInstructions } from "./onboarding";
+import { firstMcpCheck, grantReadiness, grantInstructions } from "./onboarding";
 
 import { verificationRequestSchema, verificationResponseSchema } from "../core/index";
 import { verifyWithGrantLifecycle } from "./grant-lifecycle";
@@ -83,11 +83,11 @@ const verifyTool = Object.freeze({
   },
 });
 
-function verifyToolForOptions(options: TransportOptions) {
+function verifyToolForOptions(options: TransportOptions, stateless: boolean, revision: string | null) {
   return {
     ...verifyTool,
     description: `${verifyTool.description} ${grantInstructions(options)} Synthetic example arguments (not authority): ${JSON.stringify(grantReadiness(options).example_arguments)}`,
-    _meta: { "com.vizier/readiness": grantReadiness(options) },
+    _meta: { "com.vizier/readiness": { ...grantReadiness(options), first_check: firstMcpCheck(stateless, revision) } },
   };
 }
 
@@ -295,8 +295,11 @@ async function runVerifyTool(
     };
   }
   if (params.name !== verifyTool.name) {
-    return { kind: "error", code: -32602, status: 200, message: "Unknown tool name.",
-      data:{tool_hint:toolDiscoveryHint(usesStatelessProfile({params}),[verifyTool.name],request.headers.get("MCP-Protocol-Version"))} };
+    const stateless = usesStatelessProfile({params});
+    const revision = request.headers.get("MCP-Protocol-Version");
+    const hint = toolDiscoveryHint(stateless, [verifyTool.name], revision);
+    return { kind: "error", code: -32602, status: 200, message: "Unknown tool name. Use vizier_verify_action.",
+      data: { tool_hint: { ...hint, first_check: firstMcpCheck(stateless, revision) } } };
   }
   const parsed = verificationRequestSchema.safeParse(params.arguments);
   if (!parsed.success) {
@@ -402,7 +405,7 @@ async function handleStatelessRequest(
       });
     case "tools/list":
       return mcpResult(parsed.data.id, {
-        tools: [verifyToolForOptions(options)],
+        tools: [verifyToolForOptions(options, true, request.headers.get("MCP-Protocol-Version"))],
         ttlMs: 300_000,
         cacheScope: "public",
       });
@@ -497,7 +500,7 @@ async function handleSessionRequest(
     case "ping":
       return sessionResult(message.id, {});
     case "tools/list":
-      return sessionResult(message.id, { tools: [verifyToolForOptions(options)] });
+      return sessionResult(message.id, { tools: [verifyToolForOptions(options, false, headerVersion)] });
     case "tools/call": {
       const outcome = await runVerifyTool(
         request,

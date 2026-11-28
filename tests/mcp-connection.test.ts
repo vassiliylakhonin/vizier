@@ -138,6 +138,36 @@ describe("MCP connection recovery", () => {
       expect(await listed.json()).toMatchObject({result:{tools:[{name:'vizier_verify_action'}]}});
     }
   });
+  it.each([
+    ["session", "2025-06-18", "2025-06-18"],
+    ["session", "2099-01-18", VERSION],
+    ["stateless", STATELESS, STATELESS],
+    ["stateless", VERSION, VERSION],
+  ])("offers an evaluation-only first call after discovery and an unknown tool (%s, %s)", async (profile, revision, expected) => {
+    const stateless = profile === "stateless";
+    const headers: Record<string, string> = { "MCP-Protocol-Version": revision };
+    const params = stateless ? { _meta: { ...meta, "io.modelcontextprotocol/protocolVersion": revision } } : {};
+    const listed = await handleHttpRequest(post("tools/list", params,
+      { ...headers, ...(stateless ? { "Mcp-Method": "tools/list" } : {}) }));
+    type FirstCheck = ReturnType<typeof import("../src/transport/onboarding").firstMcpCheck>;
+    const listing = await listed.json() as {result: {tools: [{_meta: {"com.vizier/readiness": {first_check: FirstCheck}}}]}};
+    const sample = listing.result.tools[0]._meta["com.vizier/readiness"].first_check;
+    const rejected = await handleHttpRequest(post("tools/call", { ...params, name: "wrong-tool", arguments: {} },
+      { ...headers, ...(stateless ? { "Mcp-Method": "tools/call", "Mcp-Name": "wrong-tool" } : {}) }));
+    const rejection = await rejected.json() as {error: {data: {tool_hint: {first_check: FirstCheck; automatic_tool_retry: boolean}}}};
+    const hint = rejection.error.data.tool_hint;
+    expect(sample).toBeDefined();
+    expect(hint.first_check).toEqual(sample);
+    expect(hint.automatic_tool_retry).toBe(false);
+    expect(sample.headers["MCP-Protocol-Version"]).toBe(expected);
+    const result = await handleHttpRequest(new Request("https://vizier.example" + sample.endpoint, {
+      method: sample.method, headers: sample.headers, body: JSON.stringify(sample.body),
+    }));
+    expect(result.status).toBe(200);
+    const evaluated = await result.json() as {error?: unknown; result?: {structuredContent: {decision: string}}};
+    expect(evaluated.error).toBeUndefined();
+    expect(["BLOCK", "REVIEW"]).toContain(evaluated.result?.structuredContent.decision);
+  });
   it("provides executable read-only recovery requests for the remaining mixed-profile failure", async () => {
     const response = await handleHttpRequest(post("server/discover", {}));
     expect(response.status).toBe(200);

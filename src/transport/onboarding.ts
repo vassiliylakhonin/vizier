@@ -1,27 +1,35 @@
 import { resolveSignedGrantMode, type TransportOptions } from "./shared";
-import { MCP_PROTOCOL_VERSION } from "./mcp-profiles";
+import { DEFAULT_SESSION_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION, SESSION_PROTOCOL_VERSIONS, STATELESS_ACCEPTED_REVISIONS } from "./mcp-profiles";
 
-export function firstMcpCheck() {
+export function firstMcpCheck(
+  stateless = true,
+  requestedRevision?: string | null,
+) {
+  const supported = stateless ? STATELESS_ACCEPTED_REVISIONS : [MCP_PROTOCOL_VERSION, ...SESSION_PROTOCOL_VERSIONS];
+  const revision = requestedRevision && supported.includes(requestedRevision)
+    ? requestedRevision : stateless ? MCP_PROTOCOL_VERSION : DEFAULT_SESSION_PROTOCOL_VERSION;
   const name = "vizier_verify_action";
   return {
+    endpoint: "/mcp",
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
-      "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
-      "Mcp-Method": "tools/call",
-      "Mcp-Name": name,
+      "MCP-Protocol-Version": revision,
+      ...(stateless ? { "Mcp-Method": "tools/call", "Mcp-Name": name } : {}),
     },
     body: {
       jsonrpc: "2.0", id: "first-vizier-check", method: "tools/call",
       params: {
         name,
         arguments: grantReadiness({}).example_arguments,
-        _meta: {
-          "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+        ...(stateless ? { _meta: {
+          "io.modelcontextprotocol/protocolVersion": revision,
           "io.modelcontextprotocol/clientCapabilities": {},
-        },
+        } } : {}),
       },
     },
+    instruction: "Run this fictional example without a Bearer token. Check result.structuredContent for a BLOCK or REVIEW. The sample conveys no permission to act.",
   };
 }
 
